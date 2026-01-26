@@ -21,6 +21,8 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
       methodType,
       requestId,
       startedAt,
+      eventType: "request",
+      eventAt: startedAt,
       request: request.toObject(),
     });
     stream.on('data', response => {
@@ -33,6 +35,8 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
         startedAt,
         responseAt,
         durationMs: responseAt - startedAt,
+        eventType: "stream-data",
+        eventAt: responseAt,
         response: response.toObject(),
       });
       if (!!this._callbacks['data']) {
@@ -50,6 +54,8 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
           startedAt,
           responseAt,
           durationMs: responseAt - startedAt,
+          eventType: "stream-end",
+          eventAt: responseAt,
           response: "EOF",
         });
       }
@@ -68,6 +74,8 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
           startedAt,
           responseAt,
           durationMs: responseAt - startedAt,
+          eventType: "error",
+          eventAt: responseAt,
           error: {
             code: error.code,
             message: error.message,
@@ -104,6 +112,8 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
             startedAt,
             responseAt,
             durationMs: responseAt - startedAt,
+            eventType: "response",
+            eventAt: responseAt,
             request: request.toObject(),
             response: err ? undefined : response.toObject(),
             error: err || undefined,

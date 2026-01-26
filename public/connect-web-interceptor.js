@@ -17,6 +17,8 @@ async function* readMessage(req, stream, startedAt, requestId) {
         startedAt,
         responseAt,
         durationMs: responseAt - startedAt,
+        eventType: "stream-data",
+        eventAt: responseAt,
         request: req.message.toJson?.(),
         response: resp,
       }, "*");
@@ -45,6 +47,8 @@ const interceptor = (next) => async (req) => {
         startedAt,
         responseAt,
         durationMs: responseAt - startedAt,
+        eventType: "response",
+        eventAt: responseAt,
         request: req.message.toJson(),
         response: resp.message.toJson(),
       }, "*")
@@ -65,6 +69,8 @@ const interceptor = (next) => async (req) => {
       startedAt,
       responseAt,
       durationMs: responseAt - startedAt,
+      eventType: "error",
+      eventAt: responseAt,
       request: req.message.toJson?.(),
       response: undefined,
       error: {

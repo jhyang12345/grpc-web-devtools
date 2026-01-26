@@ -33,6 +33,30 @@ function formatDuration(value) {
   return `${(value / 1000).toFixed(2)} s`;
 }
 
+function formatOffset(value, origin) {
+  if (!Number.isFinite(value) || !Number.isFinite(origin)) return '—';
+  const delta = value - origin;
+  if (delta < 1000) return `+${delta} ms`;
+  return `+${(delta / 1000).toFixed(2)} s`;
+}
+
+function formatEventType(value) {
+  switch (value) {
+    case 'request':
+      return 'Request created';
+    case 'response':
+      return 'Response received';
+    case 'stream-data':
+      return 'Stream message';
+    case 'stream-end':
+      return 'Stream ended';
+    case 'error':
+      return 'Error';
+    default:
+      return 'Event';
+  }
+}
+
 class NetworkDetails extends Component {
   render() {
     const { entry } = this.props;
@@ -52,6 +76,9 @@ class NetworkDetails extends Component {
       const payloadBytes = cachedEntry?.payloadBytes;
       const showLargePayloadWarning = payloadBytes && payloadBytes >= LARGE_PAYLOAD_BYTES;
       const timingSource = cachedEntry || entry;
+      const timelineEvents = cachedEntry?.events
+        ? [...cachedEntry.events].sort((a, b) => a.at - b.at)
+        : [];
       const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'twilight' : 'rjv-default';
       var src = { method };
       if (request) src.request = request;
@@ -103,6 +130,19 @@ class NetworkDetails extends Component {
               <span>Payload size (approx)</span>
               <span>{payloadBytes ? formatBytes(payloadBytes) : '—'}</span>
             </div>
+          </div>
+          <div className="payload-timeline">
+            <div className="payload-timing-title">Timeline</div>
+            {timelineEvents.length === 0 && (
+              <div className="payload-timeline-empty">No events recorded.</div>
+            )}
+            {timelineEvents.map((timelineEvent, index) => (
+              <div className="payload-timeline-row" key={`${timelineEvent.type}-${timelineEvent.at}-${index}`}>
+                <span>{formatEventType(timelineEvent.type)}</span>
+                <span>{formatTimestamp(timelineEvent.at)}</span>
+                <span>{formatOffset(timelineEvent.at, timingSource.startedAt)}</span>
+              </div>
+            ))}
           </div>
         </>
       )
