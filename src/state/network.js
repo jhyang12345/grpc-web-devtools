@@ -4,6 +4,29 @@ import { createSlice } from "@reduxjs/toolkit";
 import Fuse from 'fuse.js';
 import { setFilterValue } from "./toolbar";
 
+const MAX_ENTRY_BYTES = 256 * 1024;
+const MAX_PREVIEW_CHARS = 2000;
+
+function safeStringify(value) {
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    return '"[unserializable]"';
+  }
+}
+
+function truncateLargeField(payload, key) {
+  if (!payload || payload[key] == null) return;
+  const json = safeStringify(payload[key]);
+  const bytes = json.length;
+  if (bytes <= MAX_ENTRY_BYTES) return;
+  payload[key] = {
+    __truncated: true,
+    __bytes: bytes,
+    __preview: json.slice(0, MAX_PREVIEW_CHARS),
+  };
+}
+
 var options = {
   shouldSort: false,
   threshold: 0.1,
@@ -29,6 +52,9 @@ const networkSlice = createSlice({
     networkLog(state, action) {
       const { log, _filterValue, _logBak } = state;
       const { payload, } = action;
+      truncateLargeField(payload, 'request');
+      truncateLargeField(payload, 'response');
+      truncateLargeField(payload, 'error');
       if (payload.method) {
         const parts = payload.method.split('/')
         payload.endpoint = parts.pop() || parts.pop();
