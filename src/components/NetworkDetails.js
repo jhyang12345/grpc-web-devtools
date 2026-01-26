@@ -69,7 +69,8 @@ class NetworkDetails extends Component {
             name="grpc"
             theme={theme}
             style={{backgroundColor:'transparent'}}
-            enableClipboard={this._enableClipboard}
+            enableClipboard={true}
+            onCopy={this._onCopy}
             collapsed={1}
             collapseStringsAfterLength={200}
             src={src}
@@ -102,19 +103,6 @@ class NetworkDetails extends Component {
       this.setState({ showClipboardToast: false });
       this._toastTimer = null;
     }, 1500);
-  }
-
-  _enableClipboard = (clipboard) => {
-    this._onCopy();
-    const value = clipboard && Object.prototype.hasOwnProperty.call(clipboard, 'value')
-      ? clipboard.value
-      : clipboard;
-    if (typeof value === 'string') return value;
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch (error) {
-      return String(value);
-    }
   }
 }
 
