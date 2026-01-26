@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import ReactJson from 'react-json-view';
 import { connect } from 'react-redux';
 import { getNetworkEntry } from '../state/networkCache';
+import UpDownIcon from '../icons/UpDown';
 import './NetworkDetails.css';
 
 const LARGE_PAYLOAD_BYTES = 1024 * 1024;
@@ -17,15 +18,15 @@ function formatBytes(value) {
 
 class NetworkDetails extends Component {
   state = {
-    showClipboardToast: false,
+    jsonCollapsed: 1,
+    lastEntryId: null,
   };
 
-  _toastTimer = null;
-
-  componentWillUnmount() {
-    if (this._toastTimer) {
-      clearTimeout(this._toastTimer);
-      this._toastTimer = null;
+  componentDidUpdate(prevProps) {
+    const prevEntryId = prevProps.entry?.entryId ?? null;
+    const nextEntryId = this.props.entry?.entryId ?? null;
+    if (prevEntryId !== nextEntryId && this.state.lastEntryId !== nextEntryId) {
+      this.setState({ jsonCollapsed: 1, lastEntryId: nextEntryId });
     }
   }
 
@@ -65,13 +66,23 @@ class NetworkDetails extends Component {
               Full payload is no longer available (evicted from cache).
             </div>
           )}
+          <div className="json-actions">
+            <button
+              className="json-action-button"
+              type="button"
+              title="Expand all"
+              onClick={this._expandAll}
+            >
+              <UpDownIcon />
+              <span>Expand all</span>
+            </button>
+          </div>
           <ReactJson
             name="grpc"
             theme={theme}
             style={{backgroundColor:'transparent'}}
             enableClipboard={true}
-            onCopy={this._onCopy}
-            collapsed={1}
+            collapsed={this.state.jsonCollapsed}
             collapseStringsAfterLength={200}
             src={src}
           />
@@ -86,23 +97,13 @@ class NetworkDetails extends Component {
               <span>{payloadBytes ? formatBytes(payloadBytes) : '—'}</span>
             </div>
           </div>
-          {this.state.showClipboardToast && (
-            <div className="clipboard-toast">Copied to clipboard</div>
-          )}
         </>
       )
     }
   }
 
-  _onCopy = () => {
-    if (this._toastTimer) {
-      clearTimeout(this._toastTimer);
-    }
-    this.setState({ showClipboardToast: true });
-    this._toastTimer = setTimeout(() => {
-      this.setState({ showClipboardToast: false });
-      this._toastTimer = null;
-    }, 1500);
+  _expandAll = () => {
+    this.setState({ jsonCollapsed: false });
   }
 }
 

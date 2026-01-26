@@ -45,29 +45,25 @@
   white-space: nowrap;
 }
 
-.clipboard-toast {
-  position: fixed;
-  right: 12px;
-  bottom: 12px;
-  z-index: 10;
-  padding: 8px 12px;
-  border-radius: 4px;
-  background: rgba(25, 25, 25, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #fff;
-  font-size: 12px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-  opacity: 0.98;
-  animation: clipboard-toast-in 120ms ease-out;
+.json-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 4px 0;
 }
 
-@keyframes clipboard-toast-in {
-  from {
-    transform: translateY(6px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 0.98;
-  }
+.json-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--toolbar-bg);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.json-action-button svg {
+  height: 12px;
 }
