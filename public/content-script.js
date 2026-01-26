@@ -149,6 +149,8 @@ cs.onload = function () {
 (document.head || document.documentElement).appendChild(cs);
 
 var port;
+var fallbackRequestId = 1;
+var requestStartTimes = new Map();
 
 function setupPortIfNeeded() {
   if (!port && chrome && chrome.runtime) {
@@ -162,6 +164,26 @@ function setupPortIfNeeded() {
 }
 
 function sendGRPCNetworkCall(data) {
+  if (!data.requestId) {
+    data.requestId = fallbackRequestId++;
+  }
+  if (data.startedAt) {
+    requestStartTimes.set(data.requestId, data.startedAt);
+  } else {
+    const knownStart = requestStartTimes.get(data.requestId);
+    if (knownStart) {
+      data.startedAt = knownStart;
+    } else if (data.request && !data.response && !data.error) {
+      data.startedAt = Date.now();
+      requestStartTimes.set(data.requestId, data.startedAt);
+    }
+  }
+  if ((data.response || data.error) && !data.responseAt) {
+    data.responseAt = Date.now();
+  }
+  if (data.startedAt && data.responseAt && !data.durationMs) {
+    data.durationMs = data.responseAt - data.startedAt;
+  }
   setupPortIfNeeded();
   if (port) {
     port.postMessage({
