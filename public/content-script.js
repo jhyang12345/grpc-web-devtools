@@ -173,7 +173,10 @@ function sendGRPCNetworkCall(data) {
     const knownStart = requestStartTimes.get(data.requestId);
     if (knownStart) {
       data.startedAt = knownStart;
-    } else if (data.request && !data.response && !data.error) {
+    } else if (data.responseAt && typeof data.durationMs === "number") {
+      data.startedAt = data.responseAt - data.durationMs;
+      requestStartTimes.set(data.requestId, data.startedAt);
+    } else {
       data.startedAt = Date.now();
       requestStartTimes.set(data.requestId, data.startedAt);
     }
