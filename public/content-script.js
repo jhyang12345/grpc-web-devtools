@@ -12,31 +12,20 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     this._callbacks = {};
     const methodType = "server_streaming";
     const requestId = __grpcWebDevtoolsRequestId++;
-    const startedAt = Date.now();
     this._requestId = requestId;
-    this._startedAt = startedAt;
     window.postMessage({
       type: postType,
       method,
       methodType,
       requestId,
-      startedAt,
-      eventType: "request",
-      eventAt: startedAt,
       request: request.toObject(),
     });
     stream.on('data', response => {
-      const responseAt = Date.now();
       window.postMessage({
         type: postType,
         method,
         methodType,
         requestId,
-        startedAt,
-        responseAt,
-        durationMs: responseAt - startedAt,
-        eventType: "stream-data",
-        eventAt: responseAt,
         response: response.toObject(),
       });
       if (!!this._callbacks['data']) {
@@ -45,17 +34,11 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     });
     stream.on('status', status => {
       if (status.code === 0) {
-        const responseAt = Date.now();
         window.postMessage({
           type: postType,
           method,
           methodType,
           requestId,
-          startedAt,
-          responseAt,
-          durationMs: responseAt - startedAt,
-          eventType: "stream-end",
-          eventAt: responseAt,
           response: "EOF",
         });
       }
@@ -65,17 +48,11 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     });
     stream.on('error', error => {
       if (error.code !== 0) {
-        const responseAt = Date.now();
         window.postMessage({
           type: postType,
           method,
           methodType,
           requestId,
-          startedAt,
-          responseAt,
-          durationMs: responseAt - startedAt,
-          eventType: "error",
-          eventAt: responseAt,
           error: {
             code: error.code,
             message: error.message,
@@ -99,21 +76,14 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     client.client_.rpcCall_ = client.client_.rpcCall;
     client.client_.rpcCall2 = function (method, request, metadata, methodInfo, callback) {
       var posted = false;
-      var startedAt = Date.now();
       var requestId = __grpcWebDevtoolsRequestId++;
       var newCallback = function (err, response) {
         if (!posted) {
-          var responseAt = Date.now();
           window.postMessage({
             type: postType,
             method,
             methodType: "unary",
             requestId,
-            startedAt,
-            responseAt,
-            durationMs: responseAt - startedAt,
-            eventType: "response",
-            eventAt: responseAt,
             request: request.toObject(),
             response: err ? undefined : response.toObject(),
             error: err || undefined,
@@ -160,7 +130,6 @@ cs.onload = function () {
 
 var port;
 var fallbackRequestId = 1;
-var requestStartTimes = new Map();
 
 function setupPortIfNeeded() {
   if (!port && chrome && chrome.runtime) {
@@ -176,26 +145,6 @@ function setupPortIfNeeded() {
 function sendGRPCNetworkCall(data) {
   if (!data.requestId) {
     data.requestId = fallbackRequestId++;
-  }
-  if (data.startedAt) {
-    requestStartTimes.set(data.requestId, data.startedAt);
-  } else {
-    const knownStart = requestStartTimes.get(data.requestId);
-    if (knownStart) {
-      data.startedAt = knownStart;
-    } else if (data.responseAt && typeof data.durationMs === "number") {
-      data.startedAt = data.responseAt - data.durationMs;
-      requestStartTimes.set(data.requestId, data.startedAt);
-    } else {
-      data.startedAt = Date.now();
-      requestStartTimes.set(data.requestId, data.startedAt);
-    }
-  }
-  if ((data.response || data.error) && !data.responseAt) {
-    data.responseAt = Date.now();
-  }
-  if (data.startedAt && data.responseAt && !data.durationMs) {
-    data.durationMs = data.responseAt - data.startedAt;
   }
   setupPortIfNeeded();
   if (port) {

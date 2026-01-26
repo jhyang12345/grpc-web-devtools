@@ -97,9 +97,6 @@ function buildSummaryEntry(entry) {
     response: !!entry.response,
     error: entry.error,
     requestId: entry.requestId,
-    startedAt: entry.startedAt,
-    responseAt: entry.responseAt,
-    durationMs: entry.durationMs,
   };
 }
 

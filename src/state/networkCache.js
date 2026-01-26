@@ -55,61 +55,15 @@ export function addNetworkEntry(entry) {
     if (entry.response != null) existingEntry.response = entry.response;
     if (entry.error != null) existingEntry.error = entry.error;
     if (entry.requestId != null) existingEntry.requestId = entry.requestId;
-    if (Number.isFinite(entry.startedAt)) {
-      existingEntry.startedAt = Number.isFinite(existingEntry.startedAt)
-        ? Math.min(existingEntry.startedAt, entry.startedAt)
-        : entry.startedAt;
-    }
-    if (Number.isFinite(entry.responseAt)) {
-      existingEntry.responseAt = Number.isFinite(existingEntry.responseAt)
-        ? Math.max(existingEntry.responseAt, entry.responseAt)
-        : entry.responseAt;
-    }
-    if (Number.isFinite(existingEntry.startedAt) && Number.isFinite(existingEntry.responseAt)) {
-      existingEntry.durationMs = existingEntry.responseAt - existingEntry.startedAt;
-    } else if (Number.isFinite(entry.durationMs)) {
-      existingEntry.durationMs = entry.durationMs;
-    }
-    if (!existingEntry.events) {
-      existingEntry.events = [];
-    }
-    const eventAt = entry.eventAt ?? entry.responseAt ?? entry.startedAt;
-    if (Number.isFinite(eventAt)) {
-      if (!existingEntry.events.some((item) => item.type === 'request') && Number.isFinite(existingEntry.startedAt)) {
-        existingEntry.events.push({
-          type: 'request',
-          at: existingEntry.startedAt,
-        });
-      }
-      existingEntry.events.push({
-        type: entry.eventType || (entry.error ? 'error' : entry.response ? 'response' : entry.request ? 'request' : 'event'),
-        at: eventAt,
-      });
-    }
     existingEntry.payloadBytes = estimatePayloadBytes(existingEntry);
     return existingEntry;
   }
 
   const entryId = nextEntryId++;
-  const eventAt = entry.eventAt ?? entry.responseAt ?? entry.startedAt;
-  const events = [];
-  if (Number.isFinite(entry.startedAt)) {
-    events.push({
-      type: 'request',
-      at: entry.startedAt,
-    });
-  }
-  if (Number.isFinite(eventAt)) {
-    events.push({
-      type: entry.eventType || (entry.error ? 'error' : entry.response ? 'response' : entry.request ? 'request' : 'event'),
-      at: eventAt,
-    });
-  }
   const fullEntry = {
     ...entry,
     entryId,
     payloadBytes: estimatePayloadBytes(entry),
-    events,
   };
   cache.set(entryId, fullEntry);
   order.push(entryId);

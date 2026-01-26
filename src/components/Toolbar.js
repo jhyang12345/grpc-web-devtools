@@ -4,7 +4,6 @@ import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache } from '../state/network';
 import { toggleFilter, setFilterValue } from '../state/toolbar';
-import { toggleClipboard } from "../state/clipboard";
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
 import './Toolbar.css';
@@ -50,7 +49,7 @@ class Toolbar extends Component {
   }
 
   render() {
-    const { preserveLog, clipboardIsEnabled } = this.props;
+    const { preserveLog } = this.props;
     return (
       <>
         <div className="toolbar">
@@ -66,16 +65,6 @@ class Toolbar extends Component {
               />
               <label htmlFor="ui-checkbox-preserve-log">Preserve log</label>
             </span>
-            <ToolbarDivider />
-            <span className="toolbar-item checkbox" title="Enables clipboard for JSON tree (decreases rendering performance)">
-              <input
-                type="checkbox"
-                id="ui-checkbox-clipboard-is-enabled"
-                checked={clipboardIsEnabled}
-                onChange={this._onEnableClipboardChanged}
-              />
-              <label htmlFor="ui-checkbox-clipboard-is-enabled">Enable clipboard</label>
-            </span>
           </div>
         </div>
         {this._renderFilterToolbar()}
@@ -86,11 +75,6 @@ class Toolbar extends Component {
   _onPreserveLogChanged = e => {
     const { setPreserveLog } = this.props;
     setPreserveLog(e.target.checked);
-  }
-
-  _onEnableClipboardChanged = e => {
-    const { toggleClipboard } = this.props;
-    toggleClipboard(e.target.checked);
   }
 
   _onFilterValueChanged = e => {
@@ -121,7 +105,6 @@ class ToolbarButton extends Component {
 const mapStateToProps = state => ({
   preserveLog: state.network.preserveLog,
   toolbar: state.toolbar,
-  clipboardIsEnabled: state.clipboard.clipboardIsEnabled,
 });
-const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setFilterValue, toggleClipboard };
+const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setFilterValue };
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);
