@@ -3,6 +3,7 @@
 import React, { Component } from 'react';
 import ReactJson from 'react-json-view';
 import { connect } from 'react-redux';
+import { getNetworkEntry } from '../state/networkCache';
 import './NetworkDetails.css';
 
 class NetworkDetails extends Component {
@@ -17,11 +18,17 @@ class NetworkDetails extends Component {
   _renderContent = (entry) => {
     if (entry) {
       const { clipboardIsEnabled } = this.props;
-      const { method, request, response, error } = entry;
+      const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
+      const entryToRender = cachedEntry || entry;
+      const { method, request, response, error } = entryToRender;
+      const isMissingPayload = !cachedEntry && (entry.request || entry.response);
       const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'twilight' : 'rjv-default';
       var src = { method };
       if (request) src.request = request;
       if (response) src.response = response;
+      if (isMissingPayload) {
+        src.payload = "Full payload not available (evicted from cache).";
+      }
       if (error) src.error = error;
       return (
           <ReactJson

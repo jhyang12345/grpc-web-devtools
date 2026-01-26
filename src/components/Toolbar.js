@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
-import { setPreserveLog, clearLog } from '../state/network';
+import { setPreserveLog, clearLogAndCache } from '../state/network';
 import { toggleFilter, setFilterValue } from '../state/toolbar';
 import { toggleClipboard } from "../state/clipboard";
 import ClearIcon from '../icons/Clear';
@@ -123,5 +123,5 @@ const mapStateToProps = state => ({
   toolbar: state.toolbar,
   clipboardIsEnabled: state.clipboard.clipboardIsEnabled,
 });
-const mapDispatchToProps = { setPreserveLog, clearLog, toggleFilter, setFilterValue, toggleClipboard };
+const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setFilterValue, toggleClipboard };
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);
