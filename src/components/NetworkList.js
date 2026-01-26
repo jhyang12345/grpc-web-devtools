@@ -35,7 +35,7 @@ class NetworkList extends Component {
                     height={height}
                     itemSize={21}
                     itemData={network.log}
-                    overscanCount={50}
+                    overscanCount={15}
                   >
                     {NetworkListRow}
                   </List>
