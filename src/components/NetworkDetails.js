@@ -29,6 +29,8 @@ class NetworkDetails extends Component {
             theme={theme}
             style={{backgroundColor:'transparent'}}
             enableClipboard={clipboardIsEnabled}
+            collapsed={1}
+            collapseStringsAfterLength={200}
             src={src}
           />
       )
