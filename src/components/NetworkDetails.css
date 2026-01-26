@@ -44,3 +44,17 @@
   text-align: right;
   white-space: nowrap;
 }
+
+.clipboard-toast {
+  position: sticky;
+  bottom: 8px;
+  margin-top: 8px;
+  margin-left: auto;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: var(--toolbar-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  opacity: 0.95;
+}

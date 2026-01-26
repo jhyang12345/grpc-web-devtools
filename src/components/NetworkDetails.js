@@ -16,6 +16,19 @@ function formatBytes(value) {
 }
 
 class NetworkDetails extends Component {
+  state = {
+    showClipboardToast: false,
+  };
+
+  _toastTimer = null;
+
+  componentWillUnmount() {
+    if (this._toastTimer) {
+      clearTimeout(this._toastTimer);
+      this._toastTimer = null;
+    }
+  }
+
   render() {
     const { entry } = this.props;
     return (
@@ -56,7 +69,7 @@ class NetworkDetails extends Component {
             name="grpc"
             theme={theme}
             style={{backgroundColor:'transparent'}}
-            enableClipboard={true}
+            enableClipboard={this._onCopy}
             collapsed={1}
             collapseStringsAfterLength={200}
             src={src}
@@ -72,9 +85,24 @@ class NetworkDetails extends Component {
               <span>{payloadBytes ? formatBytes(payloadBytes) : '—'}</span>
             </div>
           </div>
+          {this.state.showClipboardToast && (
+            <div className="clipboard-toast">Copied to clipboard</div>
+          )}
         </>
       )
     }
+  }
+
+  _onCopy = () => {
+    if (this._toastTimer) {
+      clearTimeout(this._toastTimer);
+    }
+    this.setState({ showClipboardToast: true });
+    this._toastTimer = setTimeout(() => {
+      this.setState({ showClipboardToast: false });
+      this._toastTimer = null;
+    }, 1500);
+    return true;
   }
 }
 
