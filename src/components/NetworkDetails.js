@@ -6,6 +6,15 @@ import { connect } from 'react-redux';
 import { getNetworkEntry } from '../state/networkCache';
 import './NetworkDetails.css';
 
+const LARGE_PAYLOAD_BYTES = 1024 * 1024;
+
+function formatBytes(value) {
+  if (!Number.isFinite(value)) return '';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 class NetworkDetails extends Component {
   render() {
     const { entry } = this.props;
@@ -22,6 +31,8 @@ class NetworkDetails extends Component {
       const entryToRender = cachedEntry || entry;
       const { method, request, response, error } = entryToRender;
       const isMissingPayload = !cachedEntry && (entry.request || entry.response);
+      const payloadBytes = cachedEntry?.payloadBytes;
+      const showLargePayloadWarning = payloadBytes && payloadBytes >= LARGE_PAYLOAD_BYTES;
       const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'twilight' : 'rjv-default';
       var src = { method };
       if (request) src.request = request;
@@ -31,6 +42,17 @@ class NetworkDetails extends Component {
       }
       if (error) src.error = error;
       return (
+        <>
+          {showLargePayloadWarning && (
+            <div className="payload-warning">
+              Large payload (~{formatBytes(payloadBytes)}). Rendering may be slow.
+            </div>
+          )}
+          {isMissingPayload && (
+            <div className="payload-warning">
+              Full payload is no longer available (evicted from cache).
+            </div>
+          )}
           <ReactJson
             name="grpc"
             theme={theme}
@@ -40,6 +62,7 @@ class NetworkDetails extends Component {
             collapseStringsAfterLength={200}
             src={src}
           />
+        </>
       )
     }
   }

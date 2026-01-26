@@ -8,3 +8,13 @@
 .react-json-view svg {
     height: 0.9em !important;
 }
+
+.payload-warning {
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--toolbar-bg);
+  color: var(--text);
+  font-size: 12px;
+}
