@@ -2,6 +2,38 @@
  * Reads the message from the stream and posts it to the window.
  * This is a generator function that will be passed to the response stream.
  */
+const MAX_PAYLOAD_BYTES = 256 * 1024;
+const MAX_PREVIEW_CHARS = 2000;
+
+function _safeStringify(value) {
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    return '"[unserializable]"';
+  }
+}
+
+function _byteLength(json) {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(json).length;
+  }
+  return json.length;
+}
+
+function _truncatePayload(value) {
+  if (value == null) return value;
+  const json = _safeStringify(value);
+  const bytes = _byteLength(json);
+  if (bytes <= MAX_PAYLOAD_BYTES) {
+    return value;
+  }
+  return {
+    __truncated: true,
+    __bytes: bytes,
+    __preview: json.slice(0, MAX_PREVIEW_CHARS),
+  };
+}
+
 async function* readMessage(req, stream) {
   for await (const m of stream) {
     if (m) {
@@ -10,8 +42,8 @@ async function* readMessage(req, stream) {
         type: "__GRPCWEB_DEVTOOLS__",
         methodType: "server_streaming",
         method: req.method.name,
-        request: req.message.toJson?.(),
-        response: resp,
+        request: _truncatePayload(req.message.toJson?.()),
+        response: _truncatePayload(resp),
       }, "*");
     }
     yield m;
@@ -31,8 +63,8 @@ const interceptor = (next) => async (req) => {
         type: "__GRPCWEB_DEVTOOLS__",
         methodType: "unary",
         method: req.method.name,
-        request: req.message.toJson(),
-        response: resp.message.toJson(),
+        request: _truncatePayload(req.message.toJson()),
+        response: _truncatePayload(resp.message.toJson()),
       }, "*")
       return resp;
     } else {
@@ -46,7 +78,7 @@ const interceptor = (next) => async (req) => {
       type: "__GRPCWEB_DEVTOOLS__",
       methodType: req.stream ? "server_streaming" : "unary",
       method: req.method.name,
-      request: req.message.toJson?.(),
+      request: _truncatePayload(req.message.toJson?.()),
       response: undefined,
       error: {
         message: e.message,

@@ -1,6 +1,38 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 const injectContent = `
+const MAX_PAYLOAD_BYTES = 256 * 1024;
+const MAX_PREVIEW_CHARS = 2000;
+
+function _safeStringify(value) {
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    return '"[unserializable]"';
+  }
+}
+
+function _byteLength(json) {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(json).length;
+  }
+  return json.length;
+}
+
+function _truncatePayload(value) {
+  if (value == null) return value;
+  const json = _safeStringify(value);
+  const bytes = _byteLength(json);
+  if (bytes <= MAX_PAYLOAD_BYTES) {
+    return value;
+  }
+  return {
+    __truncated: true,
+    __bytes: bytes,
+    __preview: json.slice(0, MAX_PREVIEW_CHARS),
+  };
+}
+
 window.__GRPCWEB_DEVTOOLS__ = function (clients) {
   if (clients.constructor !== Array) {
     return
@@ -13,14 +45,14 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
       type: postType,
       method,
       methodType,
-      request: request.toObject(),
+      request: _truncatePayload(request.toObject()),
     });
     stream.on('data', response => {
       window.postMessage({
         type: postType,
         method,
         methodType,
-        response: response.toObject(),
+        response: _truncatePayload(response.toObject()),
       });
       if (!!this._callbacks['data']) {
         this._callbacks['data'](response);
@@ -74,8 +106,8 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
             type: postType,
             method,
             methodType: "unary",
-            request: request.toObject(),
-            response: err ? undefined : response.toObject(),
+            request: _truncatePayload(request.toObject()),
+            response: err ? undefined : _truncatePayload(response.toObject()),
             error: err || undefined,
           }, "*")
           posted = true;
