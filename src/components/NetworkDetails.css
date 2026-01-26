@@ -1,8 +1,15 @@
 
-.details-data {
+.details-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--network-bg);
+}
+
+.details-scroll-area {
+  flex: 1;
+  overflow: auto;
   padding: 4px;
-  background-color:var(--network-bg);
-  overflow: scroll;
 }
 
 .react-json-view svg {
@@ -21,11 +28,12 @@
 
 .payload-metadata {
   display: flex;
-  margin-top: 8px;
   padding: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--divider-color);
   font-size: 12px;
   flex-direction: column;
+  background-color: var(--toolbar-bg-color);
+  flex-shrink: 0;
 }
 
 .payload-metadata-title {

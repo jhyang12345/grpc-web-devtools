@@ -33,7 +33,7 @@ class NetworkDetails extends Component {
   render() {
     const { entry } = this.props;
     return (
-      <div className="widget vbox details-data">
+      <div className="widget vbox details-container">
         {this._renderContent(entry)}
       </div>
     );
@@ -56,36 +56,38 @@ class NetworkDetails extends Component {
       if (error) src.error = error;
       return (
         <>
-          {showLargePayloadWarning && (
-            <div className="payload-warning">
-              Large payload (~{formatBytes(payloadBytes)}). Rendering may be slow.
+          <div className="details-scroll-area">
+            {showLargePayloadWarning && (
+              <div className="payload-warning">
+                Large payload (~{formatBytes(payloadBytes)}). Rendering may be slow.
+              </div>
+            )}
+            {isMissingPayload && (
+              <div className="payload-warning">
+                Full payload is no longer available (evicted from cache).
+              </div>
+            )}
+            <div className="json-actions">
+              <button
+                className="json-action-button"
+                type="button"
+                title="Expand all"
+                onClick={this._expandAll}
+              >
+                <UpDownIcon />
+                <span>Expand all</span>
+              </button>
             </div>
-          )}
-          {isMissingPayload && (
-            <div className="payload-warning">
-              Full payload is no longer available (evicted from cache).
-            </div>
-          )}
-          <div className="json-actions">
-            <button
-              className="json-action-button"
-              type="button"
-              title="Expand all"
-              onClick={this._expandAll}
-            >
-              <UpDownIcon />
-              <span>Expand all</span>
-            </button>
+            <ReactJson
+              name="grpc"
+              theme={theme}
+              style={{backgroundColor:'transparent'}}
+              enableClipboard={true}
+              collapsed={this.state.jsonCollapsed}
+              collapseStringsAfterLength={200}
+              src={src}
+            />
           </div>
-          <ReactJson
-            name="grpc"
-            theme={theme}
-            style={{backgroundColor:'transparent'}}
-            enableClipboard={true}
-            collapsed={this.state.jsonCollapsed}
-            collapseStringsAfterLength={200}
-            src={src}
-          />
           <div className="payload-metadata">
             <div className="payload-metadata-title">Metadata</div>
             <div className="payload-metadata-row">
