@@ -18,3 +18,27 @@
   color: var(--text);
   font-size: 12px;
 }
+
+.payload-timing {
+  margin-top: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.payload-timing-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.payload-timing-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  gap: 8px;
+}
+
+.payload-timing-row span:last-child {
+  text-align: right;
+  white-space: nowrap;
+}

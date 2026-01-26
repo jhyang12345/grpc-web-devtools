@@ -15,6 +15,17 @@ function formatBytes(value) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatTimestamp(value) {
+  if (!Number.isFinite(value)) return '—';
+  return new Date(value).toLocaleString();
+}
+
+function formatDuration(value) {
+  if (!Number.isFinite(value)) return '—';
+  if (value < 1000) return `${value} ms`;
+  return `${(value / 1000).toFixed(2)} s`;
+}
+
 class NetworkDetails extends Component {
   render() {
     const { entry } = this.props;
@@ -33,6 +44,7 @@ class NetworkDetails extends Component {
       const isMissingPayload = !cachedEntry && (entry.request || entry.response);
       const payloadBytes = cachedEntry?.payloadBytes;
       const showLargePayloadWarning = payloadBytes && payloadBytes >= LARGE_PAYLOAD_BYTES;
+      const timingSource = cachedEntry || entry;
       const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'twilight' : 'rjv-default';
       var src = { method };
       if (request) src.request = request;
@@ -62,6 +74,29 @@ class NetworkDetails extends Component {
             collapseStringsAfterLength={200}
             src={src}
           />
+          <div className="payload-timing">
+            <div className="payload-timing-title">Timing</div>
+            <div className="payload-timing-row">
+              <span>Request ID</span>
+              <span>{timingSource.requestId ?? '—'}</span>
+            </div>
+            <div className="payload-timing-row">
+              <span>Sent at</span>
+              <span>{formatTimestamp(timingSource.startedAt)}</span>
+            </div>
+            <div className="payload-timing-row">
+              <span>Response at</span>
+              <span>{formatTimestamp(timingSource.responseAt)}</span>
+            </div>
+            <div className="payload-timing-row">
+              <span>Duration</span>
+              <span>{formatDuration(timingSource.durationMs)}</span>
+            </div>
+            <div className="payload-timing-row">
+              <span>Payload size (approx)</span>
+              <span>{payloadBytes ? formatBytes(payloadBytes) : '—'}</span>
+            </div>
+          </div>
         </>
       )
     }

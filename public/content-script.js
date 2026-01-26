@@ -1,6 +1,8 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 const injectContent = `
+let __grpcWebDevtoolsRequestId = 1;
+
 window.__GRPCWEB_DEVTOOLS__ = function (clients) {
   if (clients.constructor !== Array) {
     return
@@ -9,17 +11,28 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
   var StreamInterceptor = function (method, request, stream) {
     this._callbacks = {};
     const methodType = "server_streaming";
+    const requestId = __grpcWebDevtoolsRequestId++;
+    const startedAt = Date.now();
+    this._requestId = requestId;
+    this._startedAt = startedAt;
     window.postMessage({
       type: postType,
       method,
       methodType,
+      requestId,
+      startedAt,
       request: request.toObject(),
     });
     stream.on('data', response => {
+      const responseAt = Date.now();
       window.postMessage({
         type: postType,
         method,
         methodType,
+        requestId,
+        startedAt,
+        responseAt,
+        durationMs: responseAt - startedAt,
         response: response.toObject(),
       });
       if (!!this._callbacks['data']) {
@@ -28,10 +41,15 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     });
     stream.on('status', status => {
       if (status.code === 0) {
+        const responseAt = Date.now();
         window.postMessage({
           type: postType,
           method,
           methodType,
+          requestId,
+          startedAt,
+          responseAt,
+          durationMs: responseAt - startedAt,
           response: "EOF",
         });
       }
@@ -41,10 +59,15 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     });
     stream.on('error', error => {
       if (error.code !== 0) {
+        const responseAt = Date.now();
         window.postMessage({
           type: postType,
           method,
           methodType,
+          requestId,
+          startedAt,
+          responseAt,
+          durationMs: responseAt - startedAt,
           error: {
             code: error.code,
             message: error.message,
@@ -68,12 +91,19 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     client.client_.rpcCall_ = client.client_.rpcCall;
     client.client_.rpcCall2 = function (method, request, metadata, methodInfo, callback) {
       var posted = false;
+      var startedAt = Date.now();
+      var requestId = __grpcWebDevtoolsRequestId++;
       var newCallback = function (err, response) {
         if (!posted) {
+          var responseAt = Date.now();
           window.postMessage({
             type: postType,
             method,
             methodType: "unary",
+            requestId,
+            startedAt,
+            responseAt,
+            durationMs: responseAt - startedAt,
             request: request.toObject(),
             response: err ? undefined : response.toObject(),
             error: err || undefined,

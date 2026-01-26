@@ -1,15 +1,22 @@
+let __grpcWebDevtoolsRequestId = 1;
+
 /**
  * Reads the message from the stream and posts it to the window.
  * This is a generator function that will be passed to the response stream.
  */
-async function* readMessage(req, stream) {
+async function* readMessage(req, stream, startedAt, requestId) {
   for await (const m of stream) {
     if (m) {
       const resp = m.toJson?.();
+      const responseAt = Date.now();
       window.postMessage({
         type: "__GRPCWEB_DEVTOOLS__",
         methodType: "server_streaming",
         method: req.method.name,
+        requestId,
+        startedAt,
+        responseAt,
+        durationMs: responseAt - startedAt,
         request: req.message.toJson?.(),
         response: resp,
       }, "*");
@@ -24,13 +31,20 @@ async function* readMessage(req, stream) {
  * is all to make the manifest v3 happy.
  */
 const interceptor = (next) => async (req) => {
+  const requestId = __grpcWebDevtoolsRequestId++;
+  const startedAt = Date.now();
   try {
     const resp = await next(req);
     if (!resp.stream) {
+      const responseAt = Date.now();
       window.postMessage({
         type: "__GRPCWEB_DEVTOOLS__",
         methodType: "unary",
         method: req.method.name,
+        requestId,
+        startedAt,
+        responseAt,
+        durationMs: responseAt - startedAt,
         request: req.message.toJson(),
         response: resp.message.toJson(),
       }, "*")
@@ -38,14 +52,19 @@ const interceptor = (next) => async (req) => {
     } else {
       return {
         ...resp,
-        message: readMessage(req, resp.message),
+        message: readMessage(req, resp.message, startedAt, requestId),
       }
     }
   } catch (e) {
+    const responseAt = Date.now();
     window.postMessage({
       type: "__GRPCWEB_DEVTOOLS__",
       methodType: req.stream ? "server_streaming" : "unary",
       method: req.method.name,
+      requestId,
+      startedAt,
+      responseAt,
+      durationMs: responseAt - startedAt,
       request: req.message.toJson?.(),
       response: undefined,
       error: {
