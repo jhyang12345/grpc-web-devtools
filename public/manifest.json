@@ -10,7 +10,7 @@
   },
   "devtools_page": "devtools.html",
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'unsafe-eval'; object-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "background": {
     "service_worker": "background.js"
