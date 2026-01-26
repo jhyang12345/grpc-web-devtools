@@ -37,7 +37,7 @@ const networkSlice = createSlice({
       if (_filterValue.length > 0) {
         _logBak.push(payload);
         fuse.setCollection(_logBak);
-        state.log = fuse.search(_filterValue);
+        state.log = fuse.search(_filterValue).map(result => result.item || result);
       } else {
         log.push(payload);
       }
@@ -80,7 +80,7 @@ const networkSlice = createSlice({
         state._logBak = state.log;
       }
       fuse.setCollection(state._logBak);
-      state.log = fuse.search(filterValue);
+      state.log = fuse.search(filterValue).map(result => result.item || result);
     },
   },
 });
