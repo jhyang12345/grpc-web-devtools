@@ -13,6 +13,7 @@ var options = {
     'method',
   ]
 };
+const MAX_LOG_SIZE = 1000;
 var fuse = new Fuse([], options);
 
 const networkSlice = createSlice({
@@ -36,10 +37,18 @@ const networkSlice = createSlice({
       }
       if (_filterValue.length > 0) {
         _logBak.push(payload);
-        fuse.setCollection(_logBak);
+        if (_logBak.length > MAX_LOG_SIZE) {
+          _logBak.shift();
+          fuse.setCollection(_logBak);
+        } else {
+          fuse.add(payload);
+        }
         state.log = fuse.search(_filterValue).map(result => result.item || result);
       } else {
         log.push(payload);
+        if (log.length > MAX_LOG_SIZE) {
+          log.shift();
+        }
       }
     },
     selectLogEntry(state, action) {
@@ -105,8 +114,12 @@ export const logNetworkEntry = (data) => (dispatch) => {
   dispatch(networkLog(buildSummaryEntry(fullEntry)));
 };
 
-export const clearLogAndCache = (payload) => (dispatch) => {
-  clearNetworkCache();
+export const clearLogAndCache = (payload) => (dispatch, getState) => {
+  const { preserveLog } = getState().network;
+  const { force } = payload || {};
+  if (!preserveLog || force) {
+    clearNetworkCache();
+  }
   dispatch(clearLog(payload));
 };
 

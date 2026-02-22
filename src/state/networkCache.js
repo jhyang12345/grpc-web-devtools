@@ -1,6 +1,6 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
-const MAX_CACHE_ENTRIES = 200;
+const MAX_CACHE_ENTRIES = 500;
 
 function safeStringify(value) {
   try {
