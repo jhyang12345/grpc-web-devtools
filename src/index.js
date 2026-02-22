@@ -17,13 +17,18 @@ function _cleanupListeners() {
     if (port) {
       port.onMessage.removeListener(_onMessageRecived);
     }
-    if (chrome && chrome.tabs && chrome.tabs.onUpdated) {
-      chrome.tabs.onUpdated.removeListener(_onTabUpdated);
+    if (chrome && chrome.devtools && chrome.devtools.network) {
+      chrome.devtools.network.onNavigated.removeListener(_onNavigated);
     }
   } catch (error) {
     // no-op: devtools panel may not exist
   }
 }
+
+function _onNavigated() {
+  store.dispatch(clearLogAndCache());
+}
+
 // Setup port for communication with the background script
 if (chrome) {
   try {
@@ -32,8 +37,20 @@ if (chrome) {
     port.postMessage({ tabId, action: "init" });
     port.onMessage.addListener(_onMessageRecived);
     port.onDisconnect.addListener(_cleanupListeners);
-    chrome.tabs.onUpdated.addListener(_onTabUpdated);
+
+    if (chrome.devtools && chrome.devtools.network) {
+      chrome.devtools.network.onNavigated.addListener(_onNavigated);
+    }
+
     window.addEventListener('unload', _cleanupListeners);
+
+    // Global error handlers for resiliency
+    window.onerror = (message, source, lineno, colno, error) => {
+      console.error("Global error caught:", { message, source, lineno, colno, error });
+    };
+    window.onunhandledrejection = (event) => {
+      console.error("Unhandled promise rejection:", event.reason);
+    };
 
   } catch (error) {
     console.warn("not running app in chrome extension panel")
@@ -51,12 +68,6 @@ const store = configureStore({
 function _onMessageRecived({ action, data }) {
   if (action === "gRPCNetworkCall") {
     store.dispatch(logNetworkEntry(data));
-  }
-}
-
-function _onTabUpdated(tId, { status }) {
-  if (tId === tabId && status === "loading") {
-    store.dispatch(clearLogAndCache());
   }
 }
 
