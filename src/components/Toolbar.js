@@ -1,9 +1,11 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
+/* global chrome */
+
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache } from '../state/network';
-import { toggleFilter, setFilterValue, setFilterValueDebounced } from '../state/toolbar';
+import { toggleFilter, setFilterValue, setFilterValueDebounced, setDefaultCollapsed } from '../state/toolbar';
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
 import RefreshIcon from '../icons/Refresh';
@@ -86,6 +88,16 @@ class Toolbar extends Component {
               <label htmlFor="ui-checkbox-preserve-log">Preserve log</label>
             </span>
             <ToolbarDivider />
+            <span className="toolbar-item checkbox" title="Collapse JSON details by default when selecting entries">
+              <input
+                type="checkbox"
+                id="ui-checkbox-default-collapsed"
+                checked={toolbar.defaultCollapsed}
+                onChange={this._onDefaultCollapsedChanged}
+              />
+              <label htmlFor="ui-checkbox-default-collapsed">Collapsed</label>
+            </span>
+            <ToolbarDivider />
             <span
               className="toolbar-item"
               title={isConnected ? "DevTools connected" : "DevTools connection lost - try closing and reopening panel"}
@@ -103,7 +115,23 @@ class Toolbar extends Component {
                 borderRadius: '50%',
                 backgroundColor: isConnected ? '#0a0' : '#f00'
               }} />
-              {isConnected ? 'Connected' : 'Disconnected'}
+              {isConnected ? 'Connected' : (
+                <>
+                  Disconnected
+                  <button
+                    onClick={this._onReconnect}
+                    style={{
+                      marginLeft: '8px',
+                      padding: '2px 6px',
+                      fontSize: '11px',
+                      cursor: 'pointer'
+                    }}
+                    title="Attempt to reconnect to content script"
+                  >
+                    Reconnect
+                  </button>
+                </>
+              )}
             </span>
           </div>
         </div>
@@ -115,6 +143,11 @@ class Toolbar extends Component {
   _onPreserveLogChanged = e => {
     const { setPreserveLog } = this.props;
     setPreserveLog(e.target.checked);
+  }
+
+  _onDefaultCollapsedChanged = e => {
+    const { setDefaultCollapsed } = this.props;
+    setDefaultCollapsed(e.target.checked);
   }
 
   _onFilterValueChanged = e => {
@@ -139,6 +172,16 @@ class Toolbar extends Component {
     this.setState({ localFilterValue: '' });
 
     console.log('[gRPC DevTools] Force refresh completed - port will reconnect on next message');
+  }
+
+  _onReconnect = () => {
+    console.log('[gRPC DevTools] Manual reconnect requested');
+    // Send a ping message to content script to trigger port setup
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: 'ping' });
+      }
+    });
   }
 }
 
@@ -165,5 +208,5 @@ const mapStateToProps = state => ({
   preserveLog: state.network.preserveLog,
   toolbar: state.toolbar,
 });
-const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setFilterValue, setFilterValueDebounced };
+const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setFilterValue, setFilterValueDebounced, setDefaultCollapsed };
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);

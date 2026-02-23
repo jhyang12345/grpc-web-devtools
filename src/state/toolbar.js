@@ -9,6 +9,7 @@ const toolbarSlice = createSlice({
     filterIsEnabled: false,
     filterValue: "",
     isConnected: true, // Port connection status
+    defaultCollapsed: true, // Default collapsed state for JSON details
   },
   reducers: {
     toggleFilter(state) {
@@ -22,13 +23,17 @@ const toolbarSlice = createSlice({
     setConnectionStatus(state, action) {
       const { payload } = action;
       state.isConnected = payload;
+    },
+    setDefaultCollapsed(state, action) {
+      const { payload } = action;
+      state.defaultCollapsed = payload;
     }
   },
 
 });
 
 const { actions, reducer } = toolbarSlice;
-export const { toggleFilter, setFilterValue, setConnectionStatus } = actions;
+export const { toggleFilter, setFilterValue, setConnectionStatus, setDefaultCollapsed } = actions;
 
 // Debouncing for filter search
 let filterDebounceTimeout = null;

@@ -27,8 +27,13 @@ class NetworkDetails extends Component {
     const prevEntryId = prevProps.entry?.entryId ?? null;
     const nextEntryId = this.props.entry?.entryId ?? null;
     if (prevEntryId !== nextEntryId && this.state.lastEntryId !== nextEntryId) {
-      // New entry selected - defer rendering to next tick to avoid blocking UI
-      this.setState({ jsonCollapsed: 1, lastEntryId: nextEntryId, isRendering: false });
+      // New entry selected - use defaultCollapsed preference from Redux
+      const initialCollapsedState = this.props.defaultCollapsed ? 1 : false;
+      this.setState({
+        jsonCollapsed: initialCollapsedState,
+        lastEntryId: nextEntryId,
+        isRendering: false
+      });
 
       // Schedule render on next frame to allow UI to update
       setTimeout(() => {
@@ -166,5 +171,8 @@ class NetworkDetails extends Component {
   };
 }
 
-const mapStateToProps = (state) => ({ entry: state.network.selectedEntry });
+const mapStateToProps = (state) => ({
+  entry: state.network.selectedEntry,
+  defaultCollapsed: state.toolbar.defaultCollapsed,
+});
 export default connect(mapStateToProps)(NetworkDetails);
