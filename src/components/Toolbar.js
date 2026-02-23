@@ -3,19 +3,37 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache } from '../state/network';
-import { toggleFilter, setFilterValue } from '../state/toolbar';
+import { toggleFilter, setFilterValue, setFilterValueDebounced } from '../state/toolbar';
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
+import RefreshIcon from '../icons/Refresh';
 import './Toolbar.css';
 
 class Toolbar extends Component {
+  state = {
+    localFilterValue: '',
+  };
+
+  componentDidUpdate(prevProps) {
+    // Sync local state when filter is cleared externally
+    const { filterValue } = this.props.toolbar;
+    if (filterValue === '' && this.state.localFilterValue !== '') {
+      this.setState({ localFilterValue: '' });
+    }
+  }
 
   _renderButtons() {
     const { clearLog, toggleFilter, toolbar: { filterIsEnabled, filterIsOpen }} = this.props;
     return (
         <>
-          <ToolbarButton title="Clear" onClick={() => clearLog({ force: true })} >
+          <ToolbarButton title="Clear" onClick={() => clearLog({ force: false })} >
             <ClearIcon />
+          </ToolbarButton>
+          <ToolbarButton
+            title="Force refresh - clears all logs and resets extension state"
+            onClick={this._onForceRefresh}
+          >
+            <RefreshIcon />
           </ToolbarButton>
           <ToolbarButton
             title="Filter"
@@ -29,7 +47,8 @@ class Toolbar extends Component {
   }
 
   _renderFilterToolbar() {
-    const { filterIsOpen, filterValue } = this.props.toolbar;
+    const { filterIsOpen } = this.props.toolbar;
+    const { localFilterValue } = this.state;
     if (filterIsOpen) {
       return (
         <div className="toolbar">
@@ -38,7 +57,7 @@ class Toolbar extends Component {
               <input
                 type="text"
                 placeholder="Filter"
-                value={filterValue}
+                value={localFilterValue}
                 onChange={this._onFilterValueChanged}
               />
             </span>
@@ -49,12 +68,13 @@ class Toolbar extends Component {
   }
 
   render() {
-    const { preserveLog } = this.props;
+    const { preserveLog, toolbar } = this.props;
+    const { isConnected } = toolbar;
     return (
       <>
         <div className="toolbar">
           <div className="toolbar-shadow">
-            {this._renderButtons()}           
+            {this._renderButtons()}
             <ToolbarDivider />
             <span className="toolbar-item checkbox" title="Do not clear log on page reload / navigation">
               <input
@@ -64,6 +84,26 @@ class Toolbar extends Component {
                 onChange={this._onPreserveLogChanged}
               />
               <label htmlFor="ui-checkbox-preserve-log">Preserve log</label>
+            </span>
+            <ToolbarDivider />
+            <span
+              className="toolbar-item"
+              title={isConnected ? "DevTools connected" : "DevTools connection lost - try closing and reopening panel"}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '12px',
+                color: isConnected ? '#0a0' : '#f00'
+              }}
+            >
+              <span style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: isConnected ? '#0a0' : '#f00'
+              }} />
+              {isConnected ? 'Connected' : 'Disconnected'}
             </span>
           </div>
         </div>
@@ -78,8 +118,27 @@ class Toolbar extends Component {
   }
 
   _onFilterValueChanged = e => {
-    const { setFilterValue } = this.props;
-    setFilterValue(e.target.value);
+    const { setFilterValueDebounced } = this.props;
+    const newValue = e.target.value;
+
+    // Update local state immediately for responsive UI
+    this.setState({ localFilterValue: newValue });
+
+    // Dispatch debounced action for actual filtering
+    setFilterValueDebounced(newValue);
+  }
+
+  _onForceRefresh = () => {
+    const { clearLog, setFilterValue } = this.props;
+
+    // Force clear logs regardless of preserve log setting
+    clearLog({ force: true });
+
+    // Clear filter
+    setFilterValue('');
+    this.setState({ localFilterValue: '' });
+
+    console.log('[gRPC DevTools] Force refresh completed - port will reconnect on next message');
   }
 }
 
@@ -106,5 +165,5 @@ const mapStateToProps = state => ({
   preserveLog: state.network.preserveLog,
   toolbar: state.toolbar,
 });
-const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setFilterValue };
+const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setFilterValue, setFilterValueDebounced };
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);

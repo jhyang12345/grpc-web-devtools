@@ -20,13 +20,20 @@ class NetworkDetails extends Component {
   state = {
     jsonCollapsed: 1,
     lastEntryId: null,
+    isRendering: false,
   };
 
   componentDidUpdate(prevProps) {
     const prevEntryId = prevProps.entry?.entryId ?? null;
     const nextEntryId = this.props.entry?.entryId ?? null;
     if (prevEntryId !== nextEntryId && this.state.lastEntryId !== nextEntryId) {
-      this.setState({ jsonCollapsed: 1, lastEntryId: nextEntryId });
+      // New entry selected - defer rendering to next tick to avoid blocking UI
+      this.setState({ jsonCollapsed: 1, lastEntryId: nextEntryId, isRendering: false });
+
+      // Schedule render on next frame to allow UI to update
+      setTimeout(() => {
+        this.setState({ isRendering: true });
+      }, 0);
     }
   }
 
@@ -48,6 +55,12 @@ class NetworkDetails extends Component {
       const payloadBytes = cachedEntry?.payloadBytes;
       const showLargePayloadWarning =
         payloadBytes && payloadBytes >= LARGE_PAYLOAD_BYTES;
+
+      // Check if any payload is truncated
+      const isRequestTruncated = request?.__truncated;
+      const isResponseTruncated = response?.__truncated;
+      const isTruncated = isRequestTruncated || isResponseTruncated;
+
       const theme = window.matchMedia("(prefers-color-scheme: dark)").matches
         ? "twilight"
         : "rjv-default";
@@ -60,11 +73,23 @@ class NetworkDetails extends Component {
       if (error) src.error = error;
 
       const isExpanded = this.state.jsonCollapsed === false;
+      const { isRendering } = this.state;
 
       return (
         <>
           <div className="details-scroll-area">
-            {showLargePayloadWarning && (
+            {isTruncated && (
+              <div className="payload-warning">
+                Payload too large to display inline. The content has been truncated.
+                <button
+                  onClick={() => this._downloadPayload(src)}
+                  style={{ marginLeft: '10px', padding: '4px 8px' }}
+                >
+                  Download as JSON
+                </button>
+              </div>
+            )}
+            {!isTruncated && showLargePayloadWarning && (
               <div className="payload-warning">
                 Large payload (~{formatBytes(payloadBytes)}). Rendering may be
                 slow.
@@ -86,15 +111,19 @@ class NetworkDetails extends Component {
                 <UpDownIcon />
               </button>
             </div>
-            <ReactJson
-              name="grpc"
-              theme={theme}
-              style={{ backgroundColor: "transparent" }}
-              enableClipboard={true}
-              collapsed={this.state.jsonCollapsed}
-              collapseStringsAfterLength={200}
-              src={src}
-            />
+            {isRendering ? (
+              <ReactJson
+                name="grpc"
+                theme={theme}
+                style={{ backgroundColor: "transparent" }}
+                enableClipboard={true}
+                collapsed={this.state.jsonCollapsed}
+                collapseStringsAfterLength={200}
+                src={src}
+              />
+            ) : (
+              <div className="payload-warning">Loading payload...</div>
+            )}
           </div>
           <div className="payload-metadata">
             <div className="payload-metadata-title">Metadata</div>
@@ -116,6 +145,24 @@ class NetworkDetails extends Component {
     this.setState((prevState) => ({
       jsonCollapsed: prevState.jsonCollapsed === false ? 1 : false,
     }));
+  };
+
+  _downloadPayload = (src) => {
+    try {
+      const jsonStr = JSON.stringify(src, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `grpc-payload-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('[gRPC DevTools] Failed to download payload:', error);
+      alert('Failed to download payload. See console for details.');
+    }
   };
 }
 

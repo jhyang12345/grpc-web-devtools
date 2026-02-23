@@ -7,7 +7,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import App from './App';
 import './index.css';
 import networkReducer, { logNetworkEntry, clearLogAndCache } from './state/network';
-import toolbarReducer from './state/toolbar';
+import toolbarReducer, { setConnectionStatus } from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 
 var port, tabId
@@ -25,9 +25,25 @@ function _cleanupListeners() {
   }
 }
 
+function _onPortDisconnect() {
+  console.log('[gRPC DevTools] Port disconnected');
+  if (store) {
+    store.dispatch(setConnectionStatus(false));
+  }
+  _cleanupListeners();
+}
+
 function _onNavigated() {
   store.dispatch(clearLogAndCache());
 }
+
+const store = configureStore({
+  reducer: {
+    network: networkReducer,
+    toolbar: toolbarReducer,
+    clipboard: clipboardReducer,
+  }
+});
 
 // Setup port for communication with the background script
 if (chrome) {
@@ -36,7 +52,10 @@ if (chrome) {
     port = chrome.runtime.connect(null, { name: "panel" });
     port.postMessage({ tabId, action: "init" });
     port.onMessage.addListener(_onMessageRecived);
-    port.onDisconnect.addListener(_cleanupListeners);
+    port.onDisconnect.addListener(_onPortDisconnect);
+
+    // Set initial connection status
+    store.dispatch(setConnectionStatus(true));
 
     if (chrome.devtools && chrome.devtools.network) {
       chrome.devtools.network.onNavigated.addListener(_onNavigated);
@@ -57,17 +76,14 @@ if (chrome) {
   }
 }
 
-const store = configureStore({
-  reducer: {
-    network: networkReducer,
-    toolbar: toolbarReducer,
-    clipboard: clipboardReducer,
-  }
-});
-
 function _onMessageRecived({ action, data }) {
   if (action === "gRPCNetworkCall") {
-    store.dispatch(logNetworkEntry(data));
+    try {
+      store.dispatch(logNetworkEntry(data));
+    } catch (error) {
+      console.error('[gRPC DevTools] Failed to dispatch network entry:', error, 'data:', data);
+      // Don't crash the message handler - continue processing future messages
+    }
   }
 }
 

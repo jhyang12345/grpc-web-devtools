@@ -13,20 +13,39 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     const methodType = "server_streaming";
     const requestId = __grpcWebDevtoolsRequestId++;
     this._requestId = requestId;
+
+    // Serialize request with error handling
+    let requestObj;
+    try {
+      requestObj = request.toObject();
+    } catch (err) {
+      console.error('[gRPC DevTools] Failed to serialize request for ' + method + ':', err);
+      requestObj = { __error: 'Serialization failed: ' + err.message };
+    }
+
     window.postMessage({
       type: postType,
       method,
       methodType,
       requestId,
-      request: request.toObject(),
+      request: requestObj,
     });
     stream.on('data', response => {
+      // Serialize response with error handling
+      let responseObj;
+      try {
+        responseObj = response.toObject();
+      } catch (err) {
+        console.error('[gRPC DevTools] Failed to serialize response for ' + method + ':', err);
+        responseObj = { __error: 'Serialization failed: ' + err.message };
+      }
+
       window.postMessage({
         type: postType,
         method,
         methodType,
         requestId,
-        response: response.toObject(),
+        response: responseObj,
       });
       if (!!this._callbacks['data']) {
         this._callbacks['data'](response);
@@ -79,13 +98,32 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
       var requestId = __grpcWebDevtoolsRequestId++;
       var newCallback = function (err, response) {
         if (!posted) {
+          // Serialize request and response with error handling
+          let requestObj;
+          try {
+            requestObj = request.toObject();
+          } catch (reqErr) {
+            console.error('[gRPC DevTools] Failed to serialize request for ' + method + ':', reqErr);
+            requestObj = { __error: 'Serialization failed: ' + reqErr.message };
+          }
+
+          let responseObj;
+          if (!err && response) {
+            try {
+              responseObj = response.toObject();
+            } catch (respErr) {
+              console.error('[gRPC DevTools] Failed to serialize response for ' + method + ':', respErr);
+              responseObj = { __error: 'Serialization failed: ' + respErr.message };
+            }
+          }
+
           window.postMessage({
             type: postType,
             method,
             methodType: "unary",
             requestId,
-            request: request.toObject(),
-            response: err ? undefined : response.toObject(),
+            request: requestObj,
+            response: err ? undefined : responseObj,
             error: err || undefined,
           }, "*")
           posted = true;
@@ -130,14 +168,26 @@ cs.onload = function () {
 
 var port;
 var fallbackRequestId = 1;
+var messageListenerActive = false;
+
+function ensureMessageListener() {
+  if (!messageListenerActive) {
+    window.addEventListener("message", handleMessageEvent, false);
+    messageListenerActive = true;
+    console.log('[gRPC DevTools] Window message listener activated');
+  }
+}
 
 function setupPortIfNeeded() {
   if (!port && chrome && chrome.runtime) {
     port = chrome.runtime.connect(null, { name: "content" });
     port.postMessage({ action: "init" });
+    console.log('[gRPC DevTools] Port connected');
     port.onDisconnect.addListener(() => {
+      console.log('[gRPC DevTools] Port disconnected - will reconnect on next message');
       port = null;
-      window.removeEventListener("message", handleMessageEvent, false);
+      // CRITICAL: Do NOT remove window listener - we need it to detect messages
+      // and trigger port reconnection when DevTools reopens
     });
   }
 }
@@ -153,6 +203,8 @@ function sendGRPCNetworkCall(data) {
       target: "panel",
       data,
     });
+  } else {
+    console.warn('[gRPC DevTools] Port not available - message queued for reconnection');
   }
 }
 
@@ -163,4 +215,5 @@ function handleMessageEvent(event) {
   }
 }
 
-window.addEventListener("message", handleMessageEvent, false);
+// Ensure message listener is always active
+ensureMessageListener();

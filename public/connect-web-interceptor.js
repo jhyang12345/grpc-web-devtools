@@ -7,13 +7,30 @@ let __grpcWebDevtoolsRequestId = 1;
 async function* readMessage(req, stream, requestId) {
   for await (const m of stream) {
     if (m) {
-      const resp = m.toJson?.();
+      // Serialize response with error handling
+      let resp;
+      try {
+        resp = m.toJson?.();
+      } catch (err) {
+        console.error('[gRPC DevTools] Failed to serialize streaming response for ' + req.method.name + ':', err);
+        resp = { __error: 'Serialization failed: ' + err.message };
+      }
+
+      // Serialize request with error handling
+      let requestObj;
+      try {
+        requestObj = req.message.toJson?.();
+      } catch (err) {
+        console.error('[gRPC DevTools] Failed to serialize request for ' + req.method.name + ':', err);
+        requestObj = { __error: 'Serialization failed: ' + err.message };
+      }
+
       window.postMessage({
         type: "__GRPCWEB_DEVTOOLS__",
         methodType: "server_streaming",
         method: req.method.name,
         requestId,
-        request: req.message.toJson?.(),
+        request: requestObj,
         response: resp,
       }, "*");
     }
@@ -31,13 +48,31 @@ const interceptor = (next) => async (req) => {
   try {
     const resp = await next(req);
     if (!resp.stream) {
+      // Serialize request with error handling
+      let requestObj;
+      try {
+        requestObj = req.message.toJson();
+      } catch (err) {
+        console.error('[gRPC DevTools] Failed to serialize request for ' + req.method.name + ':', err);
+        requestObj = { __error: 'Serialization failed: ' + err.message };
+      }
+
+      // Serialize response with error handling
+      let responseObj;
+      try {
+        responseObj = resp.message.toJson();
+      } catch (err) {
+        console.error('[gRPC DevTools] Failed to serialize response for ' + req.method.name + ':', err);
+        responseObj = { __error: 'Serialization failed: ' + err.message };
+      }
+
       window.postMessage({
         type: "__GRPCWEB_DEVTOOLS__",
         methodType: "unary",
         method: req.method.name,
         requestId,
-        request: req.message.toJson(),
-        response: resp.message.toJson(),
+        request: requestObj,
+        response: responseObj,
       }, "*")
       return resp;
     } else {
@@ -47,12 +82,21 @@ const interceptor = (next) => async (req) => {
       }
     }
   } catch (e) {
+    // Serialize request with error handling even in error path
+    let requestObj;
+    try {
+      requestObj = req.message.toJson?.();
+    } catch (err) {
+      console.error('[gRPC DevTools] Failed to serialize request in error handler for ' + req.method.name + ':', err);
+      requestObj = { __error: 'Serialization failed: ' + err.message };
+    }
+
     window.postMessage({
       type: "__GRPCWEB_DEVTOOLS__",
       methodType: req.stream ? "server_streaming" : "unary",
       method: req.method.name,
       requestId,
-      request: req.message.toJson?.(),
+      request: requestObj,
       response: undefined,
       error: {
         message: e.message,
