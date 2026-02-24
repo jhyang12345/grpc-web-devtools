@@ -183,10 +183,27 @@ class Toolbar extends Component {
 
   _onReconnect = () => {
     console.log('[gRPC DevTools] Manual reconnect requested');
-    // Send a ping message to content script to trigger port setup
+
+    // First, reconnect the panel port
+    if (window.setupPanelPortIfNeeded) {
+      window.setupPanelPortIfNeeded();
+    } else {
+      console.error('[gRPC DevTools] setupPanelPortIfNeeded not available');
+    }
+
+    // Then, send a ping message to content script to trigger port setup
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'ping' });
+        chrome.tabs.sendMessage(tabs[0].id, { action: 'ping' }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('[gRPC DevTools] Ping failed:', chrome.runtime.lastError.message);
+            // Panel port is reconnected, but content script is unresponsive
+          } else {
+            console.log('[gRPC DevTools] Ping successful:', response);
+          }
+        });
+      } else {
+        console.error('[gRPC DevTools] No active tab found for reconnection');
       }
     });
   }

@@ -45,7 +45,17 @@ chrome.runtime.onConnect.addListener(port => {
       if (conn) {
         conn.postMessage(message);
       } else {
-        console.error('[gRPC DevTools] Message relay failed - connection not found for tabId:', tabId, 'target:', message.target, 'action:', message.action);
+        // Detailed logging when message relay fails
+        var hasPanel = connections[tabId] && connections[tabId].panel ? 'yes' : 'no';
+        var hasContent = connections[tabId] && connections[tabId].content ? 'yes' : 'no';
+        console.error('[gRPC DevTools] Message relay failed:', {
+          tabId: tabId,
+          target: message.target,
+          action: message.action,
+          panelConnected: hasPanel,
+          contentConnected: hasContent,
+          reason: !connections[tabId] ? 'No connections for tab' : 'Target port not found'
+        });
         // Message is dropped - this can happen when panel is closed but content script is still sending
       }
     }

@@ -12,6 +12,50 @@ import clipboardReducer from './state/clipboard';
 
 var port, tabId
 
+function setupPanelPortIfNeeded() {
+  // Check if port exists and is connected
+  if (port) {
+    return; // Already connected
+  }
+
+  if (!chrome || !chrome.runtime) {
+    console.error('[gRPC DevTools] Chrome runtime not available');
+    return;
+  }
+
+  try {
+    console.log('[gRPC DevTools] Reconnecting panel port...');
+    tabId = chrome.devtools.inspectedWindow.tabId;
+    port = chrome.runtime.connect(null, { name: "panel" });
+    port.postMessage({ tabId, action: "init" });
+    port.onMessage.addListener(_onMessageRecived);
+    port.onDisconnect.addListener(_onPortDisconnect);
+
+    // Don't set connection status to true yet - wait for heartbeat_ack or pong
+    // to verify the connection actually works. The existing message handlers
+    // (lines 150 and 152) will set it to true when we receive a response.
+
+    // Send heartbeat to verify connection - status will be set to true when ack received
+    setTimeout(() => {
+      if (port) {
+        try {
+          port.postMessage({ action: 'heartbeat' });
+          console.log('[gRPC DevTools] Panel port created, waiting for heartbeat_ack...');
+        } catch (error) {
+          console.warn('[gRPC DevTools] Heartbeat failed after reconnection:', error);
+          // If heartbeat send failed, port is dead
+          if (store) {
+            store.dispatch(setConnectionStatus(false));
+          }
+        }
+      }
+    }, 100);
+  } catch (error) {
+    console.error('[gRPC DevTools] Failed to reconnect panel port:', error);
+    port = null;
+  }
+}
+
 function _cleanupListeners() {
   try {
     if (port) {
@@ -31,6 +75,9 @@ function _onPortDisconnect() {
     store.dispatch(setConnectionStatus(false));
   }
   _cleanupListeners();
+  // Set port to null to allow reconnection attempts
+  // Note: We don't auto-reconnect here because user may have intentionally closed DevTools
+  port = null;
 }
 
 function _onNavigated() {
@@ -62,6 +109,9 @@ if (chrome) {
     }
 
     window.addEventListener('unload', _cleanupListeners);
+
+    // Export setupPanelPortIfNeeded for manual reconnection from Toolbar
+    window.setupPanelPortIfNeeded = setupPanelPortIfNeeded;
 
     // Periodically check connection status with heartbeat
     setInterval(() => {
