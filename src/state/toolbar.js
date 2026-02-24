@@ -1,6 +1,7 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 import { createSlice } from "@reduxjs/toolkit";
+import { getStorageItem } from '../utils/localStorage';
 
 const toolbarSlice = createSlice({
   name: 'toolbar',
@@ -9,7 +10,7 @@ const toolbarSlice = createSlice({
     filterIsEnabled: false,
     filterValue: "",
     isConnected: true, // Port connection status
-    defaultCollapsed: true, // Default collapsed state for JSON details
+    defaultCollapsed: getStorageItem('defaultCollapsed', false), // Default collapsed state for JSON details (persisted in localStorage)
   },
   reducers: {
     toggleFilter(state) {

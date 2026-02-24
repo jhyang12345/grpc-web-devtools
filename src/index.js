@@ -63,6 +63,19 @@ if (chrome) {
 
     window.addEventListener('unload', _cleanupListeners);
 
+    // Periodically check connection status with heartbeat
+    setInterval(() => {
+      if (port) {
+        try {
+          port.postMessage({ action: 'heartbeat' });
+        } catch (error) {
+          // Port is dead
+          console.warn('[gRPC DevTools] Heartbeat failed, port appears dead');
+          store.dispatch(setConnectionStatus(false));
+        }
+      }
+    }, 5000); // Check every 5 seconds
+
     // Global error handlers for resiliency
     window.onerror = (message, source, lineno, colno, error) => {
       console.error("Global error caught:", { message, source, lineno, colno, error });
@@ -84,6 +97,13 @@ function _onMessageRecived({ action, data }) {
       console.error('[gRPC DevTools] Failed to dispatch network entry:', error, 'data:', data);
       // Don't crash the message handler - continue processing future messages
     }
+  } else if (action === "pong") {
+    // Reconnection successful
+    console.log('[gRPC DevTools] Pong received - connection restored');
+    store.dispatch(setConnectionStatus(true));
+  } else if (action === "heartbeat_ack") {
+    // Heartbeat acknowledged - connection is alive
+    store.dispatch(setConnectionStatus(true));
   }
 }
 

@@ -169,6 +169,10 @@ cs.onload = function () {
 var port;
 var fallbackRequestId = 1;
 var messageListenerActive = false;
+var messageQueue = [];
+var reconnectInterval = null;
+const MAX_QUEUE_SIZE = 100; // Prevent memory issues
+const RECONNECT_INTERVAL_MS = 3000; // Try every 3 seconds
 
 function ensureMessageListener() {
   if (!messageListenerActive) {
@@ -178,14 +182,45 @@ function ensureMessageListener() {
   }
 }
 
+function startReconnectTimer() {
+  if (reconnectInterval) return; // Already running
+
+  console.log('[gRPC DevTools] Starting automatic reconnection attempts...');
+  reconnectInterval = setInterval(() => {
+    if (!port) {
+      console.log('[gRPC DevTools] Auto-reconnect attempt...');
+      setupPortIfNeeded();
+
+      if (port && messageQueue.length > 0) {
+        console.log('[gRPC DevTools] Reconnected! Flushing queued messages:', messageQueue.length);
+        // Flush will happen on next sendGRPCNetworkCall
+      }
+    } else {
+      // Connected, stop timer
+      stopReconnectTimer();
+    }
+  }, RECONNECT_INTERVAL_MS);
+}
+
+function stopReconnectTimer() {
+  if (reconnectInterval) {
+    clearInterval(reconnectInterval);
+    reconnectInterval = null;
+    console.log('[gRPC DevTools] Stopped reconnection attempts (connected)');
+  }
+}
+
 function setupPortIfNeeded() {
   if (!port && chrome && chrome.runtime) {
     port = chrome.runtime.connect(null, { name: "content" });
     port.postMessage({ action: "init" });
     console.log('[gRPC DevTools] Port connected');
+    stopReconnectTimer(); // Stop auto-reconnect attempts when connected
+
     port.onDisconnect.addListener(() => {
-      console.log('[gRPC DevTools] Port disconnected - will reconnect on next message');
+      console.log('[gRPC DevTools] Port disconnected - will auto-retry connection');
       port = null;
+      startReconnectTimer(); // Start auto-reconnect attempts
       // CRITICAL: Do NOT remove window listener - we need it to detect messages
       // and trigger port reconnection when DevTools reopens
     });
@@ -196,15 +231,39 @@ function sendGRPCNetworkCall(data) {
   if (!data.requestId) {
     data.requestId = fallbackRequestId++;
   }
+
   setupPortIfNeeded();
+
   if (port) {
+    // Flush queued messages first
+    while (messageQueue.length > 0) {
+      const queuedMsg = messageQueue.shift();
+      port.postMessage(queuedMsg);
+    }
+
+    // Send current message
     port.postMessage({
       action: "gRPCNetworkCall",
       target: "panel",
       data,
     });
   } else {
-    console.warn('[gRPC DevTools] Port not available - message queued for reconnection');
+    // Queue message for later
+    const msg = {
+      action: "gRPCNetworkCall",
+      target: "panel",
+      data,
+    };
+
+    messageQueue.push(msg);
+
+    // Limit queue size to prevent memory issues
+    if (messageQueue.length > MAX_QUEUE_SIZE) {
+      const dropped = messageQueue.shift();
+      console.warn('[gRPC DevTools] Queue full, dropped oldest message:', dropped.data.method);
+    }
+
+    console.log('[gRPC DevTools] Message queued (port disconnected), queue size:', messageQueue.length);
   }
 }
 
@@ -214,6 +273,23 @@ function handleMessageEvent(event) {
     sendGRPCNetworkCall(event.data);
   }
 }
+
+// Listen for reconnection requests from panel
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'ping') {
+    console.log('[gRPC DevTools] Ping received, attempting reconnection...');
+    setupPortIfNeeded();
+
+    // Send test message to verify connection
+    if (port) {
+      port.postMessage({ action: 'pong' });
+      sendResponse({ success: true, queued: messageQueue.length });
+    } else {
+      sendResponse({ success: false, error: 'Failed to establish port' });
+    }
+  }
+  return true; // Keep channel open for async response
+});
 
 // Ensure message listener is always active
 ensureMessageListener();

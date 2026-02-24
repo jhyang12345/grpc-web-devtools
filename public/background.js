@@ -29,6 +29,15 @@ chrome.runtime.onConnect.addListener(port => {
       return;
     }
 
+    // Handle heartbeat messages
+    if (message.action === "heartbeat") {
+      // Echo back to confirm connection
+      if (connections[tabId] && connections[tabId][port.name]) {
+        port.postMessage({ action: "heartbeat_ack" });
+      }
+      return;
+    }
+
     // Other messages are relayed to specified target if any
     // and if the connection exists.
     if (message.target) {

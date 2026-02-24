@@ -6,6 +6,7 @@ import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache } from '../state/network';
 import { toggleFilter, setFilterValue, setFilterValueDebounced, setDefaultCollapsed } from '../state/toolbar';
+import { setStorageItem } from '../utils/localStorage';
 import ClearIcon from '../icons/Clear';
 import FilterIcon from '../icons/Filter';
 import RefreshIcon from '../icons/Refresh';
@@ -147,7 +148,13 @@ class Toolbar extends Component {
 
   _onDefaultCollapsedChanged = e => {
     const { setDefaultCollapsed } = this.props;
-    setDefaultCollapsed(e.target.checked);
+    const newValue = e.target.checked;
+
+    // Update Redux state
+    setDefaultCollapsed(newValue);
+
+    // Persist to localStorage
+    setStorageItem('defaultCollapsed', newValue);
   }
 
   _onFilterValueChanged = e => {

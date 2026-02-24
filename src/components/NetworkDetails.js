@@ -242,15 +242,17 @@ class NetworkDetails extends Component {
   };
 
   _onSearchQueryChange = (value) => {
-    this.setState({ searchQuery: value }, () => {
-      // Debounce search for performance
-      if (this._searchDebounceTimer) {
-        clearTimeout(this._searchDebounceTimer);
-      }
-      this._searchDebounceTimer = setTimeout(() => {
-        this._performSearch(value);
-      }, 150); // 150ms debounce
-    });
+    // Update search query immediately for responsive input
+    this.setState({ searchQuery: value });
+
+    // Debounce actual search execution for performance
+    if (this._searchDebounceTimer) {
+      clearTimeout(this._searchDebounceTimer);
+    }
+
+    this._searchDebounceTimer = setTimeout(() => {
+      this._performSearch(value);
+    }, 300); // 300ms debounce - allows user to finish typing
   };
 
   _performSearch = (query) => {
