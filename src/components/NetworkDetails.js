@@ -17,6 +17,13 @@ function formatBytes(value) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatDuration(ms) {
+  if (!Number.isFinite(ms)) return "";
+  if (ms < 1) return `${(ms * 1000).toFixed(0)} μs`;
+  if (ms < 1000) return `${ms.toFixed(0)} ms`;
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
 class NetworkDetails extends Component {
   state = {
     jsonCollapsed: 1,
@@ -98,7 +105,7 @@ class NetworkDetails extends Component {
     if (entry) {
       const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
       const entryToRender = cachedEntry || entry;
-      const { method, request, response, error } = entryToRender;
+      const { method, request, response, error, timing } = entryToRender;
       const isMissingPayload =
         !cachedEntry && (entry.request || entry.response);
       const payloadBytes = cachedEntry?.payloadBytes;
@@ -175,11 +182,34 @@ class NetworkDetails extends Component {
             )}
           </div>
           <div className="payload-metadata">
-            <div className="payload-metadata-title">Metadata</div>
-            <div className="payload-metadata-row">
-              <span>Request ID</span>
-              <span>{entry.requestId ?? "—"}</span>
-            </div>
+            {/* Only show title if timing exists */}
+            {timing && <div className="payload-metadata-title">Metadata</div>}
+
+            {/* Show duration if available */}
+            {timing?.duration != null && (
+              <div className="payload-metadata-row">
+                <span>Duration</span>
+                <span>{formatDuration(timing.duration)}</span>
+              </div>
+            )}
+
+            {/* For streaming: show message count and timing */}
+            {timing?.messageCount != null && (
+              <>
+                <div className="payload-metadata-row">
+                  <span>Messages</span>
+                  <span>{timing.messageCount}</span>
+                </div>
+                {timing.firstMessageTime != null && (
+                  <div className="payload-metadata-row">
+                    <span>Time to first message</span>
+                    <span>{formatDuration(timing.firstMessageTime - timing.startTime)}</span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Always show payload size */}
             <div className="payload-metadata-row">
               <span>Payload size (approx)</span>
               <span>{payloadBytes ? formatBytes(payloadBytes) : "—"}</span>

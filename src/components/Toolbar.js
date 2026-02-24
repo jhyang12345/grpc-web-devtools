@@ -7,9 +7,8 @@ import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache } from '../state/network';
 import { toggleFilter, setFilterValue, setFilterValueDebounced, setDefaultCollapsed } from '../state/toolbar';
 import { setStorageItem } from '../utils/localStorage';
-import ClearIcon from '../icons/Clear';
+import TrashIcon from '../icons/Trash';
 import FilterIcon from '../icons/Filter';
-import RefreshIcon from '../icons/Refresh';
 import './Toolbar.css';
 
 class Toolbar extends Component {
@@ -29,14 +28,8 @@ class Toolbar extends Component {
     const { clearLog, toggleFilter, toolbar: { filterIsEnabled, filterIsOpen }} = this.props;
     return (
         <>
-          <ToolbarButton title="Clear" onClick={() => clearLog({ force: false })} >
-            <ClearIcon />
-          </ToolbarButton>
-          <ToolbarButton
-            title="Force refresh - clears all logs and resets extension state"
-            onClick={this._onForceRefresh}
-          >
-            <RefreshIcon />
+          <ToolbarButton title="Clear log history" onClick={() => clearLog({ force: false })} >
+            <TrashIcon />
           </ToolbarButton>
           <ToolbarButton
             title="Filter"
@@ -166,19 +159,6 @@ class Toolbar extends Component {
 
     // Dispatch debounced action for actual filtering
     setFilterValueDebounced(newValue);
-  }
-
-  _onForceRefresh = () => {
-    const { clearLog, setFilterValue } = this.props;
-
-    // Force clear logs regardless of preserve log setting
-    clearLog({ force: true });
-
-    // Clear filter
-    setFilterValue('');
-    this.setState({ localFilterValue: '' });
-
-    console.log('[gRPC DevTools] Force refresh completed - port will reconnect on next message');
   }
 
   _onReconnect = () => {

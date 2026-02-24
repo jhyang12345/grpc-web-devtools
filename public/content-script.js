@@ -13,6 +13,10 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     const methodType = "server_streaming";
     const requestId = __grpcWebDevtoolsRequestId++;
     this._requestId = requestId;
+    this._startTime = performance.now();
+    this._messageCount = 0;
+    this._firstMessageTime = null;
+    this._lastMessageTime = null;
 
     // Serialize request with error handling
     let requestObj;
@@ -31,6 +35,13 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
       request: requestObj,
     });
     stream.on('data', response => {
+      const currentTime = performance.now();
+      this._messageCount++;
+      if (this._firstMessageTime === null) {
+        this._firstMessageTime = currentTime;
+      }
+      this._lastMessageTime = currentTime;
+
       // Serialize response with error handling
       let responseObj;
       try {
@@ -46,12 +57,21 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
         methodType,
         requestId,
         response: responseObj,
+        timing: {
+          startTime: this._startTime,
+          endTime: currentTime,
+          duration: currentTime - this._startTime,
+          firstMessageTime: this._firstMessageTime,
+          lastMessageTime: this._lastMessageTime,
+          messageCount: this._messageCount,
+        },
       });
       if (!!this._callbacks['data']) {
         this._callbacks['data'](response);
       }
     });
     stream.on('status', status => {
+      const endTime = performance.now();
       if (status.code === 0) {
         window.postMessage({
           type: postType,
@@ -59,6 +79,14 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
           methodType,
           requestId,
           response: "EOF",
+          timing: {
+            startTime: this._startTime,
+            endTime: endTime,
+            duration: endTime - this._startTime,
+            firstMessageTime: this._firstMessageTime,
+            lastMessageTime: this._lastMessageTime,
+            messageCount: this._messageCount,
+          },
         });
       }
       if (!!this._callbacks['status']) {
@@ -66,6 +94,7 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
       }
     });
     stream.on('error', error => {
+      const endTime = performance.now();
       if (error.code !== 0) {
         window.postMessage({
           type: postType,
@@ -75,6 +104,14 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
           error: {
             code: error.code,
             message: error.message,
+          },
+          timing: {
+            startTime: this._startTime,
+            endTime: endTime,
+            duration: endTime - this._startTime,
+            firstMessageTime: this._firstMessageTime,
+            lastMessageTime: this._lastMessageTime,
+            messageCount: this._messageCount,
           },
         });
       }
@@ -96,7 +133,9 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     client.client_.rpcCall2 = function (method, request, metadata, methodInfo, callback) {
       var posted = false;
       var requestId = __grpcWebDevtoolsRequestId++;
+      var startTime = performance.now();
       var newCallback = function (err, response) {
+        var endTime = performance.now();
         if (!posted) {
           // Serialize request and response with error handling
           let requestObj;
@@ -125,6 +164,11 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
             request: requestObj,
             response: err ? undefined : responseObj,
             error: err || undefined,
+            timing: {
+              startTime: startTime,
+              endTime: endTime,
+              duration: endTime - startTime,
+            },
           }, "*")
           posted = true;
         }

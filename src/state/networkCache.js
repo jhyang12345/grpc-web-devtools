@@ -112,6 +112,8 @@ export function addNetworkEntry(entry) {
     if (limitedEntry.response != null) existingEntry.response = limitedEntry.response;
     if (limitedEntry.error != null) existingEntry.error = limitedEntry.error;
     if (limitedEntry.requestId != null) existingEntry.requestId = limitedEntry.requestId;
+    // Update timing - for streaming calls, newer timing has updated stats
+    if (limitedEntry.timing != null) existingEntry.timing = limitedEntry.timing;
     existingEntry.payloadBytes = estimatePayloadBytes(existingEntry);
     return existingEntry;
   }
