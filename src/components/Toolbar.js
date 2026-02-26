@@ -114,12 +114,7 @@ class Toolbar extends Component {
                   Disconnected
                   <button
                     onClick={this._onReconnect}
-                    style={{
-                      marginLeft: '8px',
-                      padding: '2px 6px',
-                      fontSize: '11px',
-                      cursor: 'pointer'
-                    }}
+                    className="reconnect-button"
                     title="Attempt to reconnect to content script"
                   >
                     Reconnect

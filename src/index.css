@@ -65,6 +65,14 @@ code {
   --network-row-odd: #f5f5f5;
   --network-row-hover: #f1f6fd;
   --network-row-icon-fill: rgba(0, 0, 0, 0.2);
+  --border-color: #d0d0d0;
+  --text-color: #000;
+  --text-secondary-color: #777;
+  --hover-bg-color: #f1f6fd;
+  --button-bg: #fff;
+  --button-text: #333;
+  --button-border: #ccc;
+  --button-hover-bg: #f5f5f5;
 
 }
 
@@ -75,6 +83,7 @@ code {
     --toolbar-color: #a5a5a5;
     --toolbar-color-hover: #ccc;
     --divider-border: 1px solid #3d3d3d;
+    --divider-color: #3d3d3d;
     --toolbar-input-text: #bdc6cf;
     --toolbar-input-bg: #242424;
     --focus-ring-inactive-shadow: 0 0 0 1px #5a5a5a;
@@ -85,6 +94,14 @@ code {
     --network-row-odd: #292929;
     --network-row-hover: #14253fb3;
     --network-row-icon-fill: rgba(255, 255, 255, 0.8);
+    --border-color: #3d3d3d;
+    --text-color: #bdc6cf;
+    --text-secondary-color: #888888;
+    --hover-bg-color: #14253fb3;
+    --button-bg: #3d3d3d;
+    --button-text: #bdc6cf;
+    --button-border: #5a5a5a;
+    --button-hover-bg: #4a4a4a;
   }
 
   input[type=checkbox] {

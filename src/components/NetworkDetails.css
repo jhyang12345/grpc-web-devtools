@@ -33,12 +33,14 @@
   font-size: 12px;
   flex-direction: column;
   background-color: var(--toolbar-bg-color);
+  color: var(--toolbar-color);
   flex-shrink: 0;
 }
 
 .payload-metadata-title {
   font-weight: 600;
   margin-bottom: 6px;
+  color: var(--toolbar-color);
 }
 
 .payload-metadata-row {
@@ -46,6 +48,7 @@
   justify-content: space-between;
   padding: 2px 0;
   gap: 8px;
+  color: var(--toolbar-color);
 }
 
 .payload-metadata-row span:last-child {

@@ -4,6 +4,7 @@ import React, { Component } from "react";
 import ReactJson from "react-json-view";
 import { connect } from "react-redux";
 import { getNetworkEntry } from "../state/networkCache";
+import { showToast } from "../state/toast";
 import UpDownIcon from "../icons/UpDown";
 import SearchBar from "./SearchBar";
 import "./NetworkDetails.css";
@@ -40,13 +41,30 @@ class NetworkDetails extends Component {
 
   _searchDebounceTimer = null;
 
+  _handleCopy = (e) => {
+    // Only show toast if the copy happened within our details container
+    const container = document.querySelector('.details-scroll-area');
+    if (container && container.contains(e.target)) {
+      const { showToast } = this.props;
+      showToast({
+        message: 'Copied to clipboard',
+        type: 'success',
+        autoDismiss: 2000,
+      });
+    }
+  };
+
   componentDidMount() {
     // Use capture phase to intercept before DevTools' native search
     document.addEventListener('keydown', this._handleKeydown, true);
+
+    // Listen for clipboard copy events
+    document.addEventListener('copy', this._handleCopy);
   }
 
   componentWillUnmount() {
     document.removeEventListener('keydown', this._handleKeydown, true);
+    document.removeEventListener('copy', this._handleCopy);
     if (this._searchDebounceTimer) {
       clearTimeout(this._searchDebounceTimer);
     }
@@ -425,4 +443,9 @@ const mapStateToProps = (state) => ({
   entry: state.network.selectedEntry,
   defaultCollapsed: state.toolbar.defaultCollapsed,
 });
-export default connect(mapStateToProps)(NetworkDetails);
+
+const mapDispatchToProps = {
+  showToast,
+};
+
+export default connect(mapStateToProps, mapDispatchToProps)(NetworkDetails);

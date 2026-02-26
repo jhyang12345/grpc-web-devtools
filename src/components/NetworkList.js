@@ -1,6 +1,6 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
-import React, { Component } from 'react';
+import React, { Component, createRef } from 'react';
 import { connect } from 'react-redux';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList as List } from 'react-window';
@@ -9,6 +9,49 @@ import NetworkListRow from './NetworkListRow';
 import './NetworkList.css';
 
 class NetworkList extends Component {
+  constructor(props) {
+    super(props);
+    this.listRef = createRef();
+  }
+
+  componentDidUpdate(prevProps) {
+    const { network } = this.props;
+    const prevLogLength = prevProps.network.log.length;
+    const currentLogLength = network.log.length;
+
+    // New entries were added
+    if (currentLogLength > prevLogLength) {
+      // Check if we should auto-scroll
+      if (this.shouldAutoScroll()) {
+        this.scrollToBottom();
+      }
+    }
+  }
+
+  shouldAutoScroll() {
+    if (!this.listRef.current) return false;
+
+    const list = this.listRef.current;
+    const scrollOffset = list.state.scrollOffset;
+    const scrollHeight = this.props.network.log.length * 21; // 21px per row
+    const visibleHeight = list.props.height;
+
+    // Auto-scroll if within 100px of bottom (approximately 5 rows)
+    const distanceFromBottom = scrollHeight - scrollOffset - visibleHeight;
+    return distanceFromBottom < 100;
+  }
+
+  scrollToBottom() {
+    if (!this.listRef.current) return;
+
+    const { network } = this.props;
+    const lastIndex = network.log.length - 1;
+
+    if (lastIndex >= 0) {
+      this.listRef.current.scrollToItem(lastIndex, 'end');
+    }
+  }
+
   render() {
     const { network } = this.props;
     return (
@@ -30,6 +73,7 @@ class NetworkList extends Component {
               <AutoSizer disableWidth>
                 {({ height }) => (
                   <List
+                    ref={this.listRef}
                     className="data"
                     itemCount={network.log.length}
                     height={height}

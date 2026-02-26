@@ -4,6 +4,7 @@ import './App.css';
 import MainLayout from './components/MainLayout';
 import Toolbar from './components/Toolbar';
 import ErrorBoundary from './components/ErrorBoundary';
+import Toast from './components/Toast';
 
 
 class App extends Component {
@@ -26,6 +27,7 @@ class App extends Component {
             </div>
           </div>
         </div>
+        <Toast />
       </ErrorBoundary>
     );
   }

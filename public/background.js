@@ -10,6 +10,19 @@
 // connections[1].content => content port
 var connections = {};
 
+// Clean up stale connections on background script startup
+// This prevents stale port references when the extension restarts
+chrome.runtime.onStartup.addListener(() => {
+  console.log('[gRPC DevTools Background] Starting up, clearing stale connections');
+  connections = {};
+});
+
+// Also clean up when extension is installed/updated
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('[gRPC DevTools Background] Extension installed/updated, clearing connections');
+  connections = {};
+});
+
 chrome.runtime.onConnect.addListener(port => {
   if (port.name != "panel" && port.name != "content") {
     return;

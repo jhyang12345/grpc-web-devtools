@@ -9,6 +9,7 @@ import './index.css';
 import networkReducer, { logNetworkEntry, clearLogAndCache } from './state/network';
 import toolbarReducer, { setConnectionStatus } from './state/toolbar';
 import clipboardReducer from './state/clipboard';
+import toastReducer from './state/toast';
 
 var port, tabId
 
@@ -89,6 +90,7 @@ const store = configureStore({
     network: networkReducer,
     toolbar: toolbarReducer,
     clipboard: clipboardReducer,
+    toast: toastReducer,
   }
 });
 
@@ -101,8 +103,20 @@ if (chrome) {
     port.onMessage.addListener(_onMessageRecived);
     port.onDisconnect.addListener(_onPortDisconnect);
 
-    // Set initial connection status
-    store.dispatch(setConnectionStatus(true));
+    // Don't set connection status to true immediately - wait for verification
+    // Connection status will be set when first heartbeat_ack or gRPCNetworkCall arrives
+    // Send immediate heartbeat to verify connection quickly
+    setTimeout(() => {
+      if (port) {
+        try {
+          port.postMessage({ action: 'heartbeat' });
+          console.log('[gRPC DevTools] Panel port created, sent initial heartbeat');
+        } catch (error) {
+          console.warn('[gRPC DevTools] Initial heartbeat failed:', error);
+          store.dispatch(setConnectionStatus(false));
+        }
+      }
+    }, 100);
 
     if (chrome.devtools && chrome.devtools.network) {
       chrome.devtools.network.onNavigated.addListener(_onNavigated);
@@ -114,6 +128,7 @@ if (chrome) {
     window.setupPanelPortIfNeeded = setupPanelPortIfNeeded;
 
     // Periodically check connection status with heartbeat
+    // With Fix #1, this is mainly for detecting disconnection when no messages flow
     setInterval(() => {
       if (port) {
         try {
@@ -124,7 +139,7 @@ if (chrome) {
           store.dispatch(setConnectionStatus(false));
         }
       }
-    }, 5000); // Check every 5 seconds
+    }, 2000); // Check every 2 seconds for faster disconnection detection
 
     // Global error handlers for resiliency
     window.onerror = (message, source, lineno, colno, error) => {
@@ -143,6 +158,10 @@ function _onMessageRecived({ action, data }) {
   if (action === "gRPCNetworkCall") {
     try {
       store.dispatch(logNetworkEntry(data));
+
+      // If we're receiving messages, the connection is alive
+      // This provides instant connection verification instead of waiting for heartbeat
+      store.dispatch(setConnectionStatus(true));
     } catch (error) {
       console.error('[gRPC DevTools] Failed to dispatch network entry:', error, 'data:', data);
       // Don't crash the message handler - continue processing future messages
