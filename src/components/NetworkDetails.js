@@ -6,6 +6,7 @@ import { connect } from "react-redux";
 import { getNetworkEntry } from "../state/networkCache";
 import { showToast } from "../state/toast";
 import UpDownIcon from "../icons/UpDown";
+import MethodHeader from "./MethodHeader";
 import SearchBar from "./SearchBar";
 import "./NetworkDetails.css";
 
@@ -98,6 +99,7 @@ class NetworkDetails extends Component {
 
     return (
       <div className="widget vbox details-container">
+        {entry?.method && <MethodHeader method={entry.method} />}
         {this._renderContent(entry)}
         {searchActive && (
           <SearchBar
