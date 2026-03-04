@@ -57,8 +57,8 @@
 }
 
 .json-actions {
-  position: fixed;
-  top: 62px;
+  position: absolute;
+  top: 4px;
   right: 4px;
   color: var(--toolbar-color);
   z-index: 10;
