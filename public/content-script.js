@@ -215,8 +215,10 @@ var fallbackRequestId = 1;
 var messageListenerActive = false;
 var messageQueue = [];
 var reconnectInterval = null;
+var reconnectAttempts = 0;
 const MAX_QUEUE_SIZE = 100; // Prevent memory issues
 const RECONNECT_INTERVAL_MS = 3000; // Try every 3 seconds
+const MAX_RECONNECT_ATTEMPTS = 5; // Stop auto-retry after 5 attempts
 
 function ensureMessageListener() {
   if (!messageListenerActive) {
@@ -229,10 +231,19 @@ function ensureMessageListener() {
 function startReconnectTimer() {
   if (reconnectInterval) return; // Already running
 
+  reconnectAttempts = 0;
   console.log('[gRPC DevTools] Starting automatic reconnection attempts...');
   reconnectInterval = setInterval(() => {
     if (!port) {
-      console.log('[gRPC DevTools] Auto-reconnect attempt...');
+      reconnectAttempts++;
+      console.log('[gRPC DevTools] Auto-reconnect attempt', reconnectAttempts + '/' + MAX_RECONNECT_ATTEMPTS);
+
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.log('[gRPC DevTools] Max reconnection attempts reached. Use the Reconnect button to retry manually.');
+        stopReconnectTimer();
+        return;
+      }
+
       setupPortIfNeeded();
 
       if (port && messageQueue.length > 0) {
@@ -250,6 +261,7 @@ function stopReconnectTimer() {
   if (reconnectInterval) {
     clearInterval(reconnectInterval);
     reconnectInterval = null;
+    reconnectAttempts = 0;
     console.log('[gRPC DevTools] Stopped reconnection attempts (connected)');
   }
 }
@@ -321,7 +333,12 @@ function handleMessageEvent(event) {
 // Listen for reconnection requests from panel
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'ping') {
-    console.log('[gRPC DevTools] Ping received, attempting reconnection...');
+    console.log('[gRPC DevTools] Manual reconnect requested from panel');
+
+    // Reset retry counter on manual reconnect
+    reconnectAttempts = 0;
+    stopReconnectTimer(); // Stop any ongoing auto-retry
+
     setupPortIfNeeded();
 
     // Send test message to verify connection
@@ -330,6 +347,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success: true, queued: messageQueue.length });
     } else {
       sendResponse({ success: false, error: 'Failed to establish port' });
+      // Start auto-retry again after manual attempt
+      startReconnectTimer();
     }
   }
   return true; // Keep channel open for async response
