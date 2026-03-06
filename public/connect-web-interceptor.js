@@ -1,4 +1,4 @@
-let __grpcWebDevtoolsRequestId = 1;
+var __grpcWebDevtoolsRequestId = window.__grpcWebDevtoolsRequestId || 1;
 
 /**
  * Reads the message from the stream and posts it to the window.

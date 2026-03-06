@@ -1,4 +1,4 @@
-let __grpcWebDevtoolsRequestId = 1;
+var __grpcWebDevtoolsRequestId = window.__grpcWebDevtoolsRequestId || 1;
 
 window.__GRPCWEB_DEVTOOLS__ = function (clients) {
   if (clients.constructor !== Array) {
