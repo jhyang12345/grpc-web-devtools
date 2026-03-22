@@ -25,6 +25,9 @@ var reconnectAttempts = 0;
 const MAX_QUEUE_SIZE = 100; // Prevent memory issues
 const RECONNECT_INTERVAL_MS = 3000; // Try every 3 seconds
 const MAX_RECONNECT_ATTEMPTS = 5; // Stop auto-retry after 5 attempts
+const GRPC_EVENT_TYPE = "__GRPCWEB_DEVTOOLS__";
+const REPLAY_REQUEST_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY__";
+const REPLAY_RESULT_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_RESULT__";
 
 function ensureMessageListener() {
   if (!messageListenerActive) {
@@ -76,6 +79,7 @@ function setupPortIfNeeded() {
   if (!port && chrome && chrome.runtime) {
     port = chrome.runtime.connect(null, { name: "content" });
     port.postMessage({ action: "init" });
+    port.onMessage.addListener(handlePortMessage);
     console.log('[gRPC DevTools] Port connected');
     stopReconnectTimer(); // Stop auto-reconnect attempts when connected
 
@@ -89,7 +93,7 @@ function setupPortIfNeeded() {
   }
 }
 
-function sendGRPCNetworkCall(data) {
+function sendPanelMessage(action, data) {
   if (!data.requestId) {
     data.requestId = fallbackRequestId++;
   }
@@ -105,14 +109,14 @@ function sendGRPCNetworkCall(data) {
 
     // Send current message
     port.postMessage({
-      action: "gRPCNetworkCall",
+      action,
       target: "panel",
       data,
     });
   } else {
     // Queue message for later
     const msg = {
-      action: "gRPCNetworkCall",
+      action,
       target: "panel",
       data,
     };
@@ -129,11 +133,39 @@ function sendGRPCNetworkCall(data) {
   }
 }
 
+function sendGRPCNetworkCall(data) {
+  sendPanelMessage("gRPCNetworkCall", data);
+}
+
+function sendReplayResult(data) {
+  sendPanelMessage("gRPCReplayResult", data);
+}
+
 function handleMessageEvent(event) {
   if (event.source != window) return;
-  if (event.data.type && event.data.type == "__GRPCWEB_DEVTOOLS__") {
+  if (event.data.type && event.data.type == GRPC_EVENT_TYPE) {
     sendGRPCNetworkCall(event.data);
+    return;
   }
+
+  if (event.data.type && event.data.type == REPLAY_RESULT_TYPE) {
+    sendReplayResult(event.data);
+  }
+}
+
+function handlePortMessage(message) {
+  if (!message || message.action !== "replayGrpcCall") {
+    return;
+  }
+
+  requestReplay(message.data);
+}
+
+function requestReplay(data) {
+  window.postMessage({
+    type: REPLAY_REQUEST_TYPE,
+    ...data,
+  }, "*");
 }
 
 // Listen for reconnection requests from panel
@@ -156,6 +188,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // Start auto-retry again after manual attempt
       startReconnectTimer();
     }
+  } else if (request.action === 'replayGrpcCall') {
+    if (!request.data || !request.data.requestId) {
+      sendResponse({ success: false, error: 'Replay request is missing required fields' });
+      return true;
+    }
+
+    requestReplay(request.data);
+    sendResponse({ success: true });
   }
   return true; // Keep channel open for async response
 });

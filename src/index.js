@@ -9,7 +9,7 @@ import './index.css';
 import networkReducer, { logNetworkEntry, clearLogAndCache } from './state/network';
 import toolbarReducer, { setConnectionStatus } from './state/toolbar';
 import clipboardReducer from './state/clipboard';
-import toastReducer from './state/toast';
+import toastReducer, { showToast } from './state/toast';
 
 var port, tabId
 
@@ -173,6 +173,12 @@ function _onMessageRecived({ action, data }) {
   } else if (action === "heartbeat_ack") {
     // Heartbeat acknowledged - connection is alive
     store.dispatch(setConnectionStatus(true));
+  } else if (action === "gRPCReplayResult") {
+    store.dispatch(showToast({
+      message: data?.message || (data?.ok ? 'Replay started.' : 'Replay failed.'),
+      type: data?.ok ? 'success' : 'error',
+      autoDismiss: data?.ok ? 2000 : 5000,
+    }));
   }
 }
 

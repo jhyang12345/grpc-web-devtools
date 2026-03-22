@@ -1,16 +1,20 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
+/* global chrome */
+
 import React, { Component } from "react";
 import ReactJson from "react-json-view";
+import Split from "react-split";
 import { connect } from "react-redux";
 import { getNetworkEntry } from "../state/networkCache";
 import { showToast } from "../state/toast";
-import UpDownIcon from "../icons/UpDown";
+import { getStorageItem, setStorageItem } from "../utils/localStorage";
 import MethodHeader from "./MethodHeader";
 import SearchBar from "./SearchBar";
 import "./NetworkDetails.css";
 
-const LARGE_PAYLOAD_BYTES = 1024 * 1024;
+const DEFAULT_PANE_SIZES = [33, 67];
+const PANE_SIZE_STORAGE_KEY = "detailsPaneSizes";
 
 function formatBytes(value) {
   if (!Number.isFinite(value)) return "";
@@ -21,72 +25,170 @@ function formatBytes(value) {
 
 function formatDuration(ms) {
   if (!Number.isFinite(ms)) return "";
-  if (ms < 1) return `${(ms * 1000).toFixed(0)} μs`;
+  if (ms < 1) return `${(ms * 1000).toFixed(0)} us`;
   if (ms < 1000) return `${ms.toFixed(0)} ms`;
   return `${(ms / 1000).toFixed(2)} s`;
 }
 
+function createSearchState() {
+  return {
+    isOpen: false,
+    query: "",
+    matchCount: 0,
+    currentIndex: -1,
+  };
+}
+
+function getRenderableEntry(entry) {
+  if (!entry) {
+    return { cachedEntry: null, entryToRender: null };
+  }
+
+  const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
+  return {
+    cachedEntry,
+    entryToRender: cachedEntry || entry,
+  };
+}
+
+function stringifyJson(value) {
+  if (value == null) {
+    return "";
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (error) {
+    return "";
+  }
+}
+
+function getRequestEditorValue(entry, isMissingPayload) {
+  if (isMissingPayload) {
+    return "";
+  }
+
+  return stringifyJson(entry?.request);
+}
+
+function buildResponseSource(response, error, isMissingPayload) {
+  if (isMissingPayload) {
+    return {
+      message: "Full response payload is no longer available.",
+    };
+  }
+
+  if (response != null) {
+    if (typeof response === "object") {
+      return response;
+    }
+    return { value: response };
+  }
+
+  if (error != null) {
+    return { error };
+  }
+
+  return {
+    message: "No response captured.",
+  };
+}
+
+function findAllMatches(text, query) {
+  if (!text || !query) {
+    return [];
+  }
+
+  const normalizedText = text.toLowerCase();
+  const normalizedQuery = query.toLowerCase();
+  const matches = [];
+  let startIndex = 0;
+
+  while (startIndex < normalizedText.length) {
+    const matchIndex = normalizedText.indexOf(normalizedQuery, startIndex);
+    if (matchIndex === -1) {
+      break;
+    }
+
+    matches.push({
+      start: matchIndex,
+      end: matchIndex + normalizedQuery.length,
+    });
+    startIndex = matchIndex + Math.max(normalizedQuery.length, 1);
+  }
+
+  return matches;
+}
+
 class NetworkDetails extends Component {
+  requestPaneRef = React.createRef();
+
+  requestEditorRef = React.createRef();
+
+  responsePaneRef = React.createRef();
+
+  responseBodyRef = React.createRef();
+
   state = {
-    jsonCollapsed: 1,
     lastEntryId: null,
     isRendering: false,
-    // Search state
-    searchActive: false,
-    searchQuery: '',
-    searchResults: [],
-    currentMatchIndex: 0,
-    // Store collapse state before search to restore it when search closes
-    collapseStateBeforeSearch: null,
+    paneSizes: getStorageItem(PANE_SIZE_STORAGE_KEY, DEFAULT_PANE_SIZES),
+    responseCollapsed: this.props.defaultCollapsed ? 1 : false,
+    responseCollapseBeforeSearch: null,
+    requestSearch: createSearchState(),
+    responseSearch: createSearchState(),
+    replayRequestValue: "",
+    replayRequestError: "",
+    isSubmittingReplay: false,
   };
 
-  _searchDebounceTimer = null;
+  _requestSearchMatches = [];
 
-  _handleClipboardCopy = (copy) => {
-    // This callback is triggered by react-json-view when copy icon is clicked
-    // copy object contains: { src, namespace, name }
-    const { showToast } = this.props;
-    showToast({
-      message: 'Copied to clipboard',
-      type: 'success',
-      autoDismiss: 2000,
-    });
-  };
+  _responseSearchMatches = [];
+
+  _requestSearchDebounceTimer = null;
+
+  _responseSearchDebounceTimer = null;
 
   componentDidMount() {
-    // Use capture phase to intercept before DevTools' native search
-    document.addEventListener('keydown', this._handleKeydown, true);
+    document.addEventListener("keydown", this._handleKeydown, true);
   }
 
   componentWillUnmount() {
-    document.removeEventListener('keydown', this._handleKeydown, true);
-    if (this._searchDebounceTimer) {
-      clearTimeout(this._searchDebounceTimer);
+    document.removeEventListener("keydown", this._handleKeydown, true);
+    if (this._requestSearchDebounceTimer) {
+      clearTimeout(this._requestSearchDebounceTimer);
     }
+    if (this._responseSearchDebounceTimer) {
+      clearTimeout(this._responseSearchDebounceTimer);
+    }
+    this._clearResponseHighlights();
   }
 
   componentDidUpdate(prevProps) {
     const prevEntryId = prevProps.entry?.entryId ?? null;
     const nextEntryId = this.props.entry?.entryId ?? null;
-    if (prevEntryId !== nextEntryId && this.state.lastEntryId !== nextEntryId) {
-      // New entry selected - use defaultCollapsed preference from Redux
-      const initialCollapsedState = this.props.defaultCollapsed ? 1 : false;
 
-      // Clear search when switching entries
-      this._clearHighlights();
+    if (prevEntryId !== nextEntryId && this.state.lastEntryId !== nextEntryId) {
+      const { cachedEntry, entryToRender } = getRenderableEntry(this.props.entry);
+      const requestPayloadMissing = !!this.props.entry?.entryId && !cachedEntry && this.props.entry.request === true;
+
+      this._requestSearchMatches = [];
+      this._responseSearchMatches = [];
+      this._clearResponseHighlights();
 
       this.setState({
-        jsonCollapsed: initialCollapsedState,
         lastEntryId: nextEntryId,
         isRendering: false,
-        searchQuery: '',
-        searchResults: [],
-        currentMatchIndex: 0,
-        // Reset collapse state tracking when entry changes
-        collapseStateBeforeSearch: null,
+        responseCollapsed: this.props.defaultCollapsed ? 1 : false,
+        responseCollapseBeforeSearch: null,
+        requestSearch: createSearchState(),
+        responseSearch: createSearchState(),
+        replayRequestValue: getRequestEditorValue(entryToRender, requestPayloadMissing),
+        replayRequestError: "",
+        isSubmittingReplay: false,
       });
 
-      // Schedule render on next frame to allow UI to update
       setTimeout(() => {
         this.setState({ isRendering: true });
       }, 0);
@@ -95,343 +197,742 @@ class NetworkDetails extends Component {
 
   render() {
     const { entry } = this.props;
-    const { searchActive, searchQuery, searchResults, currentMatchIndex } = this.state;
 
     return (
       <div className="widget vbox details-container">
         {entry?.method && <MethodHeader method={entry.method} />}
         {this._renderContent(entry)}
-        {searchActive && (
-          <SearchBar
-            query={searchQuery}
-            matchCount={searchResults.length}
-            currentIndex={currentMatchIndex}
-            onChange={this._onSearchQueryChange}
-            onNext={this._navigateToNextMatch}
-            onPrev={this._navigateToPrevMatch}
-            onClose={this._closeSearch}
-          />
-        )}
       </div>
     );
   }
+
   _renderContent = (entry) => {
-    if (entry) {
-      const cachedEntry = entry.entryId ? getNetworkEntry(entry.entryId) : null;
-      const entryToRender = cachedEntry || entry;
-      const { method, request, response, error, timing } = entryToRender;
-      const isMissingPayload =
-        !cachedEntry && (entry.request || entry.response);
-      const payloadBytes = cachedEntry?.payloadBytes;
-      const showLargePayloadWarning =
-        payloadBytes && payloadBytes >= LARGE_PAYLOAD_BYTES;
-
-      // Check if any payload is truncated
-      const isRequestTruncated = request?.__truncated;
-      const isResponseTruncated = response?.__truncated;
-      const isTruncated = isRequestTruncated || isResponseTruncated;
-
-      const theme = window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "twilight"
-        : "rjv-default";
-      var src = { method };
-      if (request) src.request = request;
-      if (response) src.response = response;
-      if (isMissingPayload) {
-        src.payload = "Full payload not available (evicted from cache).";
-      }
-      if (error) src.error = error;
-
-      const isExpanded = this.state.jsonCollapsed === false;
-      const { isRendering } = this.state;
-
-      return (
-        <>
-          <div className="details-scroll-area">
-            {isTruncated && (
-              <div className="payload-warning">
-                Payload too large to display inline. The content has been truncated.
-                <button
-                  onClick={() => this._downloadPayload(src)}
-                  style={{ marginLeft: '10px', padding: '4px 8px' }}
-                >
-                  Download as JSON
-                </button>
-              </div>
-            )}
-            {!isTruncated && showLargePayloadWarning && (
-              <div className="payload-warning">
-                Large payload (~{formatBytes(payloadBytes)}). Rendering may be
-                slow.
-              </div>
-            )}
-            {isMissingPayload && (
-              <div className="payload-warning">
-                Full payload is no longer available (evicted from cache).
-              </div>
-            )}
-            <div className="json-actions">
-              <button
-                className="json-action-button"
-                type="button"
-                title={isExpanded ? "Collapse all" : "Expand all"}
-                onClick={this._toggleExpandAll}
-              >
-                <span>{isExpanded ? "Collapse all" : "Expand all"}</span>
-                <UpDownIcon />
-              </button>
-            </div>
-            {isRendering ? (
-              <ReactJson
-                name="grpc"
-                theme={theme}
-                style={{ backgroundColor: "transparent" }}
-                enableClipboard={this._handleClipboardCopy}
-                collapsed={this.state.jsonCollapsed}
-                collapseStringsAfterLength={200}
-                src={src}
-              />
-            ) : (
-              <div className="payload-warning">Loading payload...</div>
-            )}
-          </div>
-          <div className="payload-metadata">
-            {/* Only show title if timing exists */}
-            {timing && <div className="payload-metadata-title">Metadata</div>}
-
-            {/* Show duration if available */}
-            {timing?.duration != null && (
-              <div className="payload-metadata-row">
-                <span>Duration</span>
-                <span>{formatDuration(timing.duration)}</span>
-              </div>
-            )}
-
-            {/* For streaming: show message count and timing */}
-            {timing?.messageCount != null && (
-              <>
-                <div className="payload-metadata-row">
-                  <span>Messages</span>
-                  <span>{timing.messageCount}</span>
-                </div>
-                {timing.firstMessageTime != null && (
-                  <div className="payload-metadata-row">
-                    <span>Time to first message</span>
-                    <span>{formatDuration(timing.firstMessageTime - timing.startTime)}</span>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Always show payload size */}
-            <div className="payload-metadata-row">
-              <span>Payload size (approx)</span>
-              <span>{payloadBytes ? formatBytes(payloadBytes) : "—"}</span>
-            </div>
-          </div>
-        </>
-      );
+    if (!entry) {
+      return null;
     }
+
+    const { cachedEntry, entryToRender } = getRenderableEntry(entry);
+    const {
+      request,
+      response,
+      error,
+      timing,
+      payloadBytes,
+      requestId,
+      transport,
+      replayedFromRequestId,
+    } = entryToRender;
+
+    const requestPayloadMissing = !!entry.entryId && !cachedEntry && entry.request === true;
+    const responsePayloadMissing = !!entry.entryId && !cachedEntry && entry.response === true;
+    const requestUnavailableReason = this._getReplayUnavailableReason(entryToRender, {
+      isMissingPayload: requestPayloadMissing,
+      isRequestTruncated: !!request?.__truncated,
+      requestId,
+    });
+    const responseSource = buildResponseSource(response, error, responsePayloadMissing);
+    const hasResponsePayload = !responsePayloadMissing && (response != null || error != null);
+    const responseText = stringifyJson(responseSource);
+    const requestText = this.state.replayRequestValue;
+
+    return (
+      <>
+        <div className="details-main">
+          <Split
+            className="details-pane-split vbox flex-auto"
+            direction="vertical"
+            sizes={this.state.paneSizes}
+            minSize={[180, 220]}
+            gutterSize={6}
+            onDragEnd={this._onPaneResize}
+          >
+            {this._renderRequestPane(entryToRender, requestText, requestUnavailableReason, requestPayloadMissing)}
+            {this._renderResponsePane(
+              responseSource,
+              responseText,
+              responsePayloadMissing,
+              !!response?.__truncated || !!error?.__truncated,
+              hasResponsePayload
+            )}
+          </Split>
+        </div>
+        <div className="payload-metadata">
+          {timing && <div className="payload-metadata-title">Metadata</div>}
+          {timing?.duration != null && (
+            <div className="payload-metadata-row">
+              <span>Duration</span>
+              <span>{formatDuration(timing.duration)}</span>
+            </div>
+          )}
+          {timing?.messageCount != null && (
+            <>
+              <div className="payload-metadata-row">
+                <span>Messages</span>
+                <span>{timing.messageCount}</span>
+              </div>
+              {timing.firstMessageTime != null && (
+                <div className="payload-metadata-row">
+                  <span>Time to first message</span>
+                  <span>{formatDuration(timing.firstMessageTime - timing.startTime)}</span>
+                </div>
+              )}
+            </>
+          )}
+          {transport && (
+            <div className="payload-metadata-row">
+              <span>Transport</span>
+              <span>{transport}</span>
+            </div>
+          )}
+          {replayedFromRequestId != null && (
+            <div className="payload-metadata-row">
+              <span>Replay of</span>
+              <span>Request #{replayedFromRequestId}</span>
+            </div>
+          )}
+          <div className="payload-metadata-row">
+            <span>Payload size (approx)</span>
+            <span>{payloadBytes ? formatBytes(payloadBytes) : "Unknown"}</span>
+          </div>
+        </div>
+      </>
+    );
   };
 
-  _toggleExpandAll = () => {
+  _renderRequestPane(entry, requestText, requestUnavailableReason, requestPayloadMissing) {
+    const { requestSearch, replayRequestError, isSubmittingReplay } = this.state;
+    const canCopyRequest = !requestPayloadMissing && !!requestText;
+    const canSearchRequest = !!requestText;
+
+    return (
+      <div className="details-pane request-pane" ref={this.requestPaneRef}>
+        <div className="details-pane-header">
+          <div className="details-pane-title-group">
+            <div className="details-pane-title">Request</div>
+            <div className="details-pane-subtitle">
+              {requestUnavailableReason ? "Read only" : "Editable before retry"}
+            </div>
+          </div>
+          <div className="details-pane-actions">
+            <button
+              className="json-action-button"
+              type="button"
+              onClick={() => this._copyText("Request", requestText)}
+              disabled={!canCopyRequest}
+            >
+              Copy
+            </button>
+            <button
+              className={`json-action-button ${requestSearch.isOpen ? "is-active" : ""}`}
+              type="button"
+              onClick={() => this._openRequestSearch()}
+              disabled={!canSearchRequest}
+            >
+              Search
+            </button>
+            <button
+              className="json-action-button"
+              type="button"
+              onClick={this._formatReplayRequest}
+              disabled={!requestText}
+            >
+              Format
+            </button>
+            <button
+              className="json-action-button"
+              type="button"
+              onClick={() => this._resetReplayRequest(entry, requestPayloadMissing)}
+              disabled={!entry?.request || requestPayloadMissing}
+            >
+              Reset
+            </button>
+            <button
+              className="json-action-button replay-submit-button"
+              type="button"
+              onClick={this._retryRequest}
+              disabled={!!requestUnavailableReason || isSubmittingReplay}
+            >
+              {isSubmittingReplay ? "Retrying..." : "Retry call"}
+            </button>
+          </div>
+        </div>
+        {requestSearch.isOpen && (
+          <SearchBar
+            compact
+            placeholder="Search request"
+            query={requestSearch.query}
+            matchCount={requestSearch.matchCount}
+            currentIndex={requestSearch.currentIndex}
+            onChange={this._onRequestSearchChange}
+            onNext={this._navigateToNextRequestMatch}
+            onPrev={this._navigateToPrevRequestMatch}
+            onClose={this._closeRequestSearch}
+          />
+        )}
+        {requestUnavailableReason && (
+          <div className="payload-warning pane-warning">{requestUnavailableReason}</div>
+        )}
+        <div className="details-pane-body">
+          <textarea
+            ref={this.requestEditorRef}
+            className="request-editor"
+            value={requestText}
+            onChange={this._onReplayRequestChange}
+            readOnly={!!requestUnavailableReason}
+            spellCheck={false}
+            placeholder="No request payload captured."
+          />
+          {replayRequestError && (
+            <div className="payload-warning pane-warning pane-error">
+              {replayRequestError}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  _renderResponsePane(responseSource, responseText, responsePayloadMissing, isResponseTruncated, hasResponsePayload) {
+    const { responseSearch, responseCollapsed, isRendering } = this.state;
+    const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
+    const canCopyResponse = hasResponsePayload && !!responseText;
+    const canSearchResponse = hasResponsePayload && !!responseText;
+    const expandLabel = responseCollapsed === false ? "Collapse" : "Expand";
+
+    return (
+      <div className="details-pane response-pane" ref={this.responsePaneRef}>
+        <div className="details-pane-header">
+          <div className="details-pane-title-group">
+            <div className="details-pane-title">Response</div>
+            <div className="details-pane-subtitle">Captured response payload</div>
+          </div>
+          <div className="details-pane-actions">
+            <button
+              className="json-action-button"
+              type="button"
+              onClick={() => this._copyText("Response", responseText)}
+              disabled={!canCopyResponse}
+            >
+              Copy
+            </button>
+            <button
+              className={`json-action-button ${responseSearch.isOpen ? "is-active" : ""}`}
+              type="button"
+              onClick={() => this._openResponseSearch()}
+              disabled={!canSearchResponse}
+            >
+              Search
+            </button>
+            <button
+              className="json-action-button"
+              type="button"
+              onClick={this._toggleResponseCollapse}
+              disabled={!isRendering}
+            >
+              {expandLabel}
+            </button>
+          </div>
+        </div>
+        {responseSearch.isOpen && (
+          <SearchBar
+            compact
+            placeholder="Search response"
+            query={responseSearch.query}
+            matchCount={responseSearch.matchCount}
+            currentIndex={responseSearch.currentIndex}
+            onChange={this._onResponseSearchChange}
+            onNext={this._navigateToNextResponseMatch}
+            onPrev={this._navigateToPrevResponseMatch}
+            onClose={this._closeResponseSearch}
+          />
+        )}
+        {responsePayloadMissing && (
+          <div className="payload-warning pane-warning">
+            Full response payload is no longer available (evicted from cache).
+          </div>
+        )}
+        {!responsePayloadMissing && isResponseTruncated && (
+          <div className="payload-warning pane-warning">
+            Response payload was truncated in cache.
+          </div>
+        )}
+        <div className="details-pane-body details-pane-json" ref={this.responseBodyRef}>
+          {isRendering ? (
+            <ReactJson
+              name={false}
+              theme={theme}
+              style={{ backgroundColor: "transparent" }}
+              enableClipboard={false}
+              collapsed={responseCollapsed}
+              collapseStringsAfterLength={200}
+              src={responseSource}
+            />
+          ) : (
+            <div className="payload-warning">Loading payload...</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  _getReplayUnavailableReason(entry, { isMissingPayload, isRequestTruncated, requestId }) {
+    if (!entry?.request) {
+      return "This entry does not include a request payload.";
+    }
+
+    if (isMissingPayload) {
+      return "Replay is unavailable because the request payload has been evicted from cache.";
+    }
+
+    if (isRequestTruncated) {
+      return "Replay is unavailable because the request payload was truncated.";
+    }
+
+    if (!requestId) {
+      return "Replay is unavailable because this call is missing its request identifier.";
+    }
+
+    return "";
+  }
+
+  _onPaneResize = (sizes) => {
+    this.setState({ paneSizes: sizes });
+    setStorageItem(PANE_SIZE_STORAGE_KEY, sizes);
+  };
+
+  _toggleResponseCollapse = () => {
     this.setState((prevState) => ({
-      jsonCollapsed: prevState.jsonCollapsed === false ? 1 : false,
+      responseCollapsed: prevState.responseCollapsed === false ? 1 : false,
     }));
   };
 
-  _downloadPayload = (src) => {
-    try {
-      const jsonStr = JSON.stringify(src, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `grpc-payload-${Date.now()}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('[gRPC DevTools] Failed to download payload:', error);
-      alert('Failed to download payload. See console for details.');
-    }
-  };
+  _handleKeydown = (event) => {
+    const isCmdF = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f";
 
-  // Search functionality
-  _handleKeydown = (e) => {
-    const isCmdF = (e.metaKey || e.ctrlKey) && e.key === 'f';
+    if (!isCmdF || !this.props.entry) {
+      if (event.key === "Escape" && this.state.requestSearch.isOpen) {
+        event.preventDefault();
+        this._closeRequestSearch();
+      }
 
-    // Only activate if this component is rendered and has an entry
-    if (isCmdF && this.props.entry) {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
+      if (event.key === "Escape" && this.state.responseSearch.isOpen) {
+        event.preventDefault();
+        this._closeResponseSearch();
+      }
 
-      // Save current collapse state and auto-expand JSON to make all content searchable
-      this.setState({
-        searchActive: true,
-        collapseStateBeforeSearch: this.state.jsonCollapsed,
-        jsonCollapsed: false, // Auto-expand all nodes
-      });
-      return false;
-    }
-
-    // Close search on Escape (if search is active)
-    if (e.key === 'Escape' && this.state.searchActive) {
-      e.preventDefault();
-      e.stopPropagation();
-      this._closeSearch();
-    }
-  };
-
-  _onSearchQueryChange = (value) => {
-    // Update search query immediately for responsive input
-    this.setState({ searchQuery: value });
-
-    // Debounce actual search execution for performance
-    if (this._searchDebounceTimer) {
-      clearTimeout(this._searchDebounceTimer);
-    }
-
-    this._searchDebounceTimer = setTimeout(() => {
-      this._performSearch(value);
-    }, 300); // 300ms debounce - allows user to finish typing
-  };
-
-  _performSearch = (query) => {
-    if (!query || query.trim() === '') {
-      this._clearHighlights();
-      this.setState({ searchResults: [], currentMatchIndex: 0 });
       return;
     }
 
-    // Find all text nodes in the ReactJson rendered DOM
-    const container = document.querySelector('.details-scroll-area');
-    if (!container) return;
+    const activeElement = document.activeElement;
+    const isInRequestPane = this.requestPaneRef.current?.contains(activeElement);
+    const isInResponsePane = this.responsePaneRef.current?.contains(activeElement);
 
-    const matches = [];
-    const queryLower = query.toLowerCase();
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
 
-    // Traverse all text nodes
-    const walker = document.createTreeWalker(
-      container,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
+    if (isInRequestPane) {
+      this._openRequestSearch();
+      return;
+    }
 
-    let node;
-    let index = 0;
-    while ((node = walker.nextNode())) {
-      const text = node.textContent.toLowerCase();
-      if (text.includes(queryLower)) {
-        matches.push({
-          node: node,
-          index: index++,
-          parentElement: node.parentElement,
-        });
+    if (isInResponsePane || !isInRequestPane) {
+      this._openResponseSearch();
+    }
+  };
+
+  async _copyText(label, text) {
+    if (!text) {
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const tempTextArea = document.createElement("textarea");
+        tempTextArea.value = text;
+        document.body.appendChild(tempTextArea);
+        tempTextArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(tempTextArea);
       }
+
+      this.props.showToast({
+        message: `${label} copied to clipboard`,
+        type: "success",
+        autoDismiss: 2000,
+      });
+    } catch (error) {
+      this.props.showToast({
+        message: `Failed to copy ${label.toLowerCase()}`,
+        type: "error",
+        autoDismiss: 4000,
+      });
+    }
+  }
+
+  _resetReplayRequest = (entry, isMissingPayload) => {
+    this.setState({
+      replayRequestValue: getRequestEditorValue(entry, isMissingPayload),
+      replayRequestError: "",
+    }, () => {
+      if (this.state.requestSearch.isOpen && this.state.requestSearch.query) {
+        this._performRequestSearch(this.state.requestSearch.query);
+      }
+    });
+  };
+
+  _onReplayRequestChange = (event) => {
+    const replayRequestValue = event.target.value;
+
+    this.setState({
+      replayRequestValue,
+      replayRequestError: "",
+    }, () => {
+      if (this.state.requestSearch.isOpen && this.state.requestSearch.query) {
+        this._performRequestSearch(this.state.requestSearch.query);
+      }
+    });
+  };
+
+  _formatReplayRequest = () => {
+    try {
+      const parsed = JSON.parse(this.state.replayRequestValue);
+      this.setState({
+        replayRequestValue: JSON.stringify(parsed, null, 2),
+        replayRequestError: "",
+      }, () => {
+        if (this.state.requestSearch.isOpen && this.state.requestSearch.query) {
+          this._performRequestSearch(this.state.requestSearch.query);
+        }
+      });
+    } catch (error) {
+      this.setState({
+        replayRequestError: `Invalid JSON: ${error.message}`,
+      });
+    }
+  };
+
+  _retryRequest = () => {
+    const { entryToRender } = getRenderableEntry(this.props.entry);
+    const unavailableReason = this._getReplayUnavailableReason(entryToRender, {
+      isMissingPayload: !!this.props.entry?.entryId && !getNetworkEntry(this.props.entry.entryId) && this.props.entry.request === true,
+      isRequestTruncated: !!entryToRender?.request?.__truncated,
+      requestId: entryToRender?.requestId,
+    });
+
+    if (unavailableReason) {
+      this.setState({ replayRequestError: unavailableReason });
+      return;
+    }
+
+    let parsedRequest;
+    try {
+      parsedRequest = JSON.parse(this.state.replayRequestValue);
+    } catch (error) {
+      this.setState({
+        replayRequestError: `Invalid JSON: ${error.message}`,
+      });
+      return;
+    }
+
+    if (!chrome?.devtools?.inspectedWindow?.eval) {
+      this.props.showToast({
+        message: "Unable to send replay command to the inspected tab.",
+        type: "error",
+        autoDismiss: 5000,
+      });
+      return;
     }
 
     this.setState({
-      searchResults: matches,
-      currentMatchIndex: matches.length > 0 ? 0 : -1,
-    }, () => {
-      if (matches.length > 0) {
-        this._highlightMatches();
-        this._scrollToMatch(0);
+      isSubmittingReplay: true,
+      replayRequestError: "",
+    });
+
+    const replayCommand = JSON.stringify({
+      type: "__GRPCWEB_DEVTOOLS_REPLAY__",
+      requestId: entryToRender.requestId,
+      transport: entryToRender.transport,
+      request: parsedRequest,
+    });
+
+    chrome.devtools.inspectedWindow.eval(
+      `(function () { window.postMessage(${replayCommand}, "*"); return true; })()`,
+      (_, exceptionInfo) => {
+        this.setState({ isSubmittingReplay: false });
+
+        if (exceptionInfo?.isException) {
+          this.props.showToast({
+            message: exceptionInfo.value || "Replay request was rejected.",
+            type: "error",
+            autoDismiss: 5000,
+          });
+        }
       }
+    );
+  };
+
+  _openRequestSearch = () => {
+    this.setState((prevState) => ({
+      requestSearch: {
+        ...prevState.requestSearch,
+        isOpen: true,
+      },
+    }));
+  };
+
+  _closeRequestSearch = () => {
+    this._requestSearchMatches = [];
+    this.setState({
+      requestSearch: createSearchState(),
     });
   };
 
-  _highlightMatches = () => {
-    const { searchResults, currentMatchIndex } = this.state;
+  _onRequestSearchChange = (value) => {
+    this.setState((prevState) => ({
+      requestSearch: {
+        ...prevState.requestSearch,
+        query: value,
+      },
+    }));
 
-    // Clear previous highlights
-    this._clearHighlights();
+    if (this._requestSearchDebounceTimer) {
+      clearTimeout(this._requestSearchDebounceTimer);
+    }
 
-    if (searchResults.length === 0) return;
-
-    searchResults.forEach((match, idx) => {
-      const { parentElement } = match;
-
-      // Add highlight class
-      if (idx === currentMatchIndex) {
-        parentElement.classList.add('search-match-active');
-      } else {
-        parentElement.classList.add('search-match');
-      }
-    });
+    this._requestSearchDebounceTimer = setTimeout(() => {
+      this._performRequestSearch(value);
+    }, 150);
   };
 
-  _clearHighlights = () => {
-    const container = document.querySelector('.details-scroll-area');
-    if (!container) return;
-
-    // Remove all highlight classes
-    container.querySelectorAll('.search-match, .search-match-active').forEach(el => {
-      el.classList.remove('search-match', 'search-match-active');
-    });
-  };
-
-  _navigateToNextMatch = () => {
-    const { searchResults, currentMatchIndex } = this.state;
-
-    if (searchResults.length === 0) return;
-
-    const nextIndex = (currentMatchIndex + 1) % searchResults.length;
-
-    this.setState({ currentMatchIndex: nextIndex }, () => {
-      this._highlightMatches();
-      this._scrollToMatch(nextIndex);
-    });
-  };
-
-  _navigateToPrevMatch = () => {
-    const { searchResults, currentMatchIndex } = this.state;
-
-    if (searchResults.length === 0) return;
-
-    const prevIndex = currentMatchIndex === 0
-      ? searchResults.length - 1
-      : currentMatchIndex - 1;
-
-    this.setState({ currentMatchIndex: prevIndex }, () => {
-      this._highlightMatches();
-      this._scrollToMatch(prevIndex);
-    });
-  };
-
-  _scrollToMatch = (index) => {
-    const { searchResults } = this.state;
-
-    if (!searchResults[index]) return;
-
-    const { parentElement } = searchResults[index];
-
-    // Scroll to the element
-    parentElement.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center',
-      inline: 'nearest'
-    });
-  };
-
-  _closeSearch = () => {
-    this._clearHighlights();
+  _performRequestSearch = (query) => {
+    const matches = findAllMatches(this.state.replayRequestValue, query);
+    this._requestSearchMatches = matches;
 
     this.setState((prevState) => ({
-      searchActive: false,
-      searchQuery: '',
-      searchResults: [],
-      currentMatchIndex: 0,
-      // Restore previous collapse state
-      jsonCollapsed: prevState.collapseStateBeforeSearch !== null
-        ? prevState.collapseStateBeforeSearch
-        : prevState.jsonCollapsed,
-      collapseStateBeforeSearch: null,
+      requestSearch: {
+        ...prevState.requestSearch,
+        matchCount: matches.length,
+        currentIndex: matches.length > 0 ? 0 : -1,
+      },
     }));
+
+    if (matches.length > 0) {
+      this._scrollRequestEditorToMatch(0);
+    }
+  };
+
+  _navigateToNextRequestMatch = () => {
+    const { matchCount, currentIndex } = this.state.requestSearch;
+    if (matchCount === 0) {
+      return;
+    }
+
+    const nextIndex = (currentIndex + 1) % matchCount;
+    this.setState((prevState) => ({
+      requestSearch: {
+        ...prevState.requestSearch,
+        currentIndex: nextIndex,
+      },
+    }), () => {
+      this._scrollRequestEditorToMatch(nextIndex);
+    });
+  };
+
+  _navigateToPrevRequestMatch = () => {
+    const { matchCount, currentIndex } = this.state.requestSearch;
+    if (matchCount === 0) {
+      return;
+    }
+
+    const prevIndex = currentIndex === 0 ? matchCount - 1 : currentIndex - 1;
+    this.setState((prevState) => ({
+      requestSearch: {
+        ...prevState.requestSearch,
+        currentIndex: prevIndex,
+      },
+    }), () => {
+      this._scrollRequestEditorToMatch(prevIndex);
+    });
+  };
+
+  _scrollRequestEditorToMatch = (index) => {
+    const editor = this.requestEditorRef.current;
+    const match = this._requestSearchMatches[index];
+
+    if (!editor || !match) {
+      return;
+    }
+
+    editor.setSelectionRange(match.start, match.end);
+
+    const lineHeight = parseFloat(window.getComputedStyle(editor).lineHeight) || 18;
+    const lineNumber = this.state.replayRequestValue.slice(0, match.start).split("\n").length - 1;
+    const targetTop = Math.max((lineNumber * lineHeight) - (editor.clientHeight / 2), 0);
+    editor.scrollTop = targetTop;
+  };
+
+  _openResponseSearch = () => {
+    this.setState((prevState) => ({
+      responseSearch: {
+        ...prevState.responseSearch,
+        isOpen: true,
+      },
+      responseCollapseBeforeSearch: prevState.responseCollapseBeforeSearch == null
+        ? prevState.responseCollapsed
+        : prevState.responseCollapseBeforeSearch,
+      responseCollapsed: false,
+    }), () => {
+      if (this.state.responseSearch.query) {
+        this._performResponseSearch(this.state.responseSearch.query);
+      }
+    });
+  };
+
+  _closeResponseSearch = () => {
+    this._responseSearchMatches = [];
+    this._clearResponseHighlights();
+    this.setState((prevState) => ({
+      responseSearch: createSearchState(),
+      responseCollapsed: prevState.responseCollapseBeforeSearch != null
+        ? prevState.responseCollapseBeforeSearch
+        : prevState.responseCollapsed,
+      responseCollapseBeforeSearch: null,
+    }));
+  };
+
+  _onResponseSearchChange = (value) => {
+    this.setState((prevState) => ({
+      responseSearch: {
+        ...prevState.responseSearch,
+        query: value,
+      },
+    }));
+
+    if (this._responseSearchDebounceTimer) {
+      clearTimeout(this._responseSearchDebounceTimer);
+    }
+
+    this._responseSearchDebounceTimer = setTimeout(() => {
+      this._performResponseSearch(value);
+    }, 150);
+  };
+
+  _performResponseSearch = (query) => {
+    this._clearResponseHighlights();
+
+    if (!query || !query.trim()) {
+      this._responseSearchMatches = [];
+      this.setState((prevState) => ({
+        responseSearch: {
+          ...prevState.responseSearch,
+          matchCount: 0,
+          currentIndex: -1,
+        },
+      }));
+      return;
+    }
+
+    const container = this.responseBodyRef.current;
+    if (!container) {
+      return;
+    }
+
+    const matches = [];
+    const queryLower = query.toLowerCase();
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+
+    let node;
+    while ((node = walker.nextNode())) {
+      const text = node.textContent.toLowerCase();
+      if (text.includes(queryLower) && node.parentElement) {
+        matches.push(node.parentElement);
+      }
+    }
+
+    this._responseSearchMatches = matches;
+    this.setState((prevState) => ({
+      responseSearch: {
+        ...prevState.responseSearch,
+        matchCount: matches.length,
+        currentIndex: matches.length > 0 ? 0 : -1,
+      },
+    }), () => {
+      this._highlightResponseMatches();
+      if (matches.length > 0) {
+        this._scrollToResponseMatch(0);
+      }
+    });
+  };
+
+  _navigateToNextResponseMatch = () => {
+    const { matchCount, currentIndex } = this.state.responseSearch;
+    if (matchCount === 0) {
+      return;
+    }
+
+    const nextIndex = (currentIndex + 1) % matchCount;
+    this.setState((prevState) => ({
+      responseSearch: {
+        ...prevState.responseSearch,
+        currentIndex: nextIndex,
+      },
+    }), () => {
+      this._highlightResponseMatches();
+      this._scrollToResponseMatch(nextIndex);
+    });
+  };
+
+  _navigateToPrevResponseMatch = () => {
+    const { matchCount, currentIndex } = this.state.responseSearch;
+    if (matchCount === 0) {
+      return;
+    }
+
+    const prevIndex = currentIndex === 0 ? matchCount - 1 : currentIndex - 1;
+    this.setState((prevState) => ({
+      responseSearch: {
+        ...prevState.responseSearch,
+        currentIndex: prevIndex,
+      },
+    }), () => {
+      this._highlightResponseMatches();
+      this._scrollToResponseMatch(prevIndex);
+    });
+  };
+
+  _highlightResponseMatches = () => {
+    this._clearResponseHighlights();
+
+    this._responseSearchMatches.forEach((element, index) => {
+      element.classList.add(index === this.state.responseSearch.currentIndex ? "search-match-active" : "search-match");
+    });
+  };
+
+  _clearResponseHighlights = () => {
+    const container = this.responseBodyRef.current;
+    if (!container) {
+      return;
+    }
+
+    container.querySelectorAll(".search-match, .search-match-active").forEach((element) => {
+      element.classList.remove("search-match", "search-match-active");
+    });
+  };
+
+  _scrollToResponseMatch = (index) => {
+    const element = this._responseSearchMatches[index];
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
+    });
   };
 }
 

@@ -1,97 +1,79 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 import { createSlice } from "@reduxjs/toolkit";
-import Fuse from 'fuse.js';
 import { setFilterValue } from "./toolbar";
 import { addNetworkEntry, clearNetworkCache } from "./networkCache";
 
-var options = {
-  shouldSort: false,
-  threshold: 0.15, // Slightly less strict = faster search
-  distance: 10000,
-  keys: [
-    'method',
-  ]
-};
 const MAX_LOG_SIZE = 1000;
-var fuse = new Fuse([], options);
-var lastCollectionSize = 0;
+
+function buildEndpoint(method) {
+  if (!method) {
+    return "";
+  }
+
+  const parts = method.split("/");
+  return parts.pop() || parts.pop() || "";
+}
+
+function matchesFilter(entry, filterValue) {
+  if (!filterValue) {
+    return true;
+  }
+
+  const query = filterValue.trim().toLowerCase();
+  if (!query) {
+    return true;
+  }
+
+  return [entry.method, entry.endpoint, entry.methodType]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(query));
+}
+
+function applyFilter(entries, filterValue) {
+  if (!filterValue || !filterValue.trim()) {
+    return entries.slice();
+  }
+
+  return entries.filter((entry) => matchesFilter(entry, filterValue));
+}
 
 const networkSlice = createSlice({
-  name: 'network',
+  name: "network",
   initialState: {
     preserveLog: false,
     selectedIdx: null,
     selectedEntry: null,
-    log: [
-    ],
-    _filterValue: '',
-    _logBak: [],
+    log: [],
+    _filterValue: "",
+    _allLog: [],
   },
   reducers: {
     networkLogBatch(state, action) {
-      const { log, _filterValue, _logBak } = state;
-      const { payload: entries } = action;
+      const nextEntries = action.payload.map((payload) => ({
+        ...payload,
+        endpoint: buildEndpoint(payload.method),
+      }));
 
-      // Process all entries in the batch
-      entries.forEach(payload => {
-        if (payload.method) {
-          const parts = payload.method.split('/')
-          payload.endpoint = parts.pop() || parts.pop();
-        }
-
-        if (_filterValue.length > 0) {
-          _logBak.push(payload);
-        } else {
-          log.push(payload);
-        }
-      });
-
-      // Apply eviction and rebuild search index after batch
-      if (_filterValue.length > 0) {
-        let evicted = false;
-        while (_logBak.length > MAX_LOG_SIZE) {
-          _logBak.shift();
-          evicted = true;
-        }
-        // Only rebuild collection if eviction occurred or size changed significantly
-        if (evicted || Math.abs(_logBak.length - lastCollectionSize) > 0) {
-          fuse.setCollection(_logBak);
-          lastCollectionSize = _logBak.length;
-        }
-        state.log = fuse.search(_filterValue).map(result => result.item || result);
-      } else {
-        while (log.length > MAX_LOG_SIZE) {
-          log.shift();
-        }
+      state._allLog.push(...nextEntries);
+      while (state._allLog.length > MAX_LOG_SIZE) {
+        state._allLog.shift();
       }
+
+      state.log = applyFilter(state._allLog, state._filterValue);
     },
     networkLog(state, action) {
-      const { log, _filterValue, _logBak } = state;
-      const { payload, } = action;
-      if (payload.method) {
-        const parts = payload.method.split('/')
-        payload.endpoint = parts.pop() || parts.pop();
+      const payload = {
+        ...action.payload,
+        endpoint: buildEndpoint(action.payload.method),
+      };
+
+      state._allLog.push(payload);
+      while (state._allLog.length > MAX_LOG_SIZE) {
+        state._allLog.shift();
       }
-      if (_filterValue.length > 0) {
-        _logBak.push(payload);
-        if (_logBak.length > MAX_LOG_SIZE) {
-          _logBak.shift();
-          // Only rebuild collection when eviction occurs
-          fuse.setCollection(_logBak);
-          lastCollectionSize = _logBak.length;
-        } else {
-          // Use incremental add when no eviction
-          fuse.add(payload);
-          lastCollectionSize = _logBak.length;
-        }
-        state.log = fuse.search(_filterValue).map(result => result.item || result);
-      } else {
-        log.push(payload);
-        if (log.length > MAX_LOG_SIZE) {
-          log.shift();
-        }
-      }
+
+      state.log = applyFilter(state._allLog, state._filterValue);
     },
     selectLogEntry(state, action) {
       const { payload: idx } = action;
@@ -106,37 +88,36 @@ const networkSlice = createSlice({
       if (state.preserveLog && !force) {
         return;
       }
+
       state.selectedIdx = null;
       state.selectedEntry = null;
       state.log = [];
-      state._logBak = [];
+      state._allLog = [];
     },
     setPreserveLog(state, action) {
-      const { payload } = action;
-      state.preserveLog = payload;
+      state.preserveLog = action.payload;
     },
   },
   extraReducers: {
     [setFilterValue]: (state, action) => {
-
-      const { payload: filterValue = '' } = action;
+      const filterValue = action.payload || "";
       state._filterValue = filterValue;
-      if (filterValue.length === 0) {
-        state.log = state._logBak;
-        state._logBak = [];
-        lastCollectionSize = 0;
-        return;
-      }
+      state.log = applyFilter(state._allLog, filterValue);
 
-      if (state._logBak.length === 0 && state.log.length !== 0) {
-        state._logBak = state.log;
+      if (state.selectedIdx != null) {
+        const selectedEntryId = state.selectedEntry?.entryId;
+        const nextSelectedIdx = selectedEntryId == null
+          ? null
+          : state.log.findIndex((entry) => entry.entryId === selectedEntryId);
+
+        if (nextSelectedIdx >= 0) {
+          state.selectedIdx = nextSelectedIdx;
+          state.selectedEntry = state.log[nextSelectedIdx];
+        } else {
+          state.selectedIdx = null;
+          state.selectedEntry = null;
+        }
       }
-      // Only rebuild collection if size changed
-      if (state._logBak.length !== lastCollectionSize) {
-        fuse.setCollection(state._logBak);
-        lastCollectionSize = state._logBak.length;
-      }
-      state.log = fuse.search(filterValue).map(result => result.item || result);
     },
   },
 });
@@ -149,14 +130,16 @@ function buildSummaryEntry(entry) {
     entryId: entry.entryId,
     method: entry.method,
     methodType: entry.methodType,
+    transport: entry.transport,
     request: !!entry.request,
     response: !!entry.response,
     error: entry.error,
     requestId: entry.requestId,
+    canReplay: entry.canReplay,
+    replayedFromRequestId: entry.replayedFromRequestId,
   };
 }
 
-// Batching state
 let pendingBatch = [];
 let batchTimeout = null;
 const BATCH_DELAY_MS = 100;
@@ -178,7 +161,6 @@ export const logNetworkEntry = (data) => (dispatch) => {
 
   pendingBatch.push(summaryEntry);
 
-  // Flush immediately if batch size limit reached
   if (pendingBatch.length >= BATCH_SIZE_LIMIT) {
     if (batchTimeout) {
       clearTimeout(batchTimeout);
@@ -187,7 +169,6 @@ export const logNetworkEntry = (data) => (dispatch) => {
     return;
   }
 
-  // Schedule flush if not already scheduled
   if (!batchTimeout) {
     batchTimeout = setTimeout(() => {
       flushBatch(dispatch);
@@ -204,4 +185,4 @@ export const clearLogAndCache = (payload) => (dispatch, getState) => {
   dispatch(clearLog(payload));
 };
 
-export default reducer
+export default reducer;

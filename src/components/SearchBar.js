@@ -1,74 +1,89 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
-import React, { Component } from 'react';
-import './SearchBar.css';
+import React, { Component } from "react";
+import "./SearchBar.css";
 
 class SearchBar extends Component {
   inputRef = React.createRef();
 
   componentDidMount() {
-    // Auto-focus input when search bar appears
     if (this.inputRef.current) {
       this.inputRef.current.focus();
+      this.inputRef.current.select();
     }
   }
 
   render() {
-    const { query, matchCount, currentIndex, onChange, onNext, onPrev, onClose } = this.props;
+    const {
+      compact,
+      placeholder = "Search JSON",
+      query,
+      matchCount,
+      currentIndex,
+      onChange,
+      onNext,
+      onPrev,
+      onClose,
+    } = this.props;
+
+    const classes = `search-bar ${compact ? "search-bar-compact" : ""}`.trim();
 
     return (
-      <div className="search-bar">
+      <div className={classes}>
         <input
           ref={this.inputRef}
           type="text"
           className="search-input"
-          placeholder="Search JSON..."
+          placeholder={placeholder}
           value={query}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(event) => onChange(event.target.value)}
           onKeyDown={this._handleKeyDown}
         />
         <span className="search-matches">
-          {matchCount > 0 ? `${currentIndex + 1} of ${matchCount}` : 'No matches'}
+          {matchCount > 0 ? `${currentIndex + 1}/${matchCount}` : "0"}
         </span>
         <button
-          className="search-nav-btn"
+          className="search-btn"
           onClick={onPrev}
           disabled={matchCount === 0}
-          title="Previous match (Shift + Enter)"
+          title="Previous match"
         >
-          ↑
+          Prev
         </button>
         <button
-          className="search-nav-btn"
+          className="search-btn"
           onClick={onNext}
           disabled={matchCount === 0}
-          title="Next match (Enter)"
+          title="Next match"
         >
-          ↓
+          Next
         </button>
         <button
-          className="search-close-btn"
+          className="search-btn"
           onClick={onClose}
-          title="Close search (Esc)"
+          title="Close search"
         >
-          ✕
+          Close
         </button>
       </div>
     );
   }
 
-  _handleKeyDown = (e) => {
+  _handleKeyDown = (event) => {
     const { onNext, onPrev, onClose } = this.props;
 
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        onPrev(); // Shift + Enter = previous match
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        onPrev();
       } else {
-        onNext(); // Enter = next match (or trigger search if new query)
+        onNext();
       }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
       onClose();
     }
   };

@@ -5,25 +5,13 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache } from '../state/network';
-import { toggleFilter, setFilterValue, setFilterValueDebounced, setDefaultCollapsed } from '../state/toolbar';
+import { toggleFilter, setDefaultCollapsed } from '../state/toolbar';
 import { setStorageItem } from '../utils/localStorage';
 import TrashIcon from '../icons/Trash';
 import FilterIcon from '../icons/Filter';
 import './Toolbar.css';
 
 class Toolbar extends Component {
-  state = {
-    localFilterValue: '',
-  };
-
-  componentDidUpdate(prevProps) {
-    // Sync local state when filter is cleared externally
-    const { filterValue } = this.props.toolbar;
-    if (filterValue === '' && this.state.localFilterValue !== '') {
-      this.setState({ localFilterValue: '' });
-    }
-  }
-
   _renderButtons() {
     const { clearLog, toggleFilter, toolbar: { filterIsEnabled, filterIsOpen }} = this.props;
     return (
@@ -40,27 +28,6 @@ class Toolbar extends Component {
            </ToolbarButton>
         </>
     )
-  }
-
-  _renderFilterToolbar() {
-    const { filterIsOpen } = this.props.toolbar;
-    const { localFilterValue } = this.state;
-    if (filterIsOpen) {
-      return (
-        <div className="toolbar">
-          <div className="toolbar-shadow">
-            <span className="toolbar-item text">
-              <input
-                type="text"
-                placeholder="Filter"
-                value={localFilterValue}
-                onChange={this._onFilterValueChanged}
-              />
-            </span>
-          </div>
-        </div>
-      );
-    }
   }
 
   render() {
@@ -124,7 +91,6 @@ class Toolbar extends Component {
             </span>
           </div>
         </div>
-        {this._renderFilterToolbar()}
       </>
     );
   }
@@ -143,17 +109,6 @@ class Toolbar extends Component {
 
     // Persist to localStorage
     setStorageItem('defaultCollapsed', newValue);
-  }
-
-  _onFilterValueChanged = e => {
-    const { setFilterValueDebounced } = this.props;
-    const newValue = e.target.value;
-
-    // Update local state immediately for responsive UI
-    this.setState({ localFilterValue: newValue });
-
-    // Dispatch debounced action for actual filtering
-    setFilterValueDebounced(newValue);
   }
 
   _onReconnect = () => {
@@ -207,5 +162,5 @@ const mapStateToProps = state => ({
   preserveLog: state.network.preserveLog,
   toolbar: state.toolbar,
 });
-const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setFilterValue, setFilterValueDebounced, setDefaultCollapsed };
+const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setDefaultCollapsed };
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);

@@ -5,25 +5,125 @@
   background-color: var(--network-bg);
 }
 
-.details-scroll-area {
+.details-main {
   flex: 1;
+  min-height: 0;
+}
+
+.details-pane-split {
+  height: 100%;
+}
+
+.details-pane-split > .gutter {
+  background: var(--divider-color);
+  flex-shrink: 0;
+  border-left: 0;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.details-pane-split > .gutter.gutter-vertical {
+  border-top: 1px solid var(--divider-color);
+  cursor: row-resize;
+  height: 6px;
+  margin-top: -1px;
+}
+
+.details-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--network-bg);
+}
+
+.details-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--divider-color);
+  background: var(--toolbar-bg-color);
+  flex-shrink: 0;
+}
+
+.details-pane-title-group {
+  min-width: 0;
+}
+
+.details-pane-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.details-pane-subtitle {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-secondary-color);
+}
+
+.details-pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.details-pane-body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
-  padding: 4px;
+  padding: 8px;
+}
+
+.details-pane-json {
   position: relative;
 }
 
-.react-json-view svg {
-  height: 0.9em !important;
+.request-editor {
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--toolbar-input-bg);
+  color: var(--toolbar-input-text);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: none;
+}
+
+.request-editor:focus {
+  outline: none;
+  box-shadow: var(--focus-ring-active-shadow);
+}
+
+.request-editor[readonly] {
+  opacity: 0.85;
 }
 
 .payload-warning {
-  margin-bottom: 6px;
+  margin: 0 8px 8px;
   padding: 6px 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-color);
   border-radius: 4px;
-  background: var(--toolbar-bg);
-  color: var(--text);
+  background: var(--toolbar-bg-color);
+  color: var(--text-color);
   font-size: 12px;
+}
+
+.pane-warning {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.pane-error {
+  margin: 8px 0 0;
+  border-color: var(--enabled-color);
 }
 
 .payload-metadata {
@@ -56,27 +156,44 @@
   white-space: nowrap;
 }
 
-.json-actions {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  color: var(--toolbar-color);
-  z-index: 10;
-}
-
 .json-action-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  padding: 3px 8px;
   border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--toolbar-bg);
-  color: var(--text);
-  font-size: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--button-bg);
+  color: var(--button-text);
+  font-size: 11px;
+  line-height: 1.2;
   cursor: pointer;
 }
 
-.json-action-button svg {
-  height: 12px;
+.json-action-button:hover:not(:disabled) {
+  background: var(--button-hover-bg);
+}
+
+.json-action-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.json-action-button.is-active {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.replay-submit-button {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: #fff;
+}
+
+.react-json-view {
+  min-height: 100%;
+}
+
+.react-json-view svg {
+  height: 0.9em !important;
 }

@@ -55,14 +55,12 @@ function truncateLargePayload(payload, fieldName) {
 }
 
 function applyPayloadLimits(entry) {
-  let modified = false;
   const result = { ...entry };
 
   if (entry.request != null) {
     const { value, truncated } = truncateLargePayload(entry.request, 'Request');
     if (truncated) {
       result.request = value;
-      modified = true;
     }
   }
 
@@ -70,7 +68,6 @@ function applyPayloadLimits(entry) {
     const { value, truncated } = truncateLargePayload(entry.response, 'Response');
     if (truncated) {
       result.response = value;
-      modified = true;
     }
   }
 
@@ -78,7 +75,6 @@ function applyPayloadLimits(entry) {
     const { value, truncated } = truncateLargePayload(entry.error, 'Error');
     if (truncated) {
       result.error = value;
-      modified = true;
     }
   }
 
@@ -108,10 +104,15 @@ export function addNetworkEntry(entry) {
   if (existingEntry) {
     if (limitedEntry.method && !existingEntry.method) existingEntry.method = limitedEntry.method;
     if (limitedEntry.methodType && !existingEntry.methodType) existingEntry.methodType = limitedEntry.methodType;
+    if (limitedEntry.transport && !existingEntry.transport) existingEntry.transport = limitedEntry.transport;
     if (limitedEntry.request != null) existingEntry.request = limitedEntry.request;
     if (limitedEntry.response != null) existingEntry.response = limitedEntry.response;
     if (limitedEntry.error != null) existingEntry.error = limitedEntry.error;
     if (limitedEntry.requestId != null) existingEntry.requestId = limitedEntry.requestId;
+    if (limitedEntry.canReplay != null) existingEntry.canReplay = limitedEntry.canReplay;
+    if (limitedEntry.replayedFromRequestId != null) {
+      existingEntry.replayedFromRequestId = limitedEntry.replayedFromRequestId;
+    }
     // Update timing - for streaming calls, newer timing has updated stats
     if (limitedEntry.timing != null) existingEntry.timing = limitedEntry.timing;
     existingEntry.payloadBytes = estimatePayloadBytes(existingEntry);

@@ -4,6 +4,7 @@ import React, { Component, createRef } from 'react';
 import { connect } from 'react-redux';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList as List } from 'react-window';
+import { setFilterValueDebounced } from '../state/toolbar';
 import NetworkListRow from './NetworkListRow';
 
 import './NetworkList.css';
@@ -12,12 +13,19 @@ class NetworkList extends Component {
   constructor(props) {
     super(props);
     this.listRef = createRef();
+    this.state = {
+      localFilterValue: props.filterValue || '',
+    };
   }
 
   componentDidUpdate(prevProps) {
-    const { network } = this.props;
+    const { network, filterValue } = this.props;
     const prevLogLength = prevProps.network.log.length;
     const currentLogLength = network.log.length;
+
+    if (prevProps.filterValue !== filterValue && filterValue !== this.state.localFilterValue) {
+      this.setState({ localFilterValue: filterValue });
+    }
 
     // New entries were added
     if (currentLogLength > prevLogLength) {
@@ -53,9 +61,20 @@ class NetworkList extends Component {
   }
 
   render() {
-    const { network } = this.props;
+    const { network, filterIsOpen } = this.props;
+    const { localFilterValue } = this.state;
     return (
       <div className="widget vbox network-list">
+        {filterIsOpen && (
+          <div className="network-list-filter">
+            <input
+              type="text"
+              placeholder="Filter"
+              value={localFilterValue}
+              onChange={this._onFilterValueChanged}
+            />
+          </div>
+        )}
         <div className="widget vbox">
           <div className="data-grid">
             <div className="header-container">
@@ -91,7 +110,20 @@ class NetworkList extends Component {
       </div>
     );
   }
+
+  _onFilterValueChanged = (event) => {
+    const { setFilterValueDebounced } = this.props;
+    const newValue = event.target.value;
+
+    this.setState({ localFilterValue: newValue });
+    setFilterValueDebounced(newValue);
+  };
 }
 
-const mapStateToProps = state => ({ network: state.network })
-export default connect(mapStateToProps)(NetworkList)
+const mapStateToProps = state => ({
+  network: state.network,
+  filterIsOpen: state.toolbar.filterIsOpen,
+  filterValue: state.toolbar.filterValue,
+})
+const mapDispatchToProps = { setFilterValueDebounced };
+export default connect(mapStateToProps, mapDispatchToProps)(NetworkList)
