@@ -33,7 +33,6 @@ function ensureMessageListener() {
   if (!messageListenerActive) {
     window.addEventListener("message", handleMessageEvent, false);
     messageListenerActive = true;
-    console.log('[gRPC DevTools] Window message listener activated');
   }
 }
 
@@ -41,24 +40,16 @@ function startReconnectTimer() {
   if (reconnectInterval) return; // Already running
 
   reconnectAttempts = 0;
-  console.log('[gRPC DevTools] Starting automatic reconnection attempts...');
   reconnectInterval = setInterval(() => {
     if (!port) {
       reconnectAttempts++;
-      console.log('[gRPC DevTools] Auto-reconnect attempt', reconnectAttempts + '/' + MAX_RECONNECT_ATTEMPTS);
 
       if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.log('[gRPC DevTools] Max reconnection attempts reached. Use the Reconnect button to retry manually.');
         stopReconnectTimer();
         return;
       }
 
       setupPortIfNeeded();
-
-      if (port && messageQueue.length > 0) {
-        console.log('[gRPC DevTools] Reconnected! Flushing queued messages:', messageQueue.length);
-        // Flush will happen on next sendGRPCNetworkCall
-      }
     } else {
       // Connected, stop timer
       stopReconnectTimer();
@@ -71,7 +62,6 @@ function stopReconnectTimer() {
     clearInterval(reconnectInterval);
     reconnectInterval = null;
     reconnectAttempts = 0;
-    console.log('[gRPC DevTools] Stopped reconnection attempts (connected)');
   }
 }
 
@@ -80,11 +70,9 @@ function setupPortIfNeeded() {
     port = chrome.runtime.connect(null, { name: "content" });
     port.postMessage({ action: "init" });
     port.onMessage.addListener(handlePortMessage);
-    console.log('[gRPC DevTools] Port connected');
     stopReconnectTimer(); // Stop auto-reconnect attempts when connected
 
     port.onDisconnect.addListener(() => {
-      console.log('[gRPC DevTools] Port disconnected - will auto-retry connection');
       port = null;
       startReconnectTimer(); // Start auto-reconnect attempts
       // CRITICAL: Do NOT remove window listener - we need it to detect messages
@@ -129,7 +117,6 @@ function sendPanelMessage(action, data) {
       console.warn('[gRPC DevTools] Queue full, dropped oldest message:', dropped.data.method);
     }
 
-    console.log('[gRPC DevTools] Message queued (port disconnected), queue size:', messageQueue.length);
   }
 }
 
@@ -171,8 +158,6 @@ function requestReplay(data) {
 // Listen for reconnection requests from panel
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'ping') {
-    console.log('[gRPC DevTools] Manual reconnect requested from panel');
-
     // Reset retry counter on manual reconnect
     reconnectAttempts = 0;
     stopReconnectTimer(); // Stop any ongoing auto-retry

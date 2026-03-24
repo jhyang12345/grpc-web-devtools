@@ -25,26 +25,17 @@ function setupPanelPortIfNeeded() {
   }
 
   try {
-    console.log('[gRPC DevTools] Reconnecting panel port...');
     tabId = chrome.devtools.inspectedWindow.tabId;
     port = chrome.runtime.connect(null, { name: "panel" });
     port.postMessage({ tabId, action: "init" });
     port.onMessage.addListener(_onMessageRecived);
     port.onDisconnect.addListener(_onPortDisconnect);
 
-    // Don't set connection status to true yet - wait for heartbeat_ack or pong
-    // to verify the connection actually works. The existing message handlers
-    // (lines 150 and 152) will set it to true when we receive a response.
-
-    // Send heartbeat to verify connection - status will be set to true when ack received
     setTimeout(() => {
       if (port) {
         try {
           port.postMessage({ action: 'heartbeat' });
-          console.log('[gRPC DevTools] Panel port created, waiting for heartbeat_ack...');
         } catch (error) {
-          console.warn('[gRPC DevTools] Heartbeat failed after reconnection:', error);
-          // If heartbeat send failed, port is dead
           if (store) {
             store.dispatch(setConnectionStatus(false));
           }
@@ -71,7 +62,6 @@ function _cleanupListeners() {
 }
 
 function _onPortDisconnect() {
-  console.log('[gRPC DevTools] Port disconnected');
   if (store) {
     store.dispatch(setConnectionStatus(false));
   }
@@ -103,16 +93,12 @@ if (chrome) {
     port.onMessage.addListener(_onMessageRecived);
     port.onDisconnect.addListener(_onPortDisconnect);
 
-    // Don't set connection status to true immediately - wait for verification
-    // Connection status will be set when first heartbeat_ack or gRPCNetworkCall arrives
-    // Send immediate heartbeat to verify connection quickly
+    // Send heartbeat to verify connection - status set to true when ack or network call arrives
     setTimeout(() => {
       if (port) {
         try {
           port.postMessage({ action: 'heartbeat' });
-          console.log('[gRPC DevTools] Panel port created, sent initial heartbeat');
         } catch (error) {
-          console.warn('[gRPC DevTools] Initial heartbeat failed:', error);
           store.dispatch(setConnectionStatus(false));
         }
       }
@@ -128,14 +114,11 @@ if (chrome) {
     window.setupPanelPortIfNeeded = setupPanelPortIfNeeded;
 
     // Periodically check connection status with heartbeat
-    // With Fix #1, this is mainly for detecting disconnection when no messages flow
     setInterval(() => {
       if (port) {
         try {
           port.postMessage({ action: 'heartbeat' });
         } catch (error) {
-          // Port is dead
-          console.warn('[gRPC DevTools] Heartbeat failed, port appears dead');
           store.dispatch(setConnectionStatus(false));
         }
       }
@@ -167,8 +150,6 @@ function _onMessageRecived({ action, data }) {
       // Don't crash the message handler - continue processing future messages
     }
   } else if (action === "pong") {
-    // Reconnection successful
-    console.log('[gRPC DevTools] Pong received - connection restored');
     store.dispatch(setConnectionStatus(true));
   } else if (action === "heartbeat_ack") {
     // Heartbeat acknowledged - connection is alive

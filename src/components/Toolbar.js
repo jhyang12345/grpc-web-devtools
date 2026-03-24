@@ -112,9 +112,6 @@ class Toolbar extends Component {
   }
 
   _onReconnect = () => {
-    console.log('[gRPC DevTools] Manual reconnect requested');
-
-    // First, reconnect the panel port
     if (window.setupPanelPortIfNeeded) {
       window.setupPanelPortIfNeeded();
     } else {
@@ -127,9 +124,6 @@ class Toolbar extends Component {
         chrome.tabs.sendMessage(tabs[0].id, { action: 'ping' }, (response) => {
           if (chrome.runtime.lastError) {
             console.error('[gRPC DevTools] Ping failed:', chrome.runtime.lastError.message);
-            // Panel port is reconnected, but content script is unresponsive
-          } else {
-            console.log('[gRPC DevTools] Ping successful:', response);
           }
         });
       } else {
