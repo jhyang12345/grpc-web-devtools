@@ -129,6 +129,10 @@ class NetworkDetails extends Component {
 
   responseBodyRef = React.createRef();
 
+  _pendingReplayRequestId = null;
+
+  _replayTimeoutId = null;
+
   state = {
     lastEntryId: null,
     isRendering: false,
@@ -162,6 +166,9 @@ class NetworkDetails extends Component {
     if (this._responseSearchDebounceTimer) {
       clearTimeout(this._responseSearchDebounceTimer);
     }
+    if (this._replayTimeoutId) {
+      clearTimeout(this._replayTimeoutId);
+    }
     this._clearResponseHighlights();
   }
 
@@ -176,6 +183,12 @@ class NetworkDetails extends Component {
       this._requestSearchMatches = [];
       this._responseSearchMatches = [];
       this._clearResponseHighlights();
+
+      this._pendingReplayRequestId = null;
+      if (this._replayTimeoutId) {
+        clearTimeout(this._replayTimeoutId);
+        this._replayTimeoutId = null;
+      }
 
       this.setState({
         lastEntryId: nextEntryId,
@@ -192,6 +205,24 @@ class NetworkDetails extends Component {
       setTimeout(() => {
         this.setState({ isRendering: true });
       }, 0);
+    }
+
+    if (
+      this._pendingReplayRequestId != null &&
+      this.props.lastReplayResult !== prevProps.lastReplayResult &&
+      this.props.lastReplayResult?.requestId === this._pendingReplayRequestId
+    ) {
+      this._pendingReplayRequestId = null;
+      if (this._replayTimeoutId) {
+        clearTimeout(this._replayTimeoutId);
+        this._replayTimeoutId = null;
+      }
+
+      const newState = { isSubmittingReplay: false };
+      if (!this.props.lastReplayResult.ok) {
+        newState.replayRequestError = this.props.lastReplayResult.message || "Replay failed.";
+      }
+      this.setState(newState);
     }
   }
 
@@ -651,6 +682,19 @@ class NetworkDetails extends Component {
       replayRequestError: "",
     });
 
+    this._pendingReplayRequestId = entryToRender.requestId;
+
+    if (this._replayTimeoutId) {
+      clearTimeout(this._replayTimeoutId);
+    }
+    this._replayTimeoutId = setTimeout(() => {
+      this._pendingReplayRequestId = null;
+      this._replayTimeoutId = null;
+      if (this.state.isSubmittingReplay) {
+        this.setState({ isSubmittingReplay: false });
+      }
+    }, 15000);
+
     const replayCommand = JSON.stringify({
       type: "__GRPCWEB_DEVTOOLS_REPLAY__",
       requestId: entryToRender.requestId,
@@ -661,9 +705,13 @@ class NetworkDetails extends Component {
     chrome.devtools.inspectedWindow.eval(
       `(function () { window.postMessage(${replayCommand}, "*"); return true; })()`,
       (_, exceptionInfo) => {
-        this.setState({ isSubmittingReplay: false });
-
         if (exceptionInfo?.isException) {
+          this._pendingReplayRequestId = null;
+          if (this._replayTimeoutId) {
+            clearTimeout(this._replayTimeoutId);
+            this._replayTimeoutId = null;
+          }
+          this.setState({ isSubmittingReplay: false });
           this.props.showToast({
             message: exceptionInfo.value || "Replay request was rejected.",
             type: "error",
@@ -939,6 +987,7 @@ class NetworkDetails extends Component {
 const mapStateToProps = (state) => ({
   entry: state.network.selectedEntry,
   defaultCollapsed: state.toolbar.defaultCollapsed,
+  lastReplayResult: state.network.lastReplayResult,
 });
 
 const mapDispatchToProps = {

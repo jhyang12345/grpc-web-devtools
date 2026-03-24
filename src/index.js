@@ -6,7 +6,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from "@reduxjs/toolkit";
 import App from './App';
 import './index.css';
-import networkReducer, { logNetworkEntry, clearLogAndCache } from './state/network';
+import networkReducer, { logNetworkEntry, clearLogAndCache, setLastReplayResult } from './state/network';
 import toolbarReducer, { setConnectionStatus } from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 import toastReducer, { showToast } from './state/toast';
@@ -174,6 +174,7 @@ function _onMessageRecived({ action, data }) {
     // Heartbeat acknowledged - connection is alive
     store.dispatch(setConnectionStatus(true));
   } else if (action === "gRPCReplayResult") {
+    store.dispatch(setLastReplayResult(data));
     store.dispatch(showToast({
       message: data?.message || (data?.ok ? 'Replay started.' : 'Replay failed.'),
       type: data?.ok ? 'success' : 'error',
