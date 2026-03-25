@@ -152,6 +152,7 @@ class NetworkDetails extends Component {
     if (this._responseSearchDebounceTimer) {
       clearTimeout(this._responseSearchDebounceTimer);
     }
+    this._clearRequestHighlights();
     this._clearResponseHighlights();
   }
 
@@ -166,6 +167,7 @@ class NetworkDetails extends Component {
       this._requestSearchMatches = [];
       this._responseSearchMatches = [];
       this._clearResponseHighlights();
+      this._clearRequestHighlights();
       this._currentRequestText = requestPayloadMissing ? "" : stringifyJson(entryToRender?.request);
 
       this.setState({
@@ -280,45 +282,47 @@ class NetworkDetails extends Component {
     );
   };
 
-  _renderRequestHighlighted(text) {
-    const { currentIndex } = this.state.requestSearch;
+  _applyRequestHighlights = () => {
+    if (!CSS?.highlights) return;
+
+    CSS.highlights.delete("request-search");
+    CSS.highlights.delete("request-search-active");
+
     const matches = this._requestSearchMatches;
+    if (!matches || matches.length === 0) return;
 
-    if (!text || !matches || matches.length === 0) {
-      return text;
-    }
+    const container = this.requestEditorRef.current;
+    if (!container) return;
 
-    const parts = [];
-    let lastIndex = 0;
+    const textNode = container.firstChild;
+    if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
+
+    const { currentIndex } = this.state.requestSearch;
+    const regular = [];
+    const active = [];
 
     matches.forEach((match, idx) => {
-      if (match.start > lastIndex) {
-        parts.push(text.slice(lastIndex, match.start));
-      }
-      parts.push(
-        <span
-          key={idx}
-          className={idx === currentIndex ? "search-match-active" : "search-match"}
-          data-match-index={idx}
-        >
-          {text.slice(match.start, match.end)}
-        </span>
-      );
-      lastIndex = match.end;
+      const range = new Range();
+      range.setStart(textNode, Math.min(match.start, textNode.length));
+      range.setEnd(textNode, Math.min(match.end, textNode.length));
+      (idx === currentIndex ? active : regular).push(range);
     });
 
-    if (lastIndex < text.length) {
-      parts.push(text.slice(lastIndex));
-    }
+    if (regular.length > 0) CSS.highlights.set("request-search", new window.Highlight(...regular));
+    if (active.length > 0)  CSS.highlights.set("request-search-active", new window.Highlight(...active));
+  };
 
-    return parts;
-  }
+  _clearRequestHighlights = () => {
+    if (CSS?.highlights) {
+      CSS.highlights.delete("request-search");
+      CSS.highlights.delete("request-search-active");
+    }
+  };
 
   _renderRequestPane(requestText, requestPayloadMissing) {
     const { requestSearch } = this.state;
     const canCopyRequest = !requestPayloadMissing && !!requestText;
     const canSearchRequest = !!requestText;
-    const showHighlights = requestSearch.isOpen && !!requestSearch.query;
 
     return (
       <div className="details-pane request-pane" ref={this.requestPaneRef}>
@@ -365,11 +369,9 @@ class NetworkDetails extends Component {
           </div>
         )}
         <div className="details-pane-body">
+          {/* Plain text only — highlights applied via CSS Highlight API, no React re-renders */}
           <pre ref={this.requestEditorRef} className="request-viewer">
-            {requestText
-              ? (showHighlights ? this._renderRequestHighlighted(requestText) : requestText)
-              : <span className="request-viewer-placeholder">No request payload captured.</span>
-            }
+            {requestText || <span className="request-viewer-placeholder">No request payload captured.</span>}
           </pre>
         </div>
       </div>
@@ -547,6 +549,7 @@ class NetworkDetails extends Component {
 
   _closeRequestSearch = () => {
     this._requestSearchMatches = [];
+    this._clearRequestHighlights();
     this.setState({
       requestSearch: createSearchState(),
     });
@@ -579,11 +582,12 @@ class NetworkDetails extends Component {
         matchCount: matches.length,
         currentIndex: matches.length > 0 ? 0 : -1,
       },
-    }));
-
-    if (matches.length > 0) {
-      this._scrollRequestEditorToMatch(0);
-    }
+    }), () => {
+      this._applyRequestHighlights();
+      if (matches.length > 0) {
+        this._scrollRequestEditorToMatch(0);
+      }
+    });
   };
 
   _navigateToNextRequestMatch = () => {
@@ -599,6 +603,7 @@ class NetworkDetails extends Component {
         currentIndex: nextIndex,
       },
     }), () => {
+      this._applyRequestHighlights();
       this._scrollRequestEditorToMatch(nextIndex);
     });
   };
@@ -616,19 +621,31 @@ class NetworkDetails extends Component {
         currentIndex: prevIndex,
       },
     }), () => {
+      this._applyRequestHighlights();
       this._scrollRequestEditorToMatch(prevIndex);
     });
   };
 
   _scrollRequestEditorToMatch = (index) => {
     const container = this.requestEditorRef.current;
-    if (!container) {
-      return;
-    }
+    const match = this._requestSearchMatches[index];
+    if (!container || !match) return;
 
-    const matchEl = container.querySelector(`[data-match-index="${index}"]`);
-    if (matchEl) {
-      matchEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    const textNode = container.firstChild;
+    if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
+
+    try {
+      const range = new Range();
+      range.setStart(textNode, Math.min(match.start, textNode.length));
+      range.setEnd(textNode, Math.min(match.end, textNode.length));
+
+      const rangeRect = range.getBoundingClientRect();
+      const scrollParent = container.parentElement;
+      const parentRect = scrollParent.getBoundingClientRect();
+      const targetTop = scrollParent.scrollTop + rangeRect.top - parentRect.top - scrollParent.clientHeight / 2;
+      scrollParent.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+    } catch (_) {
+      // Ignore if range is invalid
     }
   };
 

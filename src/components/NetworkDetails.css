@@ -101,6 +101,24 @@
   overflow: auto;
 }
 
+::highlight(request-search) {
+  background-color: rgba(255, 215, 0, 0.35);
+}
+
+::highlight(request-search-active) {
+  background-color: rgba(255, 165, 0, 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+  ::highlight(request-search) {
+    background-color: rgba(255, 215, 0, 0.22);
+  }
+
+  ::highlight(request-search-active) {
+    background-color: rgba(255, 165, 0, 0.4);
+  }
+}
+
 .request-viewer-placeholder {
   color: var(--toolbar-input-placeholder, #999);
   font-style: italic;
