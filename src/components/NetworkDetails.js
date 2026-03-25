@@ -1,7 +1,5 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
-/* global chrome */
-
 import React, { Component } from "react";
 import ReactJson from "react-json-view";
 import Split from "react-split";
@@ -63,14 +61,6 @@ function stringifyJson(value) {
   }
 }
 
-function getRequestEditorValue(entry, isMissingPayload) {
-  if (isMissingPayload) {
-    return "";
-  }
-
-  return stringifyJson(entry?.request);
-}
-
 function buildResponseSource(response, error, isMissingPayload) {
   if (isMissingPayload) {
     return {
@@ -129,9 +119,8 @@ class NetworkDetails extends Component {
 
   responseBodyRef = React.createRef();
 
-  _pendingReplayRequestId = null;
-
-  _replayTimeoutId = null;
+  // Cached request text for search, updated when entry changes
+  _currentRequestText = "";
 
   state = {
     lastEntryId: null,
@@ -141,9 +130,6 @@ class NetworkDetails extends Component {
     responseCollapseBeforeSearch: null,
     requestSearch: createSearchState(),
     responseSearch: createSearchState(),
-    replayRequestValue: "",
-    replayRequestError: "",
-    isSubmittingReplay: false,
   };
 
   _requestSearchMatches = [];
@@ -166,9 +152,6 @@ class NetworkDetails extends Component {
     if (this._responseSearchDebounceTimer) {
       clearTimeout(this._responseSearchDebounceTimer);
     }
-    if (this._replayTimeoutId) {
-      clearTimeout(this._replayTimeoutId);
-    }
     this._clearResponseHighlights();
   }
 
@@ -183,12 +166,7 @@ class NetworkDetails extends Component {
       this._requestSearchMatches = [];
       this._responseSearchMatches = [];
       this._clearResponseHighlights();
-
-      this._pendingReplayRequestId = null;
-      if (this._replayTimeoutId) {
-        clearTimeout(this._replayTimeoutId);
-        this._replayTimeoutId = null;
-      }
+      this._currentRequestText = requestPayloadMissing ? "" : stringifyJson(entryToRender?.request);
 
       this.setState({
         lastEntryId: nextEntryId,
@@ -197,32 +175,11 @@ class NetworkDetails extends Component {
         responseCollapseBeforeSearch: null,
         requestSearch: createSearchState(),
         responseSearch: createSearchState(),
-        replayRequestValue: getRequestEditorValue(entryToRender, requestPayloadMissing),
-        replayRequestError: "",
-        isSubmittingReplay: false,
       });
 
       setTimeout(() => {
         this.setState({ isRendering: true });
       }, 0);
-    }
-
-    if (
-      this._pendingReplayRequestId != null &&
-      this.props.lastReplayResult !== prevProps.lastReplayResult &&
-      this.props.lastReplayResult?.requestId === this._pendingReplayRequestId
-    ) {
-      this._pendingReplayRequestId = null;
-      if (this._replayTimeoutId) {
-        clearTimeout(this._replayTimeoutId);
-        this._replayTimeoutId = null;
-      }
-
-      const newState = { isSubmittingReplay: false };
-      if (!this.props.lastReplayResult.ok) {
-        newState.replayRequestError = this.props.lastReplayResult.message || "Replay failed.";
-      }
-      this.setState(newState);
     }
   }
 
@@ -244,27 +201,20 @@ class NetworkDetails extends Component {
 
     const { cachedEntry, entryToRender } = getRenderableEntry(entry);
     const {
-      request,
       response,
       error,
       timing,
       payloadBytes,
-      requestId,
       transport,
       replayedFromRequestId,
     } = entryToRender;
 
     const requestPayloadMissing = !!entry.entryId && !cachedEntry && entry.request === true;
     const responsePayloadMissing = !!entry.entryId && !cachedEntry && entry.response === true;
-    const requestUnavailableReason = this._getReplayUnavailableReason(entryToRender, {
-      isMissingPayload: requestPayloadMissing,
-      isRequestTruncated: !!request?.__truncated,
-      requestId,
-    });
+    const requestText = requestPayloadMissing ? "" : stringifyJson(entryToRender?.request);
     const responseSource = buildResponseSource(response, error, responsePayloadMissing);
     const hasResponsePayload = !responsePayloadMissing && (response != null || error != null);
     const responseText = stringifyJson(responseSource);
-    const requestText = this.state.replayRequestValue;
 
     return (
       <>
@@ -277,7 +227,7 @@ class NetworkDetails extends Component {
             gutterSize={6}
             onDragEnd={this._onPaneResize}
           >
-            {this._renderRequestPane(entryToRender, requestText, requestUnavailableReason, requestPayloadMissing)}
+            {this._renderRequestPane(requestText, requestPayloadMissing)}
             {this._renderResponsePane(
               responseSource,
               responseText,
@@ -330,8 +280,8 @@ class NetworkDetails extends Component {
     );
   };
 
-  _renderRequestPane(entry, requestText, requestUnavailableReason, requestPayloadMissing) {
-    const { requestSearch, replayRequestError, isSubmittingReplay } = this.state;
+  _renderRequestPane(requestText, requestPayloadMissing) {
+    const { requestSearch } = this.state;
     const canCopyRequest = !requestPayloadMissing && !!requestText;
     const canSearchRequest = !!requestText;
 
@@ -340,9 +290,7 @@ class NetworkDetails extends Component {
         <div className="details-pane-header">
           <div className="details-pane-title-group">
             <div className="details-pane-title">Request</div>
-            <div className="details-pane-subtitle">
-              {requestUnavailableReason ? "Read only" : "Editable before retry"}
-            </div>
+            <div className="details-pane-subtitle">Captured request payload</div>
           </div>
           <div className="details-pane-actions">
             <button
@@ -361,30 +309,6 @@ class NetworkDetails extends Component {
             >
               Search
             </button>
-            <button
-              className="json-action-button"
-              type="button"
-              onClick={this._formatReplayRequest}
-              disabled={!requestText}
-            >
-              Format
-            </button>
-            <button
-              className="json-action-button"
-              type="button"
-              onClick={() => this._resetReplayRequest(entry, requestPayloadMissing)}
-              disabled={!entry?.request || requestPayloadMissing}
-            >
-              Reset
-            </button>
-            <button
-              className="json-action-button replay-submit-button"
-              type="button"
-              onClick={this._retryRequest}
-              disabled={!!requestUnavailableReason || isSubmittingReplay}
-            >
-              {isSubmittingReplay ? "Retrying..." : "Retry call"}
-            </button>
           </div>
         </div>
         {requestSearch.isOpen && (
@@ -400,24 +324,21 @@ class NetworkDetails extends Component {
             onClose={this._closeRequestSearch}
           />
         )}
-        {requestUnavailableReason && (
-          <div className="payload-warning pane-warning">{requestUnavailableReason}</div>
+        {requestPayloadMissing && (
+          <div className="payload-warning pane-warning">
+            Full request payload is no longer available (evicted from cache).
+          </div>
         )}
         <div className="details-pane-body">
           <textarea
             ref={this.requestEditorRef}
             className="request-editor"
             value={requestText}
-            onChange={this._onReplayRequestChange}
-            readOnly={!!requestUnavailableReason}
+            readOnly
+            onChange={() => {}}
             spellCheck={false}
             placeholder="No request payload captured."
           />
-          {replayRequestError && (
-            <div className="payload-warning pane-warning pane-error">
-              {replayRequestError}
-            </div>
-          )}
         </div>
       </div>
     );
@@ -506,26 +427,6 @@ class NetworkDetails extends Component {
     );
   }
 
-  _getReplayUnavailableReason(entry, { isMissingPayload, isRequestTruncated, requestId }) {
-    if (!entry?.request) {
-      return "This entry does not include a request payload.";
-    }
-
-    if (isMissingPayload) {
-      return "Replay is unavailable because the request payload has been evicted from cache.";
-    }
-
-    if (isRequestTruncated) {
-      return "Replay is unavailable because the request payload was truncated.";
-    }
-
-    if (!requestId) {
-      return "Replay is unavailable because this call is missing its request identifier.";
-    }
-
-    return "";
-  }
-
   _onPaneResize = (sizes) => {
     this.setState({ paneSizes: sizes });
     setStorageItem(PANE_SIZE_STORAGE_KEY, sizes);
@@ -603,131 +504,6 @@ class NetworkDetails extends Component {
     }
   }
 
-  _resetReplayRequest = (entry, isMissingPayload) => {
-    this.setState({
-      replayRequestValue: getRequestEditorValue(entry, isMissingPayload),
-      replayRequestError: "",
-    }, () => {
-      if (this.state.requestSearch.isOpen && this.state.requestSearch.query) {
-        this._performRequestSearch(this.state.requestSearch.query);
-      }
-    });
-  };
-
-  _onReplayRequestChange = (event) => {
-    const replayRequestValue = event.target.value;
-
-    this.setState({
-      replayRequestValue,
-      replayRequestError: "",
-    }, () => {
-      if (this.state.requestSearch.isOpen && this.state.requestSearch.query) {
-        this._performRequestSearch(this.state.requestSearch.query);
-      }
-    });
-  };
-
-  _formatReplayRequest = () => {
-    try {
-      const parsed = JSON.parse(this.state.replayRequestValue);
-      this.setState({
-        replayRequestValue: JSON.stringify(parsed, null, 2),
-        replayRequestError: "",
-      }, () => {
-        if (this.state.requestSearch.isOpen && this.state.requestSearch.query) {
-          this._performRequestSearch(this.state.requestSearch.query);
-        }
-      });
-    } catch (error) {
-      this.setState({
-        replayRequestError: `Invalid JSON: ${error.message}`,
-      });
-    }
-  };
-
-  _retryRequest = () => {
-    const { entryToRender } = getRenderableEntry(this.props.entry);
-    const unavailableReason = this._getReplayUnavailableReason(entryToRender, {
-      isMissingPayload: !!this.props.entry?.entryId && !getNetworkEntry(this.props.entry.entryId) && this.props.entry.request === true,
-      isRequestTruncated: !!entryToRender?.request?.__truncated,
-      requestId: entryToRender?.requestId,
-    });
-
-    if (unavailableReason) {
-      this.setState({ replayRequestError: unavailableReason });
-      return;
-    }
-
-    let parsedRequest;
-    try {
-      parsedRequest = JSON.parse(this.state.replayRequestValue);
-    } catch (error) {
-      this.setState({
-        replayRequestError: `Invalid JSON: ${error.message}`,
-      });
-      return;
-    }
-
-    this.setState({
-      isSubmittingReplay: true,
-      replayRequestError: "",
-    });
-
-    this._pendingReplayRequestId = entryToRender.requestId;
-
-    if (this._replayTimeoutId) {
-      clearTimeout(this._replayTimeoutId);
-    }
-    this._replayTimeoutId = setTimeout(() => {
-      this._pendingReplayRequestId = null;
-      this._replayTimeoutId = null;
-      if (this.state.isSubmittingReplay) {
-        this.setState({
-          isSubmittingReplay: false,
-          replayRequestError: "No response from the interceptor. The page may have been refreshed since this call was made.",
-        });
-      }
-    }, 15000);
-
-    // Escape U+2028/U+2029 which are valid JSON but break JS string literals when eval'd
-    const safeJson = JSON.stringify({
-      type: "__GRPCWEB_DEVTOOLS_REPLAY__",
-      requestId: entryToRender.requestId,
-      transport: entryToRender.transport,
-      request: parsedRequest,
-    }).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
-
-    if (!chrome?.devtools?.inspectedWindow?.eval) {
-      this._pendingReplayRequestId = null;
-      if (this._replayTimeoutId) {
-        clearTimeout(this._replayTimeoutId);
-        this._replayTimeoutId = null;
-      }
-      this.setState({
-        isSubmittingReplay: false,
-        replayRequestError: "Retry is only available inside the Chrome DevTools panel.",
-      });
-      return;
-    }
-
-    chrome.devtools.inspectedWindow.eval(
-      `window.postMessage(${safeJson}, "*")`,
-      (_, exceptionInfo) => {
-        if (exceptionInfo?.isException) {
-          this._pendingReplayRequestId = null;
-          if (this._replayTimeoutId) {
-            clearTimeout(this._replayTimeoutId);
-            this._replayTimeoutId = null;
-          }
-          this.setState({
-            isSubmittingReplay: false,
-            replayRequestError: exceptionInfo.value || "Failed to send retry command to the page.",
-          });
-        }
-      }
-    );
-  };
-
   _openRequestSearch = () => {
     this.setState((prevState) => ({
       requestSearch: {
@@ -762,7 +538,7 @@ class NetworkDetails extends Component {
   };
 
   _performRequestSearch = (query) => {
-    const matches = findAllMatches(this.state.replayRequestValue, query);
+    const matches = findAllMatches(this._currentRequestText, query);
     this._requestSearchMatches = matches;
 
     this.setState((prevState) => ({
@@ -823,7 +599,7 @@ class NetworkDetails extends Component {
     editor.setSelectionRange(match.start, match.end);
 
     const lineHeight = parseFloat(window.getComputedStyle(editor).lineHeight) || 18;
-    const lineNumber = this.state.replayRequestValue.slice(0, match.start).split("\n").length - 1;
+    const lineNumber = this._currentRequestText.slice(0, match.start).split("\n").length - 1;
     const targetTop = Math.max((lineNumber * lineHeight) - (editor.clientHeight / 2), 0);
     editor.scrollTop = targetTop;
   };
@@ -993,7 +769,6 @@ class NetworkDetails extends Component {
 const mapStateToProps = (state) => ({
   entry: state.network.selectedEntry,
   defaultCollapsed: state.toolbar.defaultCollapsed,
-  lastReplayResult: state.network.lastReplayResult,
 });
 
 const mapDispatchToProps = {

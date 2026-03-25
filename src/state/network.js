@@ -47,7 +47,6 @@ const networkSlice = createSlice({
     log: [],
     _filterValue: "",
     _allLog: [],
-    lastReplayResult: null,
   },
   reducers: {
     networkLogBatch(state, action) {
@@ -98,9 +97,6 @@ const networkSlice = createSlice({
     setPreserveLog(state, action) {
       state.preserveLog = action.payload;
     },
-    setLastReplayResult(state, action) {
-      state.lastReplayResult = action.payload;
-    },
   },
   extraReducers: {
     [setFilterValue]: (state, action) => {
@@ -127,7 +123,7 @@ const networkSlice = createSlice({
 });
 
 const { actions, reducer } = networkSlice;
-export const { networkLog, networkLogBatch, selectLogEntry, clearLog, setPreserveLog, setLastReplayResult } = actions;
+export const { networkLog, networkLogBatch, selectLogEntry, clearLog, setPreserveLog } = actions;
 
 function buildSummaryEntry(entry) {
   return {
