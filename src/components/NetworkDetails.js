@@ -682,17 +682,22 @@ class NetworkDetails extends Component {
       this._pendingReplayRequestId = null;
       this._replayTimeoutId = null;
       if (this.state.isSubmittingReplay) {
-        this.setState({ isSubmittingReplay: false });
+        this.setState({
+          isSubmittingReplay: false,
+          replayRequestError: "No response from the interceptor. The page may have been refreshed since this call was made.",
+        });
       }
     }, 15000);
 
-    const sent = window.sendGrpcReplayRequest?.({
+    // Escape U+2028/U+2029 which are valid JSON but break JS string literals when eval'd
+    const safeJson = JSON.stringify({
+      type: "__GRPCWEB_DEVTOOLS_REPLAY__",
       requestId: entryToRender.requestId,
       transport: entryToRender.transport,
       request: parsedRequest,
-    });
+    }).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 
-    if (!sent) {
+    if (!chrome?.devtools?.inspectedWindow?.eval) {
       this._pendingReplayRequestId = null;
       if (this._replayTimeoutId) {
         clearTimeout(this._replayTimeoutId);
@@ -700,9 +705,27 @@ class NetworkDetails extends Component {
       }
       this.setState({
         isSubmittingReplay: false,
-        replayRequestError: "Cannot retry: not connected to the page. Use the Reconnect button.",
+        replayRequestError: "Retry is only available inside the Chrome DevTools panel.",
       });
+      return;
     }
+
+    chrome.devtools.inspectedWindow.eval(
+      `window.postMessage(${safeJson}, "*")`,
+      (_, exceptionInfo) => {
+        if (exceptionInfo?.isException) {
+          this._pendingReplayRequestId = null;
+          if (this._replayTimeoutId) {
+            clearTimeout(this._replayTimeoutId);
+            this._replayTimeoutId = null;
+          }
+          this.setState({
+            isSubmittingReplay: false,
+            replayRequestError: exceptionInfo.value || "Failed to send retry command to the page.",
+          });
+        }
+      }
+    );
   };
 
   _openRequestSearch = () => {
