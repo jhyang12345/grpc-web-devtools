@@ -4,6 +4,10 @@ import React, { Component } from "react";
 import "./SearchBar.css";
 
 class SearchBar extends Component {
+  // Input value is managed internally so typing never triggers parent re-renders.
+  // The parent only re-renders when matchCount / currentIndex change (after debounce).
+  state = { value: "" };
+
   inputRef = React.createRef();
 
   componentDidMount() {
@@ -17,7 +21,6 @@ class SearchBar extends Component {
     const {
       compact,
       placeholder = "Search JSON",
-      query,
       matchCount,
       currentIndex,
       onChange,
@@ -26,6 +29,7 @@ class SearchBar extends Component {
       onClose,
     } = this.props;
 
+    const { value } = this.state;
     const classes = `search-bar ${compact ? "search-bar-compact" : ""}`.trim();
 
     return (
@@ -35,8 +39,12 @@ class SearchBar extends Component {
           type="text"
           className="search-input"
           placeholder={placeholder}
-          value={query}
-          onChange={(event) => onChange(event.target.value)}
+          value={value}
+          onChange={(event) => {
+            const next = event.target.value;
+            this.setState({ value: next });
+            onChange(next);
+          }}
           onKeyDown={this._handleKeyDown}
         />
         <span className="search-matches">

@@ -1,6 +1,6 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
-import React, { Component } from "react";
+import React, { Component, PureComponent } from "react";
 import ReactJson from "react-json-view";
 import Split from "react-split";
 import { connect } from "react-redux";
@@ -10,6 +10,27 @@ import { getStorageItem, setStorageItem } from "../utils/localStorage";
 import MethodHeader from "./MethodHeader";
 import SearchBar from "./SearchBar";
 import "./NetworkDetails.css";
+
+// Isolated so it never re-renders when parent search state changes.
+class ResponseJsonContent extends PureComponent {
+  render() {
+    const { isRendering, responseSource, responseCollapsed, theme } = this.props;
+    if (!isRendering) {
+      return <div className="payload-warning">Loading payload...</div>;
+    }
+    return (
+      <ReactJson
+        name={false}
+        theme={theme}
+        style={{ backgroundColor: "transparent" }}
+        enableClipboard={false}
+        collapsed={responseCollapsed}
+        collapseStringsAfterLength={200}
+        src={responseSource}
+      />
+    );
+  }
+}
 
 const DEFAULT_PANE_SIZES = [33, 67];
 const PANE_SIZE_STORAGE_KEY = "detailsPaneSizes";
@@ -31,7 +52,6 @@ function formatDuration(ms) {
 function createSearchState() {
   return {
     isOpen: false,
-    query: "",
     matchCount: 0,
     currentIndex: -1,
   };
@@ -354,7 +374,6 @@ class NetworkDetails extends Component {
           <SearchBar
             compact
             placeholder="Search request"
-            query={requestSearch.query}
             matchCount={requestSearch.matchCount}
             currentIndex={requestSearch.currentIndex}
             onChange={this._onRequestSearchChange}
@@ -423,7 +442,6 @@ class NetworkDetails extends Component {
           <SearchBar
             compact
             placeholder="Search response"
-            query={responseSearch.query}
             matchCount={responseSearch.matchCount}
             currentIndex={responseSearch.currentIndex}
             onChange={this._onResponseSearchChange}
@@ -443,19 +461,12 @@ class NetworkDetails extends Component {
           </div>
         )}
         <div className="details-pane-body details-pane-json" ref={this.responseBodyRef}>
-          {isRendering ? (
-            <ReactJson
-              name={false}
-              theme={theme}
-              style={{ backgroundColor: "transparent" }}
-              enableClipboard={false}
-              collapsed={responseCollapsed}
-              collapseStringsAfterLength={200}
-              src={responseSource}
-            />
-          ) : (
-            <div className="payload-warning">Loading payload...</div>
-          )}
+          <ResponseJsonContent
+            isRendering={isRendering}
+            responseSource={responseSource}
+            responseCollapsed={responseCollapsed}
+            theme={theme}
+          />
         </div>
       </div>
     );
@@ -556,17 +567,9 @@ class NetworkDetails extends Component {
   };
 
   _onRequestSearchChange = (value) => {
-    this.setState((prevState) => ({
-      requestSearch: {
-        ...prevState.requestSearch,
-        query: value,
-      },
-    }));
-
     if (this._requestSearchDebounceTimer) {
       clearTimeout(this._requestSearchDebounceTimer);
     }
-
     this._requestSearchDebounceTimer = setTimeout(() => {
       this._performRequestSearch(value);
     }, 150);
@@ -659,11 +662,7 @@ class NetworkDetails extends Component {
         ? prevState.responseCollapsed
         : prevState.responseCollapseBeforeSearch,
       responseCollapsed: false,
-    }), () => {
-      if (this.state.responseSearch.query) {
-        this._performResponseSearch(this.state.responseSearch.query);
-      }
-    });
+    }));
   };
 
   _closeResponseSearch = () => {
@@ -679,17 +678,9 @@ class NetworkDetails extends Component {
   };
 
   _onResponseSearchChange = (value) => {
-    this.setState((prevState) => ({
-      responseSearch: {
-        ...prevState.responseSearch,
-        query: value,
-      },
-    }));
-
     if (this._responseSearchDebounceTimer) {
       clearTimeout(this._responseSearchDebounceTimer);
     }
-
     this._responseSearchDebounceTimer = setTimeout(() => {
       this._performResponseSearch(value);
     }, 150);
