@@ -280,10 +280,45 @@ class NetworkDetails extends Component {
     );
   };
 
+  _renderRequestHighlighted(text) {
+    const { currentIndex } = this.state.requestSearch;
+    const matches = this._requestSearchMatches;
+
+    if (!text || !matches || matches.length === 0) {
+      return text;
+    }
+
+    const parts = [];
+    let lastIndex = 0;
+
+    matches.forEach((match, idx) => {
+      if (match.start > lastIndex) {
+        parts.push(text.slice(lastIndex, match.start));
+      }
+      parts.push(
+        <span
+          key={idx}
+          className={idx === currentIndex ? "search-match-active" : "search-match"}
+          data-match-index={idx}
+        >
+          {text.slice(match.start, match.end)}
+        </span>
+      );
+      lastIndex = match.end;
+    });
+
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+
+    return parts;
+  }
+
   _renderRequestPane(requestText, requestPayloadMissing) {
     const { requestSearch } = this.state;
     const canCopyRequest = !requestPayloadMissing && !!requestText;
     const canSearchRequest = !!requestText;
+    const showHighlights = requestSearch.isOpen && !!requestSearch.query;
 
     return (
       <div className="details-pane request-pane" ref={this.requestPaneRef}>
@@ -330,15 +365,12 @@ class NetworkDetails extends Component {
           </div>
         )}
         <div className="details-pane-body">
-          <textarea
-            ref={this.requestEditorRef}
-            className="request-editor"
-            value={requestText}
-            readOnly
-            onChange={() => {}}
-            spellCheck={false}
-            placeholder="No request payload captured."
-          />
+          <pre ref={this.requestEditorRef} className="request-viewer">
+            {requestText
+              ? (showHighlights ? this._renderRequestHighlighted(requestText) : requestText)
+              : <span className="request-viewer-placeholder">No request payload captured.</span>
+            }
+          </pre>
         </div>
       </div>
     );
@@ -589,19 +621,15 @@ class NetworkDetails extends Component {
   };
 
   _scrollRequestEditorToMatch = (index) => {
-    const editor = this.requestEditorRef.current;
-    const match = this._requestSearchMatches[index];
-
-    if (!editor || !match) {
+    const container = this.requestEditorRef.current;
+    if (!container) {
       return;
     }
 
-    editor.setSelectionRange(match.start, match.end);
-
-    const lineHeight = parseFloat(window.getComputedStyle(editor).lineHeight) || 18;
-    const lineNumber = this._currentRequestText.slice(0, match.start).split("\n").length - 1;
-    const targetTop = Math.max((lineNumber * lineHeight) - (editor.clientHeight / 2), 0);
-    editor.scrollTop = targetTop;
+    const matchEl = container.querySelector(`[data-match-index="${index}"]`);
+    if (matchEl) {
+      matchEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   };
 
   _openResponseSearch = () => {
