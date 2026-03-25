@@ -110,8 +110,15 @@ if (chrome) {
 
     window.addEventListener('unload', _cleanupListeners);
 
-    // Export setupPanelPortIfNeeded for manual reconnection from Toolbar
+    // Export helpers for components that need panel-level port access
     window.setupPanelPortIfNeeded = setupPanelPortIfNeeded;
+    window.sendGrpcReplayRequest = (data) => {
+      if (port) {
+        port.postMessage({ action: "replayGrpcCall", target: "content", tabId, data });
+        return true;
+      }
+      return false;
+    };
 
     // Periodically check connection status with heartbeat
     setInterval(() => {

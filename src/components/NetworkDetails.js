@@ -668,15 +668,6 @@ class NetworkDetails extends Component {
       return;
     }
 
-    if (!chrome?.devtools?.inspectedWindow?.eval) {
-      this.props.showToast({
-        message: "Unable to send replay command to the inspected tab.",
-        type: "error",
-        autoDismiss: 5000,
-      });
-      return;
-    }
-
     this.setState({
       isSubmittingReplay: true,
       replayRequestError: "",
@@ -695,31 +686,23 @@ class NetworkDetails extends Component {
       }
     }, 15000);
 
-    const replayCommand = JSON.stringify({
-      type: "__GRPCWEB_DEVTOOLS_REPLAY__",
+    const sent = window.sendGrpcReplayRequest?.({
       requestId: entryToRender.requestId,
       transport: entryToRender.transport,
       request: parsedRequest,
     });
 
-    chrome.devtools.inspectedWindow.eval(
-      `(function () { window.postMessage(${replayCommand}, "*"); return true; })()`,
-      (_, exceptionInfo) => {
-        if (exceptionInfo?.isException) {
-          this._pendingReplayRequestId = null;
-          if (this._replayTimeoutId) {
-            clearTimeout(this._replayTimeoutId);
-            this._replayTimeoutId = null;
-          }
-          this.setState({ isSubmittingReplay: false });
-          this.props.showToast({
-            message: exceptionInfo.value || "Replay request was rejected.",
-            type: "error",
-            autoDismiss: 5000,
-          });
-        }
+    if (!sent) {
+      this._pendingReplayRequestId = null;
+      if (this._replayTimeoutId) {
+        clearTimeout(this._replayTimeoutId);
+        this._replayTimeoutId = null;
       }
-    );
+      this.setState({
+        isSubmittingReplay: false,
+        replayRequestError: "Cannot retry: not connected to the page. Use the Reconnect button.",
+      });
+    }
   };
 
   _openRequestSearch = () => {
