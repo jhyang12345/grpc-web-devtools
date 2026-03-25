@@ -7,6 +7,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import App from './App';
 import './index.css';
 import networkReducer, { logNetworkEntry, clearLogAndCache } from './state/network';
+import { injectFakeData } from './fakeData';
 import toolbarReducer, { setConnectionStatus } from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 import toastReducer, { showToast } from './state/toast';
@@ -83,6 +84,9 @@ const store = configureStore({
     toast: toastReducer,
   }
 });
+
+// Populate with fake data for Chrome Web Store screenshots
+injectFakeData(store);
 
 // Setup port for communication with the background script
 if (chrome) {
