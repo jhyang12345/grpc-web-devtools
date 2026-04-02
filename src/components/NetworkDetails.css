@@ -171,7 +171,8 @@
 
 .payload-metadata-row span:last-child {
   text-align: right;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .json-action-button {

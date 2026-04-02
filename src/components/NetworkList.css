@@ -86,20 +86,53 @@
 .data-grid .data-row {
   color: var(--toolbar-color);
   cursor: pointer;
-  height: 21px;
-  vertical-align: middle;
+  height: 36px;
+  padding: 4px 6px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.data-grid .data-row-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.data-grid .data-row-title {
+  min-width: 0;
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
-  line-height: 18px;
-  padding: 1px 4px;
+}
+
+.data-grid .data-row-meta {
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--text-secondary-color);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  padding-left: 14px;
+}
+
+.data-grid .data-row.selected .data-row-meta {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.data-grid .data-row.error .data-row-meta {
+  color: inherit;
+  opacity: 0.85;
 }
 
 .data-grid .data-row svg {
-  vertical-align: middle;
   fill: var(--network-row-icon-fill);
   margin-right: 4px;
   width: 10px;
+  flex-shrink: 0;
 }
 
 .data-grid .data-container {

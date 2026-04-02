@@ -9,7 +9,7 @@ import './index.css';
 import networkReducer, { logNetworkEntry, clearLogAndCache } from './state/network';
 import toolbarReducer, { setConnectionStatus } from './state/toolbar';
 import clipboardReducer from './state/clipboard';
-import toastReducer, { showToast } from './state/toast';
+import toastReducer from './state/toast';
 
 var port, tabId
 

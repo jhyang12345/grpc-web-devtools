@@ -131,6 +131,7 @@ function buildSummaryEntry(entry) {
     method: entry.method,
     methodType: entry.methodType,
     transport: entry.transport,
+    timing: entry.timing,
     request: !!entry.request,
     response: !!entry.response,
     error: entry.error,

@@ -9,6 +9,8 @@ import NetworkListRow from './NetworkListRow';
 
 import './NetworkList.css';
 
+const ROW_HEIGHT = 36;
+
 class NetworkList extends Component {
   constructor(props) {
     super(props);
@@ -41,10 +43,10 @@ class NetworkList extends Component {
 
     const list = this.listRef.current;
     const scrollOffset = list.state.scrollOffset;
-    const scrollHeight = this.props.network.log.length * 21; // 21px per row
+    const scrollHeight = this.props.network.log.length * ROW_HEIGHT;
     const visibleHeight = list.props.height;
 
-    // Auto-scroll if within 100px of bottom (approximately 5 rows)
+    // Auto-scroll if within a few rows of bottom
     const distanceFromBottom = scrollHeight - scrollOffset - visibleHeight;
     return distanceFromBottom < 100;
   }
@@ -96,7 +98,7 @@ class NetworkList extends Component {
                     className="data"
                     itemCount={network.log.length}
                     height={height}
-                    itemSize={21}
+                    itemSize={ROW_HEIGHT}
                     itemData={network.log}
                     overscanCount={15}
                   >

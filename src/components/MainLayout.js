@@ -7,40 +7,55 @@ import './MainLayout.css';
 import NetworkDetails from './NetworkDetails';
 import NetworkEmpty from './NetworkEmpty';
 import NetworkList from './NetworkList';
-class MainLayout extends Component {
 
-  _renderContent() {
-    const { isEmpty } = this.props;
-    if (isEmpty) {
-      return <NetworkEmpty />;
+class MainLayout extends Component {
+  _renderDetailsPane() {
+    const { hasVisibleEntries, hasCapturedEntries, filterValue, hasSelectedEntry } = this.props;
+
+    if (!hasVisibleEntries) {
+      return (
+        <NetworkEmpty
+          mode={hasCapturedEntries ? 'filtered-empty' : 'empty'}
+          filterValue={filterValue}
+        />
+      );
     }
 
-    return (
-      <Split
-        className="hbox flex-auto"
-        sizes={[30, 70]}
-        gutterSize={5}
-        cursor="ew-resize"
-      >
-        <NetworkList />
-        <NetworkDetails />
-      </Split>
-    );
+    if (!hasSelectedEntry) {
+      return <NetworkEmpty mode="no-selection" />;
+    }
 
+    return <NetworkDetails />;
   }
 
   render() {
-
-
     return (
       <div className="vbox flex-auto">
         <div className="shadow-split-widget hbox widget">
-          {this._renderContent()}
+          <Split
+            className="hbox flex-auto main-layout-split"
+            sizes={[30, 70]}
+            gutterSize={5}
+            cursor="ew-resize"
+          >
+            <div className="main-layout-pane main-layout-pane-list">
+              <NetworkList />
+            </div>
+            <div className="main-layout-pane main-layout-pane-details">
+              {this._renderDetailsPane()}
+            </div>
+          </Split>
         </div>
       </div>
     );
   }
 }
 
-const mapStateToProps = state => ({ isEmpty: state.network.log.length === 0 })
-export default connect(mapStateToProps)(MainLayout)
+const mapStateToProps = (state) => ({
+  hasVisibleEntries: state.network.log.length > 0,
+  hasCapturedEntries: state.network._allLog.length > 0,
+  hasSelectedEntry: !!state.network.selectedEntry,
+  filterValue: state.toolbar.filterValue,
+});
+
+export default connect(mapStateToProps)(MainLayout);

@@ -4,6 +4,23 @@
   overflow: hidden;
 }
 
+.main-layout-split {
+  min-width: 0;
+  min-height: 0;
+}
+
+.main-layout-pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.main-layout-pane-list,
+.main-layout-pane-details {
+  flex: 1 1 auto;
+}
+
 .shadow-split-widget.hbox > .shadow-split-widget-sidebar {
   border: 0;
   border-right: 1px solid var(--divider-color);

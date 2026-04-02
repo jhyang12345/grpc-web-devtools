@@ -271,6 +271,7 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     const methodType = "server_streaming";
     this._requestId = requestId;
     this._startTime = performance.now();
+    this._requestTimestamp = Date.now();
     this._messageCount = 0;
     this._firstMessageTime = null;
     this._lastMessageTime = null;
@@ -291,6 +292,9 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
       request: requestObj,
       canReplay: true,
       replayedFromRequestId,
+      timing: {
+        requestTimestamp: this._requestTimestamp,
+      },
     });
     stream.on('data', response => {
       const currentTime = performance.now();
@@ -320,6 +324,8 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
           startTime: this._startTime,
           endTime: currentTime,
           duration: currentTime - this._startTime,
+          requestTimestamp: this._requestTimestamp,
+          endTimestamp: Date.now(),
           firstMessageTime: this._firstMessageTime,
           lastMessageTime: this._lastMessageTime,
           messageCount: this._messageCount,
@@ -343,6 +349,8 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
             startTime: this._startTime,
             endTime: endTime,
             duration: endTime - this._startTime,
+            requestTimestamp: this._requestTimestamp,
+            endTimestamp: Date.now(),
             firstMessageTime: this._firstMessageTime,
             lastMessageTime: this._lastMessageTime,
             messageCount: this._messageCount,
@@ -370,6 +378,8 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
             startTime: this._startTime,
             endTime: endTime,
             duration: endTime - this._startTime,
+            requestTimestamp: this._requestTimestamp,
+            endTimestamp: Date.now(),
             firstMessageTime: this._firstMessageTime,
             lastMessageTime: this._lastMessageTime,
             messageCount: this._messageCount,
@@ -393,6 +403,7 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     var posted = false;
     var requestId = __grpcWebDevtoolsRequestId++;
     var startTime = performance.now();
+    var requestTimestamp = Date.now();
 
     registerReplay(requestId, function (editedRequest) {
       const nextRequest = buildGrpcWebRequest(method, request, editedRequest);
@@ -434,6 +445,8 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
             startTime: startTime,
             endTime: endTime,
             duration: endTime - startTime,
+            requestTimestamp: requestTimestamp,
+            endTimestamp: Date.now(),
           },
         });
         posted = true;

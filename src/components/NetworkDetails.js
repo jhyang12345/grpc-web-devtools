@@ -49,6 +49,19 @@ function formatDuration(ms) {
   return `${(ms / 1000).toFixed(2)} s`;
 }
 
+function padTimePart(value, size = 2) {
+  return String(value).padStart(size, "0");
+}
+
+function formatTimestamp(timestamp) {
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${padTimePart(date.getMonth() + 1)}-${padTimePart(date.getDate())} ${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}:${padTimePart(date.getSeconds())}.${padTimePart(date.getMilliseconds(), 3)}`;
+}
+
 function createSearchState() {
   return {
     isOpen: false,
@@ -265,6 +278,18 @@ class NetworkDetails extends Component {
             <div className="payload-metadata-row">
               <span>Duration</span>
               <span>{formatDuration(timing.duration)}</span>
+            </div>
+          )}
+          {timing?.requestTimestamp != null && (
+            <div className="payload-metadata-row">
+              <span>Requested at</span>
+              <span title={formatTimestamp(timing.requestTimestamp)}>{formatTimestamp(timing.requestTimestamp)}</span>
+            </div>
+          )}
+          {timing?.endTimestamp != null && (
+            <div className="payload-metadata-row">
+              <span>Completed at</span>
+              <span title={formatTimestamp(timing.endTimestamp)}>{formatTimestamp(timing.endTimestamp)}</span>
             </div>
           )}
           {timing?.messageCount != null && (
