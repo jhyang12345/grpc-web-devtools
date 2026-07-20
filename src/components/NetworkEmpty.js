@@ -27,10 +27,7 @@ function getEmptyStateContent(mode, filterValue) {
   return {
     title: 'Recording gRPC network activity...',
     detail: `Perform a request or hit ${modifier} R to record the reload.`,
-    link: {
-      href: 'https://github.com/SafetyCulture/grpc-web-devtools',
-      label: 'Learn more',
-    },
+    link: null,
   };
 }
 

@@ -270,11 +270,8 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     this._callbacks = {};
     const methodType = "server_streaming";
     this._requestId = requestId;
-    this._startTime = performance.now();
     this._requestTimestamp = Date.now();
     this._messageCount = 0;
-    this._firstMessageTime = null;
-    this._lastMessageTime = null;
 
     // Serialize request with error handling
     let requestObj;
@@ -297,12 +294,7 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
       },
     });
     stream.on('data', response => {
-      const currentTime = performance.now();
       this._messageCount++;
-      if (this._firstMessageTime === null) {
-        this._firstMessageTime = currentTime;
-      }
-      this._lastMessageTime = currentTime;
 
       // Serialize response with error handling
       let responseObj;
@@ -321,13 +313,7 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
         canReplay: true,
         replayedFromRequestId,
         timing: {
-          startTime: this._startTime,
-          endTime: currentTime,
-          duration: currentTime - this._startTime,
           requestTimestamp: this._requestTimestamp,
-          endTimestamp: Date.now(),
-          firstMessageTime: this._firstMessageTime,
-          lastMessageTime: this._lastMessageTime,
           messageCount: this._messageCount,
         },
       });
@@ -336,7 +322,6 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
       }
     });
     stream.on('status', status => {
-      const endTime = performance.now();
       if (status.code === 0) {
         postGrpcEvent({
           method,
@@ -346,13 +331,7 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
           canReplay: true,
           replayedFromRequestId,
           timing: {
-            startTime: this._startTime,
-            endTime: endTime,
-            duration: endTime - this._startTime,
             requestTimestamp: this._requestTimestamp,
-            endTimestamp: Date.now(),
-            firstMessageTime: this._firstMessageTime,
-            lastMessageTime: this._lastMessageTime,
             messageCount: this._messageCount,
           },
         });
@@ -362,7 +341,6 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
       }
     });
     stream.on('error', error => {
-      const endTime = performance.now();
       if (error.code !== 0) {
         postGrpcEvent({
           method,
@@ -375,13 +353,7 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
           canReplay: true,
           replayedFromRequestId,
           timing: {
-            startTime: this._startTime,
-            endTime: endTime,
-            duration: endTime - this._startTime,
             requestTimestamp: this._requestTimestamp,
-            endTimestamp: Date.now(),
-            firstMessageTime: this._firstMessageTime,
-            lastMessageTime: this._lastMessageTime,
             messageCount: this._messageCount,
           },
         });
@@ -402,7 +374,6 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
   function executeUnaryCall(clientInstance, method, request, metadata, methodInfo, callback, replayedFromRequestId) {
     var posted = false;
     var requestId = __grpcWebDevtoolsRequestId++;
-    var startTime = performance.now();
     var requestTimestamp = Date.now();
 
     registerReplay(requestId, function (editedRequest) {
@@ -411,7 +382,6 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
     });
 
     var newCallback = function (err, response) {
-      var endTime = performance.now();
       if (!posted) {
         // Serialize request and response with error handling
         let requestObj;
@@ -442,11 +412,7 @@ window.__GRPCWEB_DEVTOOLS__ = function (clients) {
           canReplay: true,
           replayedFromRequestId,
           timing: {
-            startTime: startTime,
-            endTime: endTime,
-            duration: endTime - startTime,
             requestTimestamp: requestTimestamp,
-            endTimestamp: Date.now(),
           },
         });
         posted = true;

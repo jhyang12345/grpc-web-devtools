@@ -42,13 +42,6 @@ function formatBytes(value) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatDuration(ms) {
-  if (!Number.isFinite(ms)) return "";
-  if (ms < 1) return `${(ms * 1000).toFixed(0)} us`;
-  if (ms < 1000) return `${ms.toFixed(0)} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
-}
-
 function padTimePart(value, size = 2) {
   return String(value).padStart(size, "0");
 }
@@ -175,6 +168,20 @@ class NetworkDetails extends Component {
 
   componentDidMount() {
     document.addEventListener("keydown", this._handleKeydown, true);
+
+    // componentDidUpdate doesn't fire on initial mount. If the component mounts with an entry
+    // already selected (MainLayout only renders us when hasSelectedEntry=true), we need to
+    // kick off the isRendering transition here — otherwise isRendering stays false forever.
+    const nextEntryId = this.props.entry?.entryId ?? null;
+    if (nextEntryId !== null) {
+      const { cachedEntry, entryToRender } = getRenderableEntry(this.props.entry);
+      const requestPayloadMissing = !!this.props.entry?.entryId && !cachedEntry && this.props.entry.request === true;
+      this._currentRequestText = requestPayloadMissing ? "" : stringifyJson(entryToRender?.request);
+      this.setState({ lastEntryId: nextEntryId });
+      setTimeout(() => {
+        this.setState({ isRendering: true });
+      }, 0);
+    }
   }
 
   componentWillUnmount() {
@@ -242,6 +249,7 @@ class NetworkDetails extends Component {
       payloadBytes,
       transport,
       replayedFromRequestId,
+      location: requestLocation,
     } = entryToRender;
 
     const requestPayloadMissing = !!entry.entryId && !cachedEntry && entry.request === true;
@@ -273,38 +281,22 @@ class NetworkDetails extends Component {
           </Split>
         </div>
         <div className="payload-metadata">
-          {timing && <div className="payload-metadata-title">Metadata</div>}
-          {timing?.duration != null && (
-            <div className="payload-metadata-row">
-              <span>Duration</span>
-              <span>{formatDuration(timing.duration)}</span>
-            </div>
-          )}
+          {(requestLocation || timing || transport || payloadBytes) && <div className="payload-metadata-title">Metadata</div>}
+          <div className="payload-metadata-row">
+            <span>Location</span>
+            <span title={requestLocation}>{requestLocation || '(not captured — reload page)'}</span>
+          </div>
           {timing?.requestTimestamp != null && (
             <div className="payload-metadata-row">
               <span>Requested at</span>
               <span title={formatTimestamp(timing.requestTimestamp)}>{formatTimestamp(timing.requestTimestamp)}</span>
             </div>
           )}
-          {timing?.endTimestamp != null && (
-            <div className="payload-metadata-row">
-              <span>Completed at</span>
-              <span title={formatTimestamp(timing.endTimestamp)}>{formatTimestamp(timing.endTimestamp)}</span>
-            </div>
-          )}
           {timing?.messageCount != null && (
-            <>
-              <div className="payload-metadata-row">
-                <span>Messages</span>
-                <span>{timing.messageCount}</span>
-              </div>
-              {timing.firstMessageTime != null && (
-                <div className="payload-metadata-row">
-                  <span>Time to first message</span>
-                  <span>{formatDuration(timing.firstMessageTime - timing.startTime)}</span>
-                </div>
-              )}
-            </>
+            <div className="payload-metadata-row">
+              <span>Messages</span>
+              <span>{timing.messageCount}</span>
+            </div>
           )}
           {transport && (
             <div className="payload-metadata-row">

@@ -116,19 +116,12 @@ window.addEventListener("message", handleReplayMessage, false);
  * Reads the message from the stream and posts it to the window.
  * This is a generator function that will be passed to the response stream.
  */
-async function* readMessage(req, stream, requestId, startTime, requestTimestamp, replayedFromRequestId) {
+async function* readMessage(req, stream, requestId, requestTimestamp, replayedFromRequestId) {
   let messageCount = 0;
-  let firstMessageTime = null;
-  let lastMessageTime = null;
 
   for await (const m of stream) {
     if (m) {
-      const currentTime = performance.now();
       messageCount++;
-      if (firstMessageTime === null) {
-        firstMessageTime = currentTime;
-      }
-      lastMessageTime = currentTime;
 
       // Serialize response with error handling
       const resp = serializeConnectMessage(m, req.method.name, "streaming response");
@@ -143,13 +136,7 @@ async function* readMessage(req, stream, requestId, startTime, requestTimestamp,
         canReplay: true,
         replayedFromRequestId,
         timing: {
-          startTime,
-          endTime: currentTime,
-          duration: currentTime - startTime,
           requestTimestamp,
-          endTimestamp: Date.now(),
-          firstMessageTime,
-          lastMessageTime,
           messageCount,
         },
       });
@@ -160,7 +147,6 @@ async function* readMessage(req, stream, requestId, startTime, requestTimestamp,
 
 async function executeConnectRequest(next, req, requestMessage, replayedFromRequestId) {
   const requestId = __grpcWebDevtoolsRequestId++;
-  const startTime = performance.now();
   const requestTimestamp = Date.now();
   const replayableRequest = {
     ...req,
@@ -174,7 +160,6 @@ async function executeConnectRequest(next, req, requestMessage, replayedFromRequ
   try {
     const resp = await next(replayableRequest);
     if (!resp.stream) {
-      const endTime = performance.now();
       const requestObj = serializeConnectMessage(requestMessage, req.method.name, "request");
       const responseObj = serializeConnectMessage(resp.message, req.method.name, "response");
 
@@ -187,11 +172,7 @@ async function executeConnectRequest(next, req, requestMessage, replayedFromRequ
         canReplay: true,
         replayedFromRequestId,
         timing: {
-          startTime,
-          endTime,
-          duration: endTime - startTime,
           requestTimestamp,
-          endTimestamp: Date.now(),
         },
       });
       return resp;
@@ -199,10 +180,9 @@ async function executeConnectRequest(next, req, requestMessage, replayedFromRequ
 
     return {
       ...resp,
-      message: readMessage(replayableRequest, resp.message, requestId, startTime, requestTimestamp, replayedFromRequestId),
+      message: readMessage(replayableRequest, resp.message, requestId, requestTimestamp, replayedFromRequestId),
     };
   } catch (e) {
-    const endTime = performance.now();
     const requestObj = serializeConnectMessage(requestMessage, req.method.name, "request");
 
     postConnectEvent({
@@ -217,14 +197,11 @@ async function executeConnectRequest(next, req, requestMessage, replayedFromRequ
       },
       canReplay: true,
       replayedFromRequestId,
-        timing: {
-          startTime,
-          endTime,
-          duration: endTime - startTime,
-          requestTimestamp,
-          endTimestamp: Date.now(),
-        },
-      });
+      location,
+      timing: {
+        requestTimestamp,
+      },
+    });
     throw e;
   }
 }

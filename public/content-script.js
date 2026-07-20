@@ -82,7 +82,7 @@ function setupPortIfNeeded() {
 }
 
 function sendPanelMessage(action, data) {
-  if (!data.requestId) {
+  if (data.requestId == null) {
     data.requestId = fallbackRequestId++;
   }
 

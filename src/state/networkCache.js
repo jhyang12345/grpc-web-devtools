@@ -99,7 +99,7 @@ export function addNetworkEntry(entry) {
   // Apply payload size limits to prevent OOM
   const limitedEntry = applyPayloadLimits(entry);
 
-  const existingEntryId = limitedEntry.requestId ? requestIdToEntryId.get(limitedEntry.requestId) : null;
+  const existingEntryId = limitedEntry.requestId != null ? requestIdToEntryId.get(limitedEntry.requestId) : null;
   const existingEntry = existingEntryId ? cache.get(existingEntryId) : null;
   if (existingEntry) {
     if (limitedEntry.method && !existingEntry.method) existingEntry.method = limitedEntry.method;
@@ -113,8 +113,13 @@ export function addNetworkEntry(entry) {
     if (limitedEntry.replayedFromRequestId != null) {
       existingEntry.replayedFromRequestId = limitedEntry.replayedFromRequestId;
     }
-    // Update timing - for streaming calls, newer timing has updated stats
-    if (limitedEntry.timing != null) existingEntry.timing = limitedEntry.timing;
+    // Update timing - merge so requestTimestamp from initial event is preserved
+    if (limitedEntry.timing != null) {
+      existingEntry.timing = { ...existingEntry.timing, ...limitedEntry.timing };
+    }
+    if (limitedEntry.location != null && !existingEntry.location) {
+      existingEntry.location = limitedEntry.location;
+    }
     existingEntry.payloadBytes = estimatePayloadBytes(existingEntry);
     return existingEntry;
   }
@@ -124,10 +129,12 @@ export function addNetworkEntry(entry) {
     ...limitedEntry,
     entryId,
     payloadBytes: estimatePayloadBytes(limitedEntry),
+    timing: { requestTimestamp: Date.now(), ...limitedEntry.timing },
   };
+
   cache.set(entryId, fullEntry);
   order.push(entryId);
-  if (limitedEntry.requestId) {
+  if (limitedEntry.requestId != null) {
     requestIdToEntryId.set(limitedEntry.requestId, entryId);
   }
   evictIfNeeded();

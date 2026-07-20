@@ -55,12 +55,27 @@ const networkSlice = createSlice({
         endpoint: buildEndpoint(payload.method),
       }));
 
-      state._allLog.push(...nextEntries);
+      for (const entry of nextEntries) {
+        const existingIdx = state._allLog.findIndex(e => e.entryId === entry.entryId);
+        if (existingIdx >= 0) {
+          state._allLog[existingIdx] = entry;
+        } else {
+          state._allLog.push(entry);
+        }
+      }
       while (state._allLog.length > MAX_LOG_SIZE) {
         state._allLog.shift();
       }
 
       state.log = applyFilter(state._allLog, state._filterValue);
+
+      if (state.selectedEntry != null) {
+        const updatedIdx = state.log.findIndex(e => e.entryId === state.selectedEntry.entryId);
+        if (updatedIdx >= 0) {
+          state.selectedIdx = updatedIdx;
+          state.selectedEntry = state.log[updatedIdx];
+        }
+      }
     },
     networkLog(state, action) {
       const payload = {
@@ -68,12 +83,25 @@ const networkSlice = createSlice({
         endpoint: buildEndpoint(action.payload.method),
       };
 
-      state._allLog.push(payload);
+      const existingIdx = state._allLog.findIndex(e => e.entryId === payload.entryId);
+      if (existingIdx >= 0) {
+        state._allLog[existingIdx] = payload;
+      } else {
+        state._allLog.push(payload);
+      }
       while (state._allLog.length > MAX_LOG_SIZE) {
         state._allLog.shift();
       }
 
       state.log = applyFilter(state._allLog, state._filterValue);
+
+      if (state.selectedEntry != null) {
+        const updatedIdx = state.log.findIndex(e => e.entryId === state.selectedEntry.entryId);
+        if (updatedIdx >= 0) {
+          state.selectedIdx = updatedIdx;
+          state.selectedEntry = state.log[updatedIdx];
+        }
+      }
     },
     selectLogEntry(state, action) {
       const { payload: idx } = action;
@@ -132,6 +160,7 @@ function buildSummaryEntry(entry) {
     methodType: entry.methodType,
     transport: entry.transport,
     timing: entry.timing,
+    location: entry.location,
     request: !!entry.request,
     response: !!entry.response,
     error: entry.error,

@@ -1,6 +1,6 @@
 {
   "name": "gRPC Request Inspector",
-  "version": "1.4.1",
+  "version": "1.0.0",
   "manifest_version": 3,
   "description": "Inspect, debug, and replay gRPC-Web and Connect-Web network requests.",
   "icons": {
@@ -17,23 +17,14 @@
   },
   "web_accessible_resources": [
     {
-      "resources": [
-        "connect-web-interceptor.js",
-        "grpc-web-interceptor.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
+      "resources": ["connect-web-interceptor.js", "grpc-web-interceptor.js"],
+      "matches": ["<all_urls>"]
     }
   ],
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content-script.js"
-      ],
+      "matches": ["<all_urls>"],
+      "js": ["content-script.js"],
       "run_at": "document_start",
       "all_frames": true
     }

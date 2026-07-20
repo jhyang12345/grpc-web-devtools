@@ -1,12 +1,8 @@
 {
-  "name": "grpc-web-devtools",
+  "name": "grpc-web-inspector",
   "version": "0.1.0",
   "license": "MIT",
-  "author": "SafetyCulture",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/SafetyCulture/grpc-web-devtools"
-  },
+  "author": "Jaehyeong Yang",
   "dependencies": {
     "@reduxjs/toolkit": "^1.0.4",
     "fuse.js": "^6.4.6",

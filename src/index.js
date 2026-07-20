@@ -12,6 +12,19 @@ import clipboardReducer from './state/clipboard';
 import toastReducer from './state/toast';
 
 var port, tabId
+var currentInspectedUrl = ''
+
+function refreshInspectedUrl() {
+  try {
+    if (chrome && chrome.devtools && chrome.devtools.inspectedWindow) {
+      chrome.devtools.inspectedWindow.eval('window.location.href', (result) => {
+        if (result && typeof result === 'string') {
+          currentInspectedUrl = result;
+        }
+      });
+    }
+  } catch (_) {}
+}
 
 function setupPanelPortIfNeeded() {
   // Check if port exists and is connected
@@ -37,7 +50,7 @@ function setupPanelPortIfNeeded() {
           port.postMessage({ action: 'heartbeat' });
         } catch (error) {
           if (store) {
-            store.dispatch(setConnectionStatus(false));
+            store.dispatch(setConnectionStatus('disconnected'));
           }
         }
       }
@@ -63,7 +76,7 @@ function _cleanupListeners() {
 
 function _onPortDisconnect() {
   if (store) {
-    store.dispatch(setConnectionStatus(false));
+    store.dispatch(setConnectionStatus('disconnected'));
   }
   _cleanupListeners();
   // Set port to null to allow reconnection attempts
@@ -71,7 +84,8 @@ function _onPortDisconnect() {
   port = null;
 }
 
-function _onNavigated() {
+function _onNavigated(url) {
+  if (url) currentInspectedUrl = url;
   store.dispatch(clearLogAndCache());
 }
 
@@ -99,7 +113,7 @@ if (chrome) {
         try {
           port.postMessage({ action: 'heartbeat' });
         } catch (error) {
-          store.dispatch(setConnectionStatus(false));
+          store.dispatch(setConnectionStatus('disconnected'));
         }
       }
     }, 100);
@@ -107,6 +121,8 @@ if (chrome) {
     if (chrome.devtools && chrome.devtools.network) {
       chrome.devtools.network.onNavigated.addListener(_onNavigated);
     }
+
+    refreshInspectedUrl();
 
     window.addEventListener('unload', _cleanupListeners);
 
@@ -119,7 +135,7 @@ if (chrome) {
         try {
           port.postMessage({ action: 'heartbeat' });
         } catch (error) {
-          store.dispatch(setConnectionStatus(false));
+          store.dispatch(setConnectionStatus('disconnected'));
         }
       }
     }, 2000); // Check every 2 seconds for faster disconnection detection
@@ -140,20 +156,23 @@ if (chrome) {
 function _onMessageRecived({ action, data }) {
   if (action === "gRPCNetworkCall") {
     try {
+      if (!data.location && currentInspectedUrl) {
+        data.location = currentInspectedUrl;
+      }
       store.dispatch(logNetworkEntry(data));
 
       // If we're receiving messages, the connection is alive
       // This provides instant connection verification instead of waiting for heartbeat
-      store.dispatch(setConnectionStatus(true));
+      store.dispatch(setConnectionStatus('connected'));
     } catch (error) {
       console.error('[gRPC DevTools] Failed to dispatch network entry:', error, 'data:', data);
       // Don't crash the message handler - continue processing future messages
     }
   } else if (action === "pong") {
-    store.dispatch(setConnectionStatus(true));
+    store.dispatch(setConnectionStatus('connected'));
   } else if (action === "heartbeat_ack") {
     // Heartbeat acknowledged - connection is alive
-    store.dispatch(setConnectionStatus(true));
+    store.dispatch(setConnectionStatus('connected'));
   }
 }
 

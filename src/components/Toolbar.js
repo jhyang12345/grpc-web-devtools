@@ -5,7 +5,7 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache } from '../state/network';
-import { toggleFilter, setDefaultCollapsed } from '../state/toolbar';
+import { toggleFilter, setDefaultCollapsed, setConnectionStatus } from '../state/toolbar';
 import { setStorageItem } from '../utils/localStorage';
 import TrashIcon from '../icons/Trash';
 import FilterIcon from '../icons/Filter';
@@ -32,7 +32,13 @@ class Toolbar extends Component {
 
   render() {
     const { preserveLog, toolbar } = this.props;
-    const { isConnected } = toolbar;
+    const { connectionStatus } = toolbar;
+    const statusColor = connectionStatus === 'connected' ? '#0a0' : connectionStatus === 'pending' ? '#fa0' : '#f00';
+    const statusTitle = connectionStatus === 'connected'
+      ? "DevTools connected"
+      : connectionStatus === 'pending'
+        ? "Waiting for next RPC request to confirm connection"
+        : "DevTools connection lost - try closing and reopening panel";
     return (
       <>
         <div className="toolbar">
@@ -61,22 +67,22 @@ class Toolbar extends Component {
             <ToolbarDivider />
             <span
               className="toolbar-item"
-              title={isConnected ? "DevTools connected" : "DevTools connection lost - try closing and reopening panel"}
+              title={statusTitle}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
                 fontSize: '12px',
-                color: isConnected ? '#0a0' : '#f00'
+                color: statusColor
               }}
             >
               <span style={{
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                backgroundColor: isConnected ? '#0a0' : '#f00'
+                backgroundColor: statusColor
               }} />
-              {isConnected ? 'Connected' : (
+              {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'pending' ? 'Connecting...' : (
                 <>
                   Disconnected
                   <button
@@ -112,6 +118,8 @@ class Toolbar extends Component {
   }
 
   _onReconnect = () => {
+    this.props.setConnectionStatus('pending');
+
     if (window.setupPanelPortIfNeeded) {
       window.setupPanelPortIfNeeded();
     } else {
@@ -156,5 +164,5 @@ const mapStateToProps = state => ({
   preserveLog: state.network.preserveLog,
   toolbar: state.toolbar,
 });
-const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setDefaultCollapsed };
+const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setDefaultCollapsed, setConnectionStatus };
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);

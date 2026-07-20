@@ -90,16 +90,19 @@
   padding: 4px 6px;
   box-sizing: border-box;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
   overflow: hidden;
 }
 
-.data-grid .data-row-main {
+.data-grid .data-row-content {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .data-grid .data-row-title {
@@ -116,7 +119,6 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
-  padding-left: 14px;
 }
 
 .data-grid .data-row.selected .data-row-meta {
