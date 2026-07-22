@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
+const { TextEncoder } = require("util");
 
 const listenerList = () => {
   const listeners = [];
@@ -76,4 +77,33 @@ test("content retries only until an init acknowledgement is received", () => {
   ports.at(-1).onMessage.emit({ action: "init_ack" });
   ticks[0]();
   expect(ports).toHaveLength(6);
+});
+
+test("content truncates oversized payloads before the extension bridge", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../../public/content-script.js"), "utf8");
+  const ports = [];
+  const eventListeners = {};
+  const chrome = {
+    runtime: {
+      getURL: name => name,
+      connect: () => { const port = makePort("content"); ports.push(port); return port; },
+      onMessage: listenerList(),
+    },
+  };
+  const window = {
+    location: { href: "https://example.test/frame" },
+    crypto: { getRandomValues: values => values.fill(1) },
+    addEventListener: (name, listener) => { eventListeners[name] = listener; },
+  };
+  const document = { createElement: () => ({ remove: jest.fn() }), head: { appendChild: jest.fn() } };
+  vm.runInNewContext(source, {
+    chrome, window, document, Uint32Array, TextEncoder, Date, Math, String,
+    setInterval: () => 1, clearInterval: jest.fn(),
+  });
+  ports[0].onMessage.emit({ action: "init_ack" });
+  eventListeners.message({ source: window, data: { type: "__GRPCWEB_DEVTOOLS__", requestId: 7, request: { body: 'x'.repeat(5 * 1024 * 1024 + 1) } } });
+  const delivered = ports[0].posted.at(-1).data;
+  expect(delivered).toEqual(expect.objectContaining({ captureId: expect.any(String), location: "https://example.test/frame" }));
+  expect(delivered.request).toEqual(expect.objectContaining({ __truncated: true, __originalSizeBytes: expect.any(Number) }));
+  expect(delivered.request.preview).toHaveLength(2000);
 });

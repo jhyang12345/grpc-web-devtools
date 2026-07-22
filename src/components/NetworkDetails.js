@@ -87,15 +87,20 @@ function stringifyJson(value) {
   }
 }
 
-function buildResponseSource(response, error, messages, isMissingPayload) {
+export function buildResponseSource(response, error, messages, status, isMissingPayload) {
   if (isMissingPayload) {
     return {
       message: "Full response payload is no longer available.",
     };
   }
 
-  if (messages && messages.length) {
-    return { messages, ...(response != null ? { response } : {}), ...(error != null ? { error } : {}) };
+  if ((messages && messages.length) || (response != null && error != null) || status != null) {
+    return {
+      ...(messages && messages.length ? { messages } : {}),
+      ...(response != null ? { response } : {}),
+      ...(error != null ? { error } : {}),
+      ...(status != null ? { status } : {}),
+    };
   }
 
   if (response != null) {
@@ -250,6 +255,7 @@ class NetworkDetails extends Component {
       response,
       error,
       messages,
+      status,
       timing,
       payloadBytes,
       transport,
@@ -258,10 +264,10 @@ class NetworkDetails extends Component {
     } = entryToRender;
 
     const requestPayloadMissing = !!entry.entryId && !cachedEntry && entry.request === true;
-    const responsePayloadMissing = !!entry.entryId && !cachedEntry && entry.response === true;
+    const responsePayloadMissing = !!entry.entryId && !cachedEntry && (entry.response === true || entry.error === true || entry.messages === true || entry.status === true);
     const requestText = requestPayloadMissing ? "" : stringifyJson(entryToRender?.request);
-    const responseSource = buildResponseSource(response, error, messages, responsePayloadMissing);
-    const hasResponsePayload = !responsePayloadMissing && (response != null || error != null || messages?.length);
+    const responseSource = buildResponseSource(response, error, messages, status, responsePayloadMissing);
+    const hasResponsePayload = !responsePayloadMissing && (response != null || error != null || messages?.length || status != null);
     const responseText = stringifyJson(responseSource);
 
     return (
@@ -301,6 +307,12 @@ class NetworkDetails extends Component {
             <div className="payload-metadata-row">
               <span>Messages</span>
               <span>{entryToRender.messageCount || timing.messageCount}{entryToRender.droppedMessageCount ? ` (${entryToRender.droppedMessageCount} older messages dropped)` : ""}</span>
+            </div>
+          )}
+          {status != null && (
+            <div className="payload-metadata-row">
+              <span>Status</span>
+              <span>{status.code != null ? `${status.code}${status.details ? `: ${status.details}` : ""}` : JSON.stringify(status)}</span>
             </div>
           )}
           {transport && (
