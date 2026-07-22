@@ -1,8 +1,8 @@
 {
   "name": "gRPC Request Inspector",
-  "version": "1.0.0",
+  "version": "1.4.2",
   "manifest_version": 3,
-  "description": "Inspect, debug, and replay gRPC-Web and Connect-Web network requests.",
+  "description": "Inspect and debug gRPC-Web and Connect-Web network requests.",
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",

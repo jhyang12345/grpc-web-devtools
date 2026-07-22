@@ -259,7 +259,6 @@ class NetworkDetails extends Component {
       timing,
       payloadBytes,
       transport,
-      replayedFromRequestId,
       location: requestLocation,
     } = entryToRender;
 
@@ -319,12 +318,6 @@ class NetworkDetails extends Component {
             <div className="payload-metadata-row">
               <span>Transport</span>
               <span>{transport}</span>
-            </div>
-          )}
-          {replayedFromRequestId != null && (
-            <div className="payload-metadata-row">
-              <span>Replay of</span>
-              <span>Request #{replayedFromRequestId}</span>
             </div>
           )}
           <div className="payload-metadata-row">

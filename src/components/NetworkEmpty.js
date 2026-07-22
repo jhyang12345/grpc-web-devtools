@@ -19,14 +19,14 @@ function getEmptyStateContent(mode, filterValue) {
   if (mode === 'no-selection') {
     return {
       title: 'Select a request to inspect its payload.',
-      detail: 'Choose any request from the list to view or retry it.',
+      detail: 'Choose any request from the list to inspect its captured details.',
       link: null,
     };
   }
 
   return {
-    title: 'Recording gRPC network activity...',
-    detail: `Perform a request or hit ${modifier} R to record the reload.`,
+    title: 'Inspecting gRPC network activity...',
+    detail: `Perform a request or reload with ${modifier} R to capture it.`,
     link: null,
   };
 }

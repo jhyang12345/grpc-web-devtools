@@ -2,7 +2,8 @@
 
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
-![gRPC-Web Dev Tools](screenshots/store_light_dark.png)
+![gRPC-Web Inspector, light theme](screenshots/store_light_1280x800.png)
+![gRPC-Web Inspector, dark theme](screenshots/store_dark_1280x800.png)
 Now supports dark mode.
 
 ## Installation

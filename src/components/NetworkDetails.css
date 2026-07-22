@@ -203,12 +203,6 @@
   color: var(--accent-color);
 }
 
-.replay-submit-button {
-  background: var(--accent-color);
-  border-color: var(--accent-color);
-  color: #fff;
-}
-
 .react-json-view {
   min-height: 100%;
 }
