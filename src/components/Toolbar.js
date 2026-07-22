@@ -11,7 +11,7 @@ import TrashIcon from '../icons/Trash';
 import FilterIcon from '../icons/Filter';
 import './Toolbar.css';
 
-class Toolbar extends Component {
+export class Toolbar extends Component {
   _renderButtons() {
     const { clearLog, toggleFilter, toolbar: { filterIsEnabled, filterIsOpen }} = this.props;
     return (
@@ -37,7 +37,7 @@ class Toolbar extends Component {
     const statusTitle = connectionStatus === 'connected'
       ? "DevTools connected"
       : connectionStatus === 'pending'
-        ? "Waiting for next RPC request to confirm connection"
+        ? "Waiting for content script registration; reconnect is available"
         : "DevTools connection lost - try closing and reopening panel";
     return (
       <>
@@ -82,9 +82,9 @@ class Toolbar extends Component {
                 borderRadius: '50%',
                 backgroundColor: statusColor
               }} />
-              {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'pending' ? 'Connecting...' : (
+              {connectionStatus === 'connected' ? 'Connected' : (
                 <>
-                  Disconnected
+                  {connectionStatus === 'pending' ? 'Connecting...' : 'Disconnected'}
                   <button
                     onClick={this._onReconnect}
                     className="reconnect-button"

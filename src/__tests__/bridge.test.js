@@ -71,7 +71,6 @@ test("content retries only until an init acknowledgement is received", () => {
     setInterval: fn => { ticks.push(fn); return ticks.length; },
     clearInterval: jest.fn(),
   });
-  ports[0].onDisconnect.emit();
   for (let index = 0; index < 7; index += 1) ticks[0]();
   expect(ports).toHaveLength(6); // one initial attempt plus five capped retries
   ports.at(-1).onMessage.emit({ action: "init_ack" });

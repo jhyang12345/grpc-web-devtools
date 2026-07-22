@@ -74,6 +74,9 @@
         startReconnectTimer();
       });
       port.postMessage({ action: "init", data: { captureId } });
+      // A successful connect is not healthy until background acknowledges
+      // registration. Keep the bounded retry timer alive for a silent port.
+      startReconnectTimer();
     } catch (_) {
       port = null;
       acknowledged = false;
