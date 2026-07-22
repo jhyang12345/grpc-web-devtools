@@ -6,6 +6,18 @@ import { addNetworkEntry, clearNetworkCache } from "./networkCache";
 
 const MAX_LOG_SIZE = 1000;
 
+function reconcileSelection(state) {
+  if (state.selectedEntry == null) return;
+  const updatedIdx = state.log.findIndex(entry => entry.entryId === state.selectedEntry.entryId);
+  if (updatedIdx >= 0) {
+    state.selectedIdx = updatedIdx;
+    state.selectedEntry = state.log[updatedIdx];
+  } else {
+    state.selectedIdx = null;
+    state.selectedEntry = null;
+  }
+}
+
 function buildEndpoint(method) {
   if (!method) {
     return "";
@@ -69,13 +81,7 @@ const networkSlice = createSlice({
 
       state.log = applyFilter(state._allLog, state._filterValue);
 
-      if (state.selectedEntry != null) {
-        const updatedIdx = state.log.findIndex(e => e.entryId === state.selectedEntry.entryId);
-        if (updatedIdx >= 0) {
-          state.selectedIdx = updatedIdx;
-          state.selectedEntry = state.log[updatedIdx];
-        }
-      }
+      reconcileSelection(state);
     },
     networkLog(state, action) {
       const payload = {
@@ -95,13 +101,7 @@ const networkSlice = createSlice({
 
       state.log = applyFilter(state._allLog, state._filterValue);
 
-      if (state.selectedEntry != null) {
-        const updatedIdx = state.log.findIndex(e => e.entryId === state.selectedEntry.entryId);
-        if (updatedIdx >= 0) {
-          state.selectedIdx = updatedIdx;
-          state.selectedEntry = state.log[updatedIdx];
-        }
-      }
+      reconcileSelection(state);
     },
     selectLogEntry(state, action) {
       const { payload: idx } = action;
@@ -162,7 +162,7 @@ function buildSummaryEntry(entry) {
     timing: entry.timing,
     location: entry.location,
     request: !!entry.request,
-    response: !!entry.response,
+    response: !!entry.response || !!entry.messages?.length,
     error: entry.error,
     requestId: entry.requestId,
     canReplay: entry.canReplay,
@@ -210,6 +210,13 @@ export const clearLogAndCache = (payload) => (dispatch, getState) => {
   const { preserveLog } = getState().network;
   const { force } = payload || {};
   if (!preserveLog || force) {
+    // A real clear must invalidate scheduled batches, otherwise entries that
+    // were queued before the clear can reappear after it.
+    pendingBatch = [];
+    if (batchTimeout) {
+      clearTimeout(batchTimeout);
+      batchTimeout = null;
+    }
     clearNetworkCache();
   }
   dispatch(clearLog(payload));

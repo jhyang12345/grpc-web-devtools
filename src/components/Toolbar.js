@@ -16,7 +16,7 @@ export class Toolbar extends Component {
     const { clearLog, toggleFilter, toolbar: { filterIsEnabled, filterIsOpen }} = this.props;
     return (
         <>
-          <ToolbarButton title="Clear log history" onClick={() => clearLog({ force: false })} >
+          <ToolbarButton title="Clear log history" onClick={() => clearLog({ force: true })} >
             <TrashIcon />
           </ToolbarButton>
           <ToolbarButton
