@@ -126,17 +126,10 @@ class Toolbar extends Component {
       console.error('[gRPC DevTools] setupPanelPortIfNeeded not available');
     }
 
-    // Then, send a ping message to content script to trigger port setup
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'ping' }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error('[gRPC DevTools] Ping failed:', chrome.runtime.lastError.message);
-          }
-        });
-      } else {
-        console.error('[gRPC DevTools] No active tab found for reconnection');
-      }
+    const tabId = chrome.devtools && chrome.devtools.inspectedWindow && chrome.devtools.inspectedWindow.tabId;
+    if (typeof tabId !== 'number') return;
+    chrome.tabs.sendMessage(tabId, { action: 'ping' }, () => {
+      if (chrome.runtime.lastError) console.error('[gRPC DevTools] Ping failed:', chrome.runtime.lastError.message);
     });
   }
 }

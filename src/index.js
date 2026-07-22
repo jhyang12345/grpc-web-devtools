@@ -44,17 +44,7 @@ function setupPanelPortIfNeeded() {
     port.onMessage.addListener(_onMessageRecived);
     port.onDisconnect.addListener(_onPortDisconnect);
 
-    setTimeout(() => {
-      if (port) {
-        try {
-          port.postMessage({ action: 'heartbeat' });
-        } catch (error) {
-          if (store) {
-            store.dispatch(setConnectionStatus('disconnected'));
-          }
-        }
-      }
-    }, 100);
+    port.postMessage({ action: 'heartbeat' });
   } catch (error) {
     console.error('[gRPC DevTools] Failed to reconnect panel port:', error);
     port = null;
@@ -63,9 +53,7 @@ function setupPanelPortIfNeeded() {
 
 function _cleanupListeners() {
   try {
-    if (port) {
-      port.onMessage.removeListener(_onMessageRecived);
-    }
+    if (port) port.onMessage.removeListener(_onMessageRecived);
     if (chrome && chrome.devtools && chrome.devtools.network) {
       chrome.devtools.network.onNavigated.removeListener(_onNavigated);
     }
@@ -78,7 +66,7 @@ function _onPortDisconnect() {
   if (store) {
     store.dispatch(setConnectionStatus('disconnected'));
   }
-  _cleanupListeners();
+  try { if (port) port.onMessage.removeListener(_onMessageRecived); } catch (_) {}
   // Set port to null to allow reconnection attempts
   // Note: We don't auto-reconnect here because user may have intentionally closed DevTools
   port = null;
@@ -107,16 +95,7 @@ if (chrome) {
     port.onMessage.addListener(_onMessageRecived);
     port.onDisconnect.addListener(_onPortDisconnect);
 
-    // Send heartbeat to verify connection - status set to true when ack or network call arrives
-    setTimeout(() => {
-      if (port) {
-        try {
-          port.postMessage({ action: 'heartbeat' });
-        } catch (error) {
-          store.dispatch(setConnectionStatus('disconnected'));
-        }
-      }
-    }, 100);
+    port.postMessage({ action: 'heartbeat' });
 
     if (chrome.devtools && chrome.devtools.network) {
       chrome.devtools.network.onNavigated.addListener(_onNavigated);
@@ -168,11 +147,8 @@ function _onMessageRecived({ action, data }) {
       console.error('[gRPC DevTools] Failed to dispatch network entry:', error, 'data:', data);
       // Don't crash the message handler - continue processing future messages
     }
-  } else if (action === "pong") {
-    store.dispatch(setConnectionStatus('connected'));
-  } else if (action === "heartbeat_ack") {
-    // Heartbeat acknowledged - connection is alive
-    store.dispatch(setConnectionStatus('connected'));
+  } else if (action === "init_ack" || action === "heartbeat_ack" || action === "content_state") {
+    store.dispatch(setConnectionStatus(data && data.contentConnected ? 'connected' : 'pending'));
   }
 }
 

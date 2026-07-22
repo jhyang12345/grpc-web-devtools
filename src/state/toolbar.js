@@ -9,7 +9,7 @@ const toolbarSlice = createSlice({
     filterIsOpen: true,
     filterIsEnabled: false,
     filterValue: "",
-    connectionStatus: 'connected', // 'connected' | 'disconnected' | 'pending'
+    connectionStatus: 'pending', // 'connected' | 'disconnected' | 'pending'
     defaultCollapsed: getStorageItem('defaultCollapsed', false), // Default collapsed state for JSON details (persisted in localStorage)
   },
   reducers: {

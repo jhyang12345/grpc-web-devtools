@@ -1,189 +1,113 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
-// Inject script for grpc-web
-var s = document.createElement('script');
-s.src = chrome.runtime.getURL('grpc-web-interceptor.js');
-s.onload = function () {
-  this.remove();
-};
-(document.head || document.documentElement).appendChild(s);
+(() => {
+  const GRPC_EVENT_TYPE = "__GRPCWEB_DEVTOOLS__";
+  const MAX_QUEUE_SIZE = 100;
+  const MAX_RECONNECT_ATTEMPTS = 5;
+  const RECONNECT_INTERVAL_MS = 3000;
+  const captureId = (() => {
+    const bytes = new Uint32Array(2);
+    if (window.crypto && window.crypto.getRandomValues) {
+      window.crypto.getRandomValues(bytes);
+      return `${bytes[0].toString(36)}${bytes[1].toString(36)}`;
+    }
+    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+  })();
 
-// Inject script for connect-web
-var cs = document.createElement('script');
-cs.src = chrome.runtime.getURL('connect-web-interceptor.js');
-cs.onload = function () {
-  this.remove();
-};
-(document.head || document.documentElement).appendChild(cs);
+  let port = null;
+  let acknowledged = false;
+  let fallbackRequestId = 1;
+  let reconnectAttempts = 0;
+  let reconnectTimer = null;
+  const messageQueue = [];
 
-var port;
-var fallbackRequestId = 1;
-var messageListenerActive = false;
-var messageQueue = [];
-var reconnectInterval = null;
-var reconnectAttempts = 0;
-const MAX_QUEUE_SIZE = 100; // Prevent memory issues
-const RECONNECT_INTERVAL_MS = 3000; // Try every 3 seconds
-const MAX_RECONNECT_ATTEMPTS = 5; // Stop auto-retry after 5 attempts
-const GRPC_EVENT_TYPE = "__GRPCWEB_DEVTOOLS__";
-const REPLAY_REQUEST_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY__";
-const REPLAY_RESULT_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_RESULT__";
+  const inject = name => {
+    const script = document.createElement("script");
+    script.src = chrome.runtime.getURL(name);
+    script.onload = () => script.remove();
+    (document.head || document.documentElement).appendChild(script);
+  };
+  inject("grpc-web-interceptor.js");
+  inject("connect-web-interceptor.js");
 
-function ensureMessageListener() {
-  if (!messageListenerActive) {
-    window.addEventListener("message", handleMessageEvent, false);
-    messageListenerActive = true;
+  function stopReconnectTimer() {
+    if (reconnectTimer) clearInterval(reconnectTimer);
+    reconnectTimer = null;
   }
-}
 
-function startReconnectTimer() {
-  if (reconnectInterval) return; // Already running
-
-  reconnectAttempts = 0;
-  reconnectInterval = setInterval(() => {
-    if (!port) {
-      reconnectAttempts++;
-
-      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        stopReconnectTimer();
-        return;
+  function startReconnectTimer() {
+    if (reconnectTimer || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return;
+    reconnectTimer = setInterval(() => {
+      if (acknowledged) return stopReconnectTimer();
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return stopReconnectTimer();
+      if (port) {
+        try { port.disconnect(); } catch (_) {}
+        port = null;
       }
-
+      reconnectAttempts += 1;
       setupPortIfNeeded();
-    } else {
-      // Connected, stop timer
-      stopReconnectTimer();
-    }
-  }, RECONNECT_INTERVAL_MS);
-}
-
-function stopReconnectTimer() {
-  if (reconnectInterval) {
-    clearInterval(reconnectInterval);
-    reconnectInterval = null;
-    reconnectAttempts = 0;
+    }, RECONNECT_INTERVAL_MS);
   }
-}
 
-function setupPortIfNeeded() {
-  if (!port && chrome && chrome.runtime) {
-    port = chrome.runtime.connect(null, { name: "content" });
-    port.postMessage({ action: "init" });
-    port.onMessage.addListener(handlePortMessage);
-    stopReconnectTimer(); // Stop auto-reconnect attempts when connected
+  function flushQueue() {
+    while (acknowledged && port && messageQueue.length) {
+      try { port.postMessage(messageQueue.shift()); } catch (_) { break; }
+    }
+  }
 
-    port.onDisconnect.addListener(() => {
+  function setupPortIfNeeded() {
+    if (port || !chrome || !chrome.runtime) return;
+    try {
+      port = chrome.runtime.connect({ name: "content" });
+      acknowledged = false;
+      port.onMessage.addListener(message => {
+        if (message && message.action === "init_ack") {
+          acknowledged = true;
+          reconnectAttempts = 0;
+          stopReconnectTimer();
+          flushQueue();
+        }
+      });
+      port.onDisconnect.addListener(() => {
+        port = null;
+        acknowledged = false;
+        startReconnectTimer();
+      });
+      port.postMessage({ action: "init", data: { captureId } });
+    } catch (_) {
       port = null;
-      startReconnectTimer(); // Start auto-reconnect attempts
-      // CRITICAL: Do NOT remove window listener - we need it to detect messages
-      // and trigger port reconnection when DevTools reopens
-    });
-  }
-}
-
-function sendPanelMessage(action, data) {
-  if (data.requestId == null) {
-    data.requestId = fallbackRequestId++;
-  }
-
-  setupPortIfNeeded();
-
-  if (port) {
-    // Flush queued messages first
-    while (messageQueue.length > 0) {
-      const queuedMsg = messageQueue.shift();
-      port.postMessage(queuedMsg);
-    }
-
-    // Send current message
-    port.postMessage({
-      action,
-      target: "panel",
-      data,
-    });
-  } else {
-    // Queue message for later
-    const msg = {
-      action,
-      target: "panel",
-      data,
-    };
-
-    messageQueue.push(msg);
-
-    // Limit queue size to prevent memory issues
-    if (messageQueue.length > MAX_QUEUE_SIZE) {
-      const dropped = messageQueue.shift();
-      console.warn('[gRPC DevTools] Queue full, dropped oldest message:', dropped.data.method);
-    }
-
-  }
-}
-
-function sendGRPCNetworkCall(data) {
-  sendPanelMessage("gRPCNetworkCall", data);
-}
-
-function sendReplayResult(data) {
-  sendPanelMessage("gRPCReplayResult", data);
-}
-
-function handleMessageEvent(event) {
-  if (event.source != window) return;
-  if (event.data.type && event.data.type == GRPC_EVENT_TYPE) {
-    sendGRPCNetworkCall(event.data);
-    return;
-  }
-
-  if (event.data.type && event.data.type == REPLAY_RESULT_TYPE) {
-    sendReplayResult(event.data);
-  }
-}
-
-function handlePortMessage(message) {
-  if (!message || message.action !== "replayGrpcCall") {
-    return;
-  }
-
-  requestReplay(message.data);
-}
-
-function requestReplay(data) {
-  window.postMessage({
-    type: REPLAY_REQUEST_TYPE,
-    ...data,
-  }, "*");
-}
-
-// Listen for reconnection requests from panel
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'ping') {
-    // Reset retry counter on manual reconnect
-    reconnectAttempts = 0;
-    stopReconnectTimer(); // Stop any ongoing auto-retry
-
-    setupPortIfNeeded();
-
-    // Send test message to verify connection
-    if (port) {
-      port.postMessage({ action: 'pong' });
-      sendResponse({ success: true, queued: messageQueue.length });
-    } else {
-      sendResponse({ success: false, error: 'Failed to establish port' });
-      // Start auto-retry again after manual attempt
+      acknowledged = false;
       startReconnectTimer();
     }
-  } else if (request.action === 'replayGrpcCall') {
-    if (!request.data || !request.data.requestId) {
-      sendResponse({ success: false, error: 'Replay request is missing required fields' });
-      return true;
-    }
-
-    requestReplay(request.data);
-    sendResponse({ success: true });
   }
-  return true; // Keep channel open for async response
-});
 
-// Ensure message listener is always active
-ensureMessageListener();
+  function sendNetworkCall(data) {
+    const event = {
+      ...data,
+      captureId,
+      requestId: data.requestId == null ? fallbackRequestId++ : data.requestId,
+      location: String(window.location.href),
+    };
+    const message = { action: "gRPCNetworkCall", target: "panel", data: event };
+    setupPortIfNeeded();
+    if (port && acknowledged) {
+      flushQueue();
+      try { port.postMessage(message); return; } catch (_) {}
+    }
+    messageQueue.push(message);
+    if (messageQueue.length > MAX_QUEUE_SIZE) messageQueue.shift();
+  }
+
+  window.addEventListener("message", event => {
+    if (event.source === window && event.data && event.data.type === GRPC_EVENT_TYPE) sendNetworkCall(event.data);
+  }, false);
+
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request && request.action === "ping") {
+      setupPortIfNeeded();
+      sendResponse({ success: !!port, captureId });
+    }
+  });
+
+  setupPortIfNeeded();
+})();
