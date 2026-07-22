@@ -1,223 +1,127 @@
-var __grpcWebDevtoolsRequestId = window.__grpcWebDevtoolsRequestId || 1;
-var __connectWebDevtoolsReplayRegistry = window.__GRPCWEB_DEVTOOLS_CONNECT_REPLAYS__ || {};
-var __connectWebDevtoolsReplayOrder = window.__GRPCWEB_DEVTOOLS_CONNECT_REPLAY_ORDER__ || [];
-const MAX_REPLAY_ENTRIES = 1000;
-const POST_TYPE = "__GRPCWEB_DEVTOOLS__";
-const REPLAY_REQUEST_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY__";
-const REPLAY_RESULT_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_RESULT__";
-const TRANSPORT = "connect-web";
+(() => {
+  const POST_TYPE = "__GRPCWEB_DEVTOOLS__";
+  const TRANSPORT = "connect-web";
 
-window.__GRPCWEB_DEVTOOLS_CONNECT_REPLAYS__ = __connectWebDevtoolsReplayRegistry;
-window.__GRPCWEB_DEVTOOLS_CONNECT_REPLAY_ORDER__ = __connectWebDevtoolsReplayOrder;
-
-function registerReplay(requestId, replayFn) {
-  __connectWebDevtoolsReplayRegistry[requestId] = replayFn;
-  __connectWebDevtoolsReplayOrder.push(requestId);
-
-  while (__connectWebDevtoolsReplayOrder.length > MAX_REPLAY_ENTRIES) {
-    const oldestRequestId = __connectWebDevtoolsReplayOrder.shift();
-    delete __connectWebDevtoolsReplayRegistry[oldestRequestId];
-  }
-}
-
-function postConnectEvent(payload) {
-  window.postMessage({
-    type: POST_TYPE,
-    transport: TRANSPORT,
-    ...payload,
-  }, "*");
-}
-
-function postReplayResult(requestId, ok, message) {
-  window.postMessage({
-    type: REPLAY_RESULT_TYPE,
-    transport: TRANSPORT,
-    requestId,
-    ok,
-    message,
-  }, "*");
-}
-
-function serializeConnectMessage(message, methodName, label) {
-  try {
-    return message.toJson?.();
-  } catch (err) {
-    console.error('[gRPC DevTools] Failed to serialize ' + label + ' for ' + methodName + ':', err);
-    return { __error: 'Serialization failed: ' + err.message };
-  }
-}
-
-function buildConnectRequestMessage(originalMessage, requestData) {
-  const ctor = originalMessage && originalMessage.constructor;
-  if (!ctor) {
-    throw new Error("Unable to reconstruct the original Connect request type.");
-  }
-
-  if (typeof ctor.fromJson === "function") {
-    return ctor.fromJson(requestData);
-  }
-
-  if (typeof ctor.fromJsonString === "function") {
-    return ctor.fromJsonString(JSON.stringify(requestData));
-  }
-
-  try {
-    return new ctor(requestData);
-  } catch (error) {
-    // Fall through to instance-based APIs below.
-  }
-
-  const message = new ctor();
-  if (typeof message.fromJson === "function") {
-    message.fromJson(requestData);
-    return message;
-  }
-
-  if (typeof message.fromJsonString === "function") {
-    message.fromJsonString(JSON.stringify(requestData));
-    return message;
-  }
-
-  throw new Error("This Connect request type does not expose a supported JSON constructor.");
-}
-
-function handleReplayMessage(event) {
-  if (event.source !== window) {
-    return;
-  }
-
-  const data = event.data;
-  if (!data || data.type !== REPLAY_REQUEST_TYPE) {
-    return;
-  }
-
-  if (data.transport && data.transport !== TRANSPORT) {
-    return;
-  }
-
-  const replayFn = __connectWebDevtoolsReplayRegistry[data.requestId];
-  if (!replayFn) {
-    postReplayResult(data.requestId, false, "Replay is no longer available for this call.");
-    return;
-  }
-
-  Promise.resolve()
-    .then(() => replayFn(data.request))
-    .then(() => postReplayResult(data.requestId, true, "Replay started."))
-    .catch(error => {
-      const message = error && error.message ? error.message : "Replay failed.";
-      postReplayResult(data.requestId, false, message);
-    });
-}
-
-window.addEventListener("message", handleReplayMessage, false);
-
-/**
- * Reads the message from the stream and posts it to the window.
- * This is a generator function that will be passed to the response stream.
- */
-async function* readMessage(req, stream, requestId, requestTimestamp, replayedFromRequestId) {
-  let messageCount = 0;
-
-  for await (const m of stream) {
-    if (m) {
-      messageCount++;
-
-      // Serialize response with error handling
-      const resp = serializeConnectMessage(m, req.method.name, "streaming response");
-      const requestObj = serializeConnectMessage(req.message, req.method.name, "request");
-
-      postConnectEvent({
-        methodType: "server_streaming",
-        method: req.method.name,
-        requestId,
-        request: requestObj,
-        response: resp,
-        canReplay: true,
-        replayedFromRequestId,
-        timing: {
-          requestTimestamp,
-          messageCount,
-        },
-      });
-    }
-    yield m;
-  }
-}
-
-async function executeConnectRequest(next, req, requestMessage, replayedFromRequestId) {
-  const requestId = __grpcWebDevtoolsRequestId++;
-  const requestTimestamp = Date.now();
-  const replayableRequest = {
-    ...req,
-    message: requestMessage,
+  const nextRequestId = () => {
+    const requestId = window.__grpcWebDevtoolsRequestId || 1;
+    window.__grpcWebDevtoolsRequestId = requestId + 1;
+    return requestId;
   };
 
-  registerReplay(requestId, (editedRequest) => (
-    executeConnectRequest(next, req, buildConnectRequestMessage(requestMessage, editedRequest), requestId)
-  ));
-
-  try {
-    const resp = await next(replayableRequest);
-    if (!resp.stream) {
-      const requestObj = serializeConnectMessage(requestMessage, req.method.name, "request");
-      const responseObj = serializeConnectMessage(resp.message, req.method.name, "response");
-
-      postConnectEvent({
-        methodType: "unary",
-        method: req.method.name,
-        requestId,
-        request: requestObj,
-        response: responseObj,
-        canReplay: true,
-        replayedFromRequestId,
-        timing: {
-          requestTimestamp,
-        },
-      });
-      return resp;
+  const serialize = (value, label) => {
+    try {
+      return value && typeof value.toJson === "function" ? value.toJson() : value;
+    } catch (error) {
+      return { __error: `Serialization failed for ${label}: ${error && error.message ? error.message : "unknown error"}` };
     }
+  };
 
-    return {
-      ...resp,
-      message: readMessage(replayableRequest, resp.message, requestId, requestTimestamp, replayedFromRequestId),
-    };
-  } catch (e) {
-    const requestObj = serializeConnectMessage(requestMessage, req.method.name, "request");
+  const serializeError = error => ({
+    code: error && error.code,
+    message: error && error.message ? String(error.message) : String(error || "Unknown RPC error"),
+  });
 
-    postConnectEvent({
-      methodType: req.stream ? "server_streaming" : "unary",
+  const post = payload => window.postMessage({ type: POST_TYPE, transport: TRANSPORT, ...payload }, "*");
+  const timing = (requestTimestamp, extra) => ({ requestTimestamp, ...extra });
+
+  const readStream = async function* (req, stream, requestId, requestTimestamp) {
+    let messageCount = 0;
+    let firstMessageTimestamp;
+    try {
+      for await (const message of stream) {
+        messageCount += 1;
+        if (firstMessageTimestamp == null) firstMessageTimestamp = Date.now();
+        post({
+          phase: "message",
+          method: req.method.name,
+          methodType: "server_streaming",
+          requestId,
+          response: serialize(message, "streaming response"),
+          timing: timing(requestTimestamp, {
+            messageCount,
+            timeToFirstMessage: firstMessageTimestamp - requestTimestamp,
+          }),
+        });
+        yield message;
+      }
+      const completionTimestamp = Date.now();
+      post({
+        phase: "complete",
+        method: req.method.name,
+        methodType: "server_streaming",
+        requestId,
+        timing: timing(requestTimestamp, {
+          completionTimestamp,
+          duration: completionTimestamp - requestTimestamp,
+          messageCount,
+          timeToFirstMessage: firstMessageTimestamp == null ? null : firstMessageTimestamp - requestTimestamp,
+        }),
+      });
+    } catch (error) {
+      const completionTimestamp = Date.now();
+      post({
+        phase: "error",
+        method: req.method.name,
+        methodType: "server_streaming",
+        requestId,
+        error: serializeError(error),
+        timing: timing(requestTimestamp, {
+          completionTimestamp,
+          duration: completionTimestamp - requestTimestamp,
+          messageCount,
+          timeToFirstMessage: firstMessageTimestamp == null ? null : firstMessageTimestamp - requestTimestamp,
+        }),
+      });
+      throw error;
+    }
+  };
+
+  const execute = async (next, req) => {
+    const requestId = nextRequestId();
+    const requestTimestamp = Date.now();
+    const methodType = req.stream ? "server_streaming" : "unary";
+    post({
+      phase: "start",
       method: req.method.name,
+      methodType,
       requestId,
-      request: requestObj,
-      response: undefined,
-      error: {
-        message: e.message,
-        code: e.code,
-      },
-      canReplay: true,
-      replayedFromRequestId,
-      location,
-      timing: {
-        requestTimestamp,
-      },
+      request: serialize(req.message, "request"),
+      timing: timing(requestTimestamp),
     });
-    throw e;
-  }
-}
 
-/**
- * This interceptor will be passed every request and response. We will take that request and response
- * and post a message to the window. This will allow us to access this message in the content script. This
- * is all to make the manifest v3 happy.
- */
-const interceptor = (next) => async (req) => executeConnectRequest(next, req, req.message);
+    try {
+      const response = await next(req);
+      if (response.stream) {
+        return { ...response, message: readStream(req, response.message, requestId, requestTimestamp) };
+      }
+      const completionTimestamp = Date.now();
+      post({
+        phase: "complete",
+        method: req.method.name,
+        methodType,
+        requestId,
+        response: serialize(response.message, "response"),
+        timing: timing(requestTimestamp, {
+          completionTimestamp,
+          duration: completionTimestamp - requestTimestamp,
+          messageCount: 1,
+        }),
+      });
+      return response;
+    } catch (error) {
+      const completionTimestamp = Date.now();
+      post({
+        phase: "error",
+        method: req.method.name,
+        methodType,
+        requestId,
+        error: serializeError(error),
+        timing: timing(requestTimestamp, { completionTimestamp, duration: completionTimestamp - requestTimestamp, messageCount: 0 }),
+      });
+      throw error;
+    }
+  };
 
-window.__CONNECT_WEB_DEVTOOLS__ = interceptor;
-
-/**
- * Since we are loading inject.js as a script, the order at which it is loaded is not guaranteed.
- * So we will publish a custom event that can be used, to be used to assign the interceptor.
- */
-const readyEvent = new CustomEvent("connect-web-dev-tools-ready");
-window.dispatchEvent(readyEvent);
+  window.__CONNECT_WEB_DEVTOOLS__ = next => req => execute(next, req);
+  window.dispatchEvent(new CustomEvent("connect-web-dev-tools-ready"));
+})();
