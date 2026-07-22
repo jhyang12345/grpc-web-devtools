@@ -1,152 +1,144 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 const MAX_CACHE_ENTRIES = 500;
-const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per entry
+export const MAX_ENTRY_BYTES = 5 * 1024 * 1024;
+export const MAX_STREAM_MESSAGES = 100;
 
 function safeStringify(value) {
-  try {
-    return JSON.stringify(value);
-  } catch (error) {
-    return '"[unserializable]"';
-  }
+  try { return JSON.stringify(value); } catch (_) { return '"[unserializable]"'; }
 }
 
 function byteLength(json) {
-  if (typeof TextEncoder !== 'undefined') {
-    return new TextEncoder().encode(json).length;
-  }
-  return json.length;
+  if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(json).length;
+  return unescape(encodeURIComponent(json)).length;
 }
 
-function estimatePayloadBytes(entry) {
-  let bytes = 0;
-  if (entry.request != null) {
-    bytes += byteLength(safeStringify(entry.request));
-  }
-  if (entry.response != null) {
-    bytes += byteLength(safeStringify(entry.response));
-  }
-  if (entry.error != null) {
-    bytes += byteLength(safeStringify(entry.error));
-  }
-  return bytes;
-}
-
-function truncateLargePayload(payload, fieldName) {
-  const jsonStr = safeStringify(payload);
-  const bytes = byteLength(jsonStr);
-
-  if (bytes <= MAX_PAYLOAD_BYTES) {
-    return { value: payload, truncated: false };
-  }
-
-  // Payload is too large - create a summary instead
-  console.warn(`[gRPC DevTools] ${fieldName} payload truncated (${(bytes / 1024 / 1024).toFixed(2)}MB > ${MAX_PAYLOAD_BYTES / 1024 / 1024}MB limit)`);
-
+export function payloadDescriptor(value) {
+  const serialized = safeStringify(value);
+  const originalSizeBytes = byteLength(serialized);
   return {
-    value: {
-      __truncated: true,
-      __originalSizeBytes: bytes,
-      __message: `Payload too large to display (${(bytes / 1024 / 1024).toFixed(2)}MB). Download as JSON to view full content.`,
-      __summary: typeof payload === 'object' ? Object.keys(payload).slice(0, 10) : 'N/A'
-    },
-    truncated: true
+    __truncated: true,
+    __originalSizeBytes: originalSizeBytes,
+    preview: serialized.slice(0, 2000),
   };
 }
 
-function applyPayloadLimits(entry) {
-  const result = { ...entry };
+export function limitPayload(value) {
+  if (value == null) return value;
+  return byteLength(safeStringify(value)) > MAX_ENTRY_BYTES ? payloadDescriptor(value) : value;
+}
 
-  if (entry.request != null) {
-    const { value, truncated } = truncateLargePayload(entry.request, 'Request');
-    if (truncated) {
-      result.request = value;
-    }
+function compositeKey(entry) {
+  return [entry.captureId || "legacy", entry.transport || "unknown", entry.requestId].join(":");
+}
+
+function estimatePayloadBytes(entry) {
+  return [entry.request, entry.response, entry.error, entry.status, ...(entry.messages || [])]
+    .filter(value => value != null)
+    .reduce((total, value) => total + byteLength(safeStringify(value)), 0);
+}
+
+function applyIndividualLimits(entry) {
+  const limited = { ...entry };
+  ["request", "response", "error", "status"].forEach(field => {
+    if (limited[field] != null) limited[field] = limitPayload(limited[field]);
+  });
+  return limited;
+}
+
+function enforceAggregateLimit(entry) {
+  entry.messages = entry.messages || [];
+  entry.droppedMessageCount = entry.droppedMessageCount || 0;
+  while (entry.messages.length > MAX_STREAM_MESSAGES || (estimatePayloadBytes(entry) > MAX_ENTRY_BYTES && entry.messages.length)) {
+    entry.messages.shift();
+    entry.droppedMessageCount += 1;
   }
-
-  if (entry.response != null) {
-    const { value, truncated } = truncateLargePayload(entry.response, 'Response');
-    if (truncated) {
-      result.response = value;
+  // If protected fields alone exceed the aggregate budget, retain their
+  // existence as descriptors rather than allowing a single entry to grow.
+  ["response", "request", "error", "status"].forEach(field => {
+    if (estimatePayloadBytes(entry) > MAX_ENTRY_BYTES && entry[field] != null && !entry[field].__truncated) {
+      entry[field] = payloadDescriptor(entry[field]);
     }
-  }
-
-  if (entry.error != null) {
-    const { value, truncated } = truncateLargePayload(entry.error, 'Error');
-    if (truncated) {
-      result.error = value;
-    }
-  }
-
-  return result;
+  });
+  entry.payloadBytes = estimatePayloadBytes(entry);
 }
 
 const cache = new Map();
 const order = [];
-const requestIdToEntryId = new Map();
+const requestKeyToEntryId = new Map();
 let nextEntryId = 1;
 
 function evictIfNeeded() {
   while (order.length > MAX_CACHE_ENTRIES) {
     const oldestId = order.shift();
-    if (oldestId != null) {
-      cache.delete(oldestId);
-    }
+    const entry = cache.get(oldestId);
+    if (!entry) continue;
+    const key = compositeKey(entry);
+    if (requestKeyToEntryId.get(key) === oldestId) requestKeyToEntryId.delete(key);
+    cache.delete(oldestId);
   }
 }
 
-export function addNetworkEntry(entry) {
-  // Apply payload size limits to prevent OOM
-  const limitedEntry = applyPayloadLimits(entry);
-
-  const existingEntryId = limitedEntry.requestId != null ? requestIdToEntryId.get(limitedEntry.requestId) : null;
-  const existingEntry = existingEntryId ? cache.get(existingEntryId) : null;
-  if (existingEntry) {
-    if (limitedEntry.method && !existingEntry.method) existingEntry.method = limitedEntry.method;
-    if (limitedEntry.methodType && !existingEntry.methodType) existingEntry.methodType = limitedEntry.methodType;
-    if (limitedEntry.transport && !existingEntry.transport) existingEntry.transport = limitedEntry.transport;
-    if (limitedEntry.request != null) existingEntry.request = limitedEntry.request;
-    if (limitedEntry.response != null) existingEntry.response = limitedEntry.response;
-    if (limitedEntry.error != null) existingEntry.error = limitedEntry.error;
-    if (limitedEntry.requestId != null) existingEntry.requestId = limitedEntry.requestId;
-    if (limitedEntry.canReplay != null) existingEntry.canReplay = limitedEntry.canReplay;
-    if (limitedEntry.replayedFromRequestId != null) {
-      existingEntry.replayedFromRequestId = limitedEntry.replayedFromRequestId;
-    }
-    // Update timing - merge so requestTimestamp from initial event is preserved
-    if (limitedEntry.timing != null) {
-      existingEntry.timing = { ...existingEntry.timing, ...limitedEntry.timing };
-    }
-    if (limitedEntry.location != null && !existingEntry.location) {
-      existingEntry.location = limitedEntry.location;
-    }
-    existingEntry.payloadBytes = estimatePayloadBytes(existingEntry);
-    return existingEntry;
+function mergeEntry(existing, incoming) {
+  ["method", "methodType", "transport", "captureId", "requestId", "location"].forEach(field => {
+    if (incoming[field] != null && (existing[field] == null || field !== "location")) existing[field] = incoming[field];
+  });
+  if (incoming.request != null) existing.request = incoming.request;
+  if (incoming.timing != null) existing.timing = { ...existing.timing, ...incoming.timing };
+  if (incoming.phase === "message") {
+    if (incoming.response != null) existing.messages.push(incoming.response);
+  } else if (incoming.phase === "complete") {
+    existing.terminalPhase = "complete";
+    if (incoming.response != null) existing.response = incoming.response;
+    if (incoming.status != null) existing.status = incoming.status;
+  } else if (incoming.phase === "error") {
+    existing.terminalPhase = "error";
+    if (incoming.error != null) existing.error = incoming.error;
+    if (incoming.status != null) existing.status = incoming.status;
+  } else {
+    if (incoming.response != null) existing.response = incoming.response;
+    if (incoming.error != null) existing.error = incoming.error;
   }
+  // The protocol's messageCount is the total observed on the wire, including
+  // messages no longer retained in the bounded in-memory history.
+  if (incoming.timing && incoming.timing.messageCount != null) existing.messageCount = incoming.timing.messageCount;
+  enforceAggregateLimit(existing);
+  return existing;
+}
 
-  const entryId = nextEntryId++;
+export function addNetworkEntry(entry) {
+  const limitedEntry = applyIndividualLimits(entry);
+  const key = limitedEntry.requestId == null ? null : compositeKey(limitedEntry);
+  const existingEntryId = key == null ? null : requestKeyToEntryId.get(key);
+  const existingEntry = existingEntryId == null ? null : cache.get(existingEntryId);
+  if (existingEntry) return mergeEntry(existingEntry, limitedEntry);
+
   const fullEntry = {
     ...limitedEntry,
-    entryId,
-    payloadBytes: estimatePayloadBytes(limitedEntry),
+    entryId: nextEntryId++,
+    messages: limitedEntry.phase === "message" && limitedEntry.response != null ? [limitedEntry.response] : [],
+    response: limitedEntry.phase === "message" ? undefined : limitedEntry.response,
+    terminalPhase: limitedEntry.phase === "complete" || limitedEntry.phase === "error" ? limitedEntry.phase : undefined,
     timing: { requestTimestamp: Date.now(), ...limitedEntry.timing },
+    messageCount: limitedEntry.timing && limitedEntry.timing.messageCount,
+    droppedMessageCount: 0,
   };
-
-  cache.set(entryId, fullEntry);
-  order.push(entryId);
-  if (limitedEntry.requestId != null) {
-    requestIdToEntryId.set(limitedEntry.requestId, entryId);
-  }
+  enforceAggregateLimit(fullEntry);
+  cache.set(fullEntry.entryId, fullEntry);
+  order.push(fullEntry.entryId);
+  if (key != null) requestKeyToEntryId.set(key, fullEntry.entryId);
   evictIfNeeded();
   return fullEntry;
 }
 
-export function getNetworkEntry(entryId) {
-  return cache.get(entryId);
-}
+export function getNetworkEntry(entryId) { return cache.get(entryId); }
 
 export function clearNetworkCache() {
   cache.clear();
   order.length = 0;
-  requestIdToEntryId.clear();
+  requestKeyToEntryId.clear();
+}
+
+export function getCacheDebugState() {
+  return { size: cache.size, mappings: requestKeyToEntryId.size };
 }

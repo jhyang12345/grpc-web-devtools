@@ -5,6 +5,7 @@
   const MAX_QUEUE_SIZE = 100;
   const MAX_RECONNECT_ATTEMPTS = 5;
   const RECONNECT_INTERVAL_MS = 3000;
+  const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
   const captureId = (() => {
     const bytes = new Uint32Array(2);
     if (window.crypto && window.crypto.getRandomValues) {
@@ -20,6 +21,18 @@
   let reconnectAttempts = 0;
   let reconnectTimer = null;
   const messageQueue = [];
+
+  const safeStringify = value => {
+    try { return JSON.stringify(value); } catch (_) { return '"[unserializable]"'; }
+  };
+  const byteLength = value => new TextEncoder().encode(value).length;
+  const limitPayload = value => {
+    if (value == null) return value;
+    const serialized = safeStringify(value);
+    const originalSizeBytes = byteLength(serialized);
+    if (originalSizeBytes <= MAX_PAYLOAD_BYTES) return value;
+    return { __truncated: true, __originalSizeBytes: originalSizeBytes, preview: serialized.slice(0, 2000) };
+  };
 
   const inject = name => {
     const script = document.createElement("script");
@@ -91,6 +104,9 @@
       requestId: data.requestId == null ? fallbackRequestId++ : data.requestId,
       location: String(window.location.href),
     };
+    ["request", "response", "error", "status"].forEach(field => {
+      if (event[field] != null) event[field] = limitPayload(event[field]);
+    });
     const message = { action: "gRPCNetworkCall", target: "panel", data: event };
     setupPortIfNeeded();
     if (port && acknowledged) {

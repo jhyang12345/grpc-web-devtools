@@ -87,11 +87,15 @@ function stringifyJson(value) {
   }
 }
 
-function buildResponseSource(response, error, isMissingPayload) {
+function buildResponseSource(response, error, messages, isMissingPayload) {
   if (isMissingPayload) {
     return {
       message: "Full response payload is no longer available.",
     };
+  }
+
+  if (messages && messages.length) {
+    return { messages, ...(response != null ? { response } : {}), ...(error != null ? { error } : {}) };
   }
 
   if (response != null) {
@@ -245,6 +249,7 @@ class NetworkDetails extends Component {
     const {
       response,
       error,
+      messages,
       timing,
       payloadBytes,
       transport,
@@ -255,8 +260,8 @@ class NetworkDetails extends Component {
     const requestPayloadMissing = !!entry.entryId && !cachedEntry && entry.request === true;
     const responsePayloadMissing = !!entry.entryId && !cachedEntry && entry.response === true;
     const requestText = requestPayloadMissing ? "" : stringifyJson(entryToRender?.request);
-    const responseSource = buildResponseSource(response, error, responsePayloadMissing);
-    const hasResponsePayload = !responsePayloadMissing && (response != null || error != null);
+    const responseSource = buildResponseSource(response, error, messages, responsePayloadMissing);
+    const hasResponsePayload = !responsePayloadMissing && (response != null || error != null || messages?.length);
     const responseText = stringifyJson(responseSource);
 
     return (
@@ -292,10 +297,10 @@ class NetworkDetails extends Component {
               <span title={formatTimestamp(timing.requestTimestamp)}>{formatTimestamp(timing.requestTimestamp)}</span>
             </div>
           )}
-          {timing?.messageCount != null && (
+          {(entryToRender.messageCount != null || timing?.messageCount != null) && (
             <div className="payload-metadata-row">
               <span>Messages</span>
-              <span>{timing.messageCount}</span>
+              <span>{entryToRender.messageCount || timing.messageCount}{entryToRender.droppedMessageCount ? ` (${entryToRender.droppedMessageCount} older messages dropped)` : ""}</span>
             </div>
           )}
           {transport && (
