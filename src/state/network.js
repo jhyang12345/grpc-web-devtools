@@ -156,6 +156,7 @@ export const { networkLog, networkLogBatch, selectLogEntry, clearLog, setPreserv
 function buildSummaryEntry(entry) {
   return {
     entryId: entry.entryId,
+    captureId: entry.captureId,
     method: entry.method,
     methodType: entry.methodType,
     transport: entry.transport,

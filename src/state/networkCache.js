@@ -43,6 +43,20 @@ function applyIndividualLimits(entry) {
   ["request", "response", "error", "status"].forEach(field => {
     if (limited[field] != null) limited[field] = limitPayload(limited[field]);
   });
+  if (limited.replay != null) {
+    limited.replay = {
+      available: limited.replay && limited.replay.available === true,
+      token: typeof limited.replay?.token === 'string' ? limited.replay.token.slice(0, 512) : undefined,
+      reason: typeof limited.replay?.reason === 'string' ? limited.replay.reason.slice(0, 512) : undefined,
+    };
+  }
+  if (limited.replayedFrom != null) {
+    limited.replayedFrom = {
+      captureId: typeof limited.replayedFrom?.captureId === 'string' ? limited.replayedFrom.captureId.slice(0, 512) : undefined,
+      transport: typeof limited.replayedFrom?.transport === 'string' ? limited.replayedFrom.transport.slice(0, 128) : undefined,
+      requestId: Number.isFinite(limited.replayedFrom?.requestId) ? limited.replayedFrom.requestId : undefined,
+    };
+  }
   return limited;
 }
 

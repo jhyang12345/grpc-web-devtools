@@ -49,7 +49,7 @@ test('batched summaries retain replay descriptors and provenance, never replay c
   })(dispatch);
   jest.runOnlyPendingTimers();
   const summary = dispatch.mock.calls[0][0].payload[0];
-  expect(summary).toEqual(expect.objectContaining({ replay: { available: true, token: 'opaque-token' }, replayedFrom: expect.objectContaining({ requestId: 8 }) }));
+  expect(summary).toEqual(expect.objectContaining({ captureId: 'frame-b', replay: { available: true, token: 'opaque-token' }, replayedFrom: expect.objectContaining({ requestId: 8 }) }));
   expect(Object.values(summary).some(value => typeof value === 'function')).toBe(false);
   jest.useRealTimers();
 });

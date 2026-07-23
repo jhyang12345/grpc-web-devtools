@@ -36,6 +36,17 @@
     if (originalSizeBytes <= MAX_PAYLOAD_BYTES) return value;
     return { __truncated: true, __originalSizeBytes: originalSizeBytes, preview: serialized.slice(0, 2000) };
   };
+  const shortString = value => typeof value === "string" ? value.slice(0, 512) : undefined;
+  const normalizeReplay = value => value && typeof value === "object" ? {
+    available: value.available === true,
+    token: shortString(value.token),
+    reason: shortString(value.reason),
+  } : undefined;
+  const normalizeReplayedFrom = value => value && typeof value === "object" ? {
+    captureId: shortString(value.captureId),
+    transport: shortString(value.transport),
+    requestId: Number.isFinite(value.requestId) ? value.requestId : undefined,
+  } : undefined;
 
   const inject = name => {
     const script = document.createElement("script");
@@ -149,6 +160,8 @@
     ["request", "response", "error", "status"].forEach(field => {
       if (event[field] != null) event[field] = limitPayload(event[field]);
     });
+    if (event.replay != null) event.replay = normalizeReplay(event.replay);
+    if (event.replayedFrom != null) event.replayedFrom = normalizeReplayedFrom(event.replayedFrom);
     sendPanelMessage("gRPCNetworkCall", event);
   }
 
