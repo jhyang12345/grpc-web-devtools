@@ -208,6 +208,12 @@ export class NetworkDetails extends Component {
 
   _isReplaySubmitting = false;
 
+  _replayGeneration = 0;
+
+  _activeReplaySubmission = null;
+
+  _isMounted = false;
+
   _requestSearchMatches = [];
 
   _responseSearchMatches = [];
@@ -217,6 +223,7 @@ export class NetworkDetails extends Component {
   _responseSearchDebounceTimer = null;
 
   componentDidMount() {
+    this._isMounted = true;
     document.addEventListener("keydown", this._handleKeydown, true);
 
     // componentDidUpdate doesn't fire on initial mount. If the component mounts with an entry
@@ -229,12 +236,14 @@ export class NetworkDetails extends Component {
       this._currentRequestText = requestPayloadMissing ? "" : stringifyJson(entryToRender?.request);
       this.setState({ lastEntryId: nextEntryId });
       setTimeout(() => {
-        this.setState({ isRendering: true });
+        this._safeSetState({ isRendering: true });
       }, 0);
     }
   }
 
   componentWillUnmount() {
+    this._isMounted = false;
+    this._invalidateReplaySubmission();
     document.removeEventListener("keydown", this._handleKeydown, true);
     if (this._requestSearchDebounceTimer) {
       clearTimeout(this._requestSearchDebounceTimer);
@@ -251,6 +260,7 @@ export class NetworkDetails extends Component {
     const nextEntryId = this.props.entry?.entryId ?? null;
 
     if (prevEntryId !== nextEntryId && this.state.lastEntryId !== nextEntryId) {
+      this._invalidateReplaySubmission();
       const { cachedEntry, entryToRender } = getRenderableEntry(this.props.entry);
       const requestPayloadMissing = !!this.props.entry?.entryId && !cachedEntry && this.props.entry.request === true;
 
@@ -271,10 +281,8 @@ export class NetworkDetails extends Component {
         requestEditorError: null,
         isReplaySending: false,
       });
-      this._isReplaySubmitting = false;
-
       setTimeout(() => {
-        this.setState({ isRendering: true });
+        this._safeSetState({ isRendering: true });
       }, 0);
     }
   }
@@ -679,13 +687,27 @@ export class NetworkDetails extends Component {
   }
 
   _showReplayError = (message) => {
-    this.setState({ requestEditorError: message });
+    this._safeSetState({ requestEditorError: message });
     this.props.showToast({ message, type: "error", autoDismiss: 4000 });
   };
 
+  _safeSetState = (nextState, callback) => {
+    if (this._isMounted) this.setState(nextState, callback);
+  };
+
+  _invalidateReplaySubmission = () => {
+    this._replayGeneration += 1;
+    this._activeReplaySubmission = null;
+    this._isReplaySubmitting = false;
+  };
+
+  _isCurrentReplaySubmission = (submission) => (
+    this._isMounted && this._activeReplaySubmission === submission
+  );
+
   _openRequestEditor = () => {
     this._closeRequestSearch();
-    this.setState({ isEditingRequest: true, requestEditorError: null }, () => {
+    this._safeSetState({ isEditingRequest: true, requestEditorError: null }, () => {
       this.requestEditorInputRef.current?.focus();
     });
   };
@@ -693,12 +715,12 @@ export class NetworkDetails extends Component {
   _cancelRequestEditor = () => {
     if (this.state.isReplaySending) return;
     this._clearRequestHighlights();
-    this.setState({ isEditingRequest: false, requestEditorError: null });
+    this._safeSetState({ isEditingRequest: false, requestEditorError: null });
   };
 
   _resetRequestEditor = () => {
     if (this.requestEditorInputRef.current) this.requestEditorInputRef.current.value = this._activeRequestText || "";
-    this.setState({ requestEditorError: null });
+    this._safeSetState({ requestEditorError: null });
     this.requestEditorInputRef.current?.focus();
   };
 
@@ -710,7 +732,7 @@ export class NetworkDetails extends Component {
       return;
     }
     editor.value = formatted.text;
-    this.setState({ requestEditorError: null });
+    this._safeSetState({ requestEditorError: null });
   };
 
   _sendEditedRequest = async () => {
@@ -726,8 +748,10 @@ export class NetworkDetails extends Component {
       this._showReplayError(replayDisabledReason);
       return;
     }
+    const submission = { generation: ++this._replayGeneration, entryId: entry.entryId };
+    this._activeReplaySubmission = submission;
     this._isReplaySubmitting = true;
-    this.setState({ isReplaySending: true, requestEditorError: null });
+    this._safeSetState({ isReplaySending: true, requestEditorError: null });
     try {
       await sendReplayRequest({
         captureId: entry.captureId,
@@ -736,14 +760,21 @@ export class NetworkDetails extends Component {
         transport: entry.transport,
         request: parsed.request,
       });
-      this.props.showToast({ message: "Replay accepted; watch the new request entry", type: "info", autoDismiss: 3500 });
+      if (this._isCurrentReplaySubmission(submission)) {
+        this.props.showToast({ message: "Replay accepted; watch the new request entry", type: "info", autoDismiss: 3500 });
+      }
     } catch (error) {
-      const message = error?.message || "Replay request was not accepted.";
-      this.setState({ requestEditorError: message });
-      this.props.showToast({ message, type: "error", autoDismiss: 4000 });
+      if (this._isCurrentReplaySubmission(submission)) {
+        const message = error?.message || "Replay request was not accepted.";
+        this._safeSetState({ requestEditorError: message });
+        this.props.showToast({ message, type: "error", autoDismiss: 4000 });
+      }
     } finally {
-      this._isReplaySubmitting = false;
-      this.setState({ isReplaySending: false });
+      if (this._isCurrentReplaySubmission(submission)) {
+        this._activeReplaySubmission = null;
+        this._isReplaySubmitting = false;
+        this._safeSetState({ isReplaySending: false });
+      }
     }
   };
 

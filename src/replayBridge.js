@@ -1,6 +1,7 @@
 export const MAX_REPLAY_BYTES = 5 * 1024 * 1024;
 export const MAX_PENDING_REPLAYS = 20;
 export const REPLAY_TIMEOUT_MS = 5000;
+const MAX_ATTEMPT_ID_RETRIES = 8;
 
 function byteLength(value) {
   if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(value).length;
@@ -30,7 +31,14 @@ export function validateReplayRequest(request) {
   return null;
 }
 
-export function createReplayBridge({ timeoutMs = REPLAY_TIMEOUT_MS, maxPending = MAX_PENDING_REPLAYS } = {}) {
+export function validateReplayRoute({ captureId, replayToken, transport }) {
+  if (typeof captureId !== "string" || captureId.length === 0 || captureId.length > 256) return "A valid originating frame is required for replay.";
+  if (typeof replayToken !== "string" || replayToken.length === 0 || replayToken.length > 512) return "A valid replay handle is required.";
+  if (transport !== "grpc-web" && transport !== "connect-web") return "A valid replay transport is required.";
+  return null;
+}
+
+export function createReplayBridge({ timeoutMs = REPLAY_TIMEOUT_MS, maxPending = MAX_PENDING_REPLAYS, createAttemptId = randomAttemptId } = {}) {
   let port = null;
   const pending = new Map();
 
@@ -45,14 +53,29 @@ export function createReplayBridge({ timeoutMs = REPLAY_TIMEOUT_MS, maxPending =
 
   return {
     configure(nextPort) {
+      if (port && nextPort && port !== nextPort) {
+        Array.from(pending.keys()).forEach(replayAttemptId => {
+          settle(replayAttemptId, (attempt) => attempt.reject(new Error("Replay connection was replaced.")));
+        });
+      }
       port = nextPort || null;
     },
     send({ captureId, replayToken, sourceEntryId, transport, request }) {
       const validationError = validateReplayRequest(request);
       if (validationError) return Promise.reject(new Error(validationError));
+      const routeError = validateReplayRoute({ captureId, replayToken, transport });
+      if (routeError) return Promise.reject(new Error(routeError));
       if (!port) return Promise.reject(new Error("Replay connection is unavailable."));
       if (pending.size >= maxPending) return Promise.reject(new Error("Too many replay requests are awaiting acknowledgement."));
-      const replayAttemptId = randomAttemptId();
+      let replayAttemptId;
+      for (let attempt = 0; attempt < MAX_ATTEMPT_ID_RETRIES; attempt += 1) {
+        const candidate = createAttemptId();
+        if (!pending.has(candidate)) {
+          replayAttemptId = candidate;
+          break;
+        }
+      }
+      if (!replayAttemptId) return Promise.reject(new Error("Unable to allocate a replay attempt ID."));
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           settle(replayAttemptId, (attempt) => attempt.reject(new Error("Replay acknowledgement timed out; the originating frame may no longer be available.")));

@@ -40,6 +40,15 @@ export function formatReplayProvenance(replayedFrom) {
   return `Retry of ${replayedFrom.transport} request ${replayedFrom.requestId}`;
 }
 
+export function formatReplayTiming(timestampLabel, elapsedLabel, replayedFrom) {
+  const timing = `${timestampLabel || 'Waiting for timing...'} · ${elapsedLabel}`;
+  if (!replayedFrom) return timing;
+  const marker = replayedFrom.transport && Number.isFinite(replayedFrom.requestId)
+    ? `↻ ${replayedFrom.transport} #${replayedFrom.requestId}`
+    : '↻ retry';
+  return `${marker} · ${timing}`;
+}
+
 class NetworkListRow extends PureComponent {
   render() {
     const { index, data, style, selectLogEntry, selectedIdx } = this.props;
@@ -51,6 +60,7 @@ class NetworkListRow extends PureComponent {
     const elapsedLabel = completed ? formatElapsed(timing?.duration) : 'Pending';
     const frameUrl = formatFrameUrl(log.location);
     const replayProvenance = log.replayedFrom ? formatReplayProvenance(log.replayedFrom) : null;
+    const timingLabel = formatReplayTiming(timestampLabel, elapsedLabel, log.replayedFrom);
 
     return (
       <div
@@ -62,7 +72,7 @@ class NetworkListRow extends PureComponent {
         <div className="data-row-content">
           <span className="data-row-title">{log.endpoint || log.method}</span>
           <div className="data-row-meta" title={log.location || undefined}>{frameUrl}</div>
-          <div className="data-row-timing">{replayProvenance || `${timestampLabel || 'Waiting for timing...'} · ${elapsedLabel}`}</div>
+          <div className="data-row-timing" title={replayProvenance || undefined}>{timingLabel}</div>
         </div>
       </div>
     );
