@@ -73,6 +73,16 @@ code {
   --button-text: #333;
   --button-border: #ccc;
   --button-hover-bg: #f5f5f5;
+  --replay-warning-bg: #fff7e5;
+  --replay-warning-border: #e7c77f;
+  --replay-warning-accent: #c77b00;
+  --replay-warning-text: #694300;
+  --replay-editor-border: #a6a6a6;
+  --replay-editor-focus: #c77b00;
+  --replay-send-bg: #a85d00;
+  --replay-send-border: #814700;
+  --replay-send-hover-bg: #8d4e00;
+  --replay-send-text: #fff;
 
 }
 
@@ -102,6 +112,16 @@ code {
     --button-text: #bdc6cf;
     --button-border: #5a5a5a;
     --button-hover-bg: #4a4a4a;
+    --replay-warning-bg: #3a3020;
+    --replay-warning-border: #7f6534;
+    --replay-warning-accent: #e0a542;
+    --replay-warning-text: #f0cf8b;
+    --replay-editor-border: #646464;
+    --replay-editor-focus: #e0a542;
+    --replay-send-bg: #a76410;
+    --replay-send-border: #d18a2e;
+    --replay-send-hover-bg: #bd7416;
+    --replay-send-text: #fff7ea;
   }
 
   input[type=checkbox] {

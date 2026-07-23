@@ -35,6 +35,11 @@ export function formatElapsed(duration) {
   return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`;
 }
 
+export function formatReplayProvenance(replayedFrom) {
+  if (!replayedFrom?.transport || !Number.isFinite(replayedFrom.requestId)) return 'Retry of an earlier request';
+  return `Retry of ${replayedFrom.transport} request ${replayedFrom.requestId}`;
+}
+
 class NetworkListRow extends PureComponent {
   render() {
     const { index, data, style, selectLogEntry, selectedIdx } = this.props;
@@ -45,6 +50,7 @@ class NetworkListRow extends PureComponent {
     const completed = Number.isFinite(timing?.completionTimestamp);
     const elapsedLabel = completed ? formatElapsed(timing?.duration) : 'Pending';
     const frameUrl = formatFrameUrl(log.location);
+    const replayProvenance = log.replayedFrom ? formatReplayProvenance(log.replayedFrom) : null;
 
     return (
       <div
@@ -56,7 +62,7 @@ class NetworkListRow extends PureComponent {
         <div className="data-row-content">
           <span className="data-row-title">{log.endpoint || log.method}</span>
           <div className="data-row-meta" title={log.location || undefined}>{frameUrl}</div>
-          <div className="data-row-timing">{timestampLabel || 'Waiting for timing...'} · {elapsedLabel}</div>
+          <div className="data-row-timing">{replayProvenance || `${timestampLabel || 'Waiting for timing...'} · ${elapsedLabel}`}</div>
         </div>
       </div>
     );

@@ -10,6 +10,7 @@ import networkReducer, { logNetworkEntry, clearLogAndCache } from './state/netwo
 import toolbarReducer, { setConnectionStatus } from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 import toastReducer from './state/toast';
+import { configureReplayBridge, disconnectReplayBridge, handleReplayBridgeMessage } from './replayBridge';
 
 var port, tabId
 var currentInspectedUrl = ''
@@ -40,6 +41,7 @@ function setupPanelPortIfNeeded() {
   try {
     tabId = chrome.devtools.inspectedWindow.tabId;
     port = chrome.runtime.connect(null, { name: "panel" });
+    configureReplayBridge(port);
     port.postMessage({ tabId, action: "init" });
     port.onMessage.addListener(_onMessageRecived);
     port.onDisconnect.addListener(_onPortDisconnect);
@@ -52,6 +54,7 @@ function setupPanelPortIfNeeded() {
 }
 
 function _cleanupListeners() {
+  disconnectReplayBridge("Replay connection was closed.");
   try {
     if (port) port.onMessage.removeListener(_onMessageRecived);
     if (chrome && chrome.devtools && chrome.devtools.network) {
@@ -63,6 +66,7 @@ function _cleanupListeners() {
 }
 
 function _onPortDisconnect() {
+  disconnectReplayBridge("Replay connection was disconnected.");
   if (store) {
     store.dispatch(setConnectionStatus('disconnected'));
   }
@@ -91,6 +95,7 @@ if (chrome) {
   try {
     tabId = chrome.devtools.inspectedWindow.tabId;
     port = chrome.runtime.connect(null, { name: "panel" });
+    configureReplayBridge(port);
     port.postMessage({ tabId, action: "init" });
     port.onMessage.addListener(_onMessageRecived);
     port.onDisconnect.addListener(_onPortDisconnect);
@@ -149,6 +154,8 @@ function _onMessageRecived({ action, data }) {
     }
   } else if (action === "init_ack" || action === "heartbeat_ack" || action === "content_state") {
     store.dispatch(setConnectionStatus(data && data.contentConnected ? 'connected' : 'pending'));
+  } else if (action === "replay_ack" || action === "replay_rejected") {
+    handleReplayBridgeMessage(action, data);
   }
 }
 

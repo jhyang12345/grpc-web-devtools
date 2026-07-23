@@ -6,6 +6,7 @@ import Split from "react-split";
 import { connect } from "react-redux";
 import { getNetworkEntry } from "../state/networkCache";
 import { showToast } from "../state/toast";
+import { sendReplayRequest, validateReplayRequest } from "../replayBridge";
 import { getStorageItem, setStorageItem } from "../utils/localStorage";
 import MethodHeader from "./MethodHeader";
 import SearchBar from "./SearchBar";
@@ -93,6 +94,33 @@ function stringifyJson(value) {
   }
 }
 
+export function getReplayDisabledReason(entry, requestPayloadMissing) {
+  if (requestPayloadMissing) return "Full request payload is no longer available.";
+  if (!entry?.request || entry.request.__truncated) return "This request payload was truncated and cannot be replayed.";
+  if (!entry?.replay?.available) return entry?.replay?.reason || "Replay is unavailable for this captured request.";
+  if (!entry.replay.token) return "This replay handle is no longer available.";
+  if (!entry.captureId) return "The originating frame is not available for replay.";
+  if (!entry.transport) return "The captured transport is not available for replay.";
+  return null;
+}
+
+export function parseEditedRequest(text) {
+  let request;
+  try { request = JSON.parse(text); } catch (_) { return { error: "Request body must contain valid JSON." }; }
+  const validationError = validateReplayRequest(request);
+  return validationError ? { error: validationError } : { request };
+}
+
+export function formatEditedRequest(text) {
+  const parsed = parseEditedRequest(text);
+  return parsed.error ? parsed : { request: parsed.request, text: JSON.stringify(parsed.request, null, 2) };
+}
+
+export function formatReplayProvenance(replayedFrom) {
+  if (!replayedFrom?.transport || !Number.isFinite(replayedFrom.requestId)) return "Retry of an earlier request";
+  return `Retry of ${replayedFrom.transport} request ${replayedFrom.requestId}`;
+}
+
 export function buildResponseSource(response, error, messages, status, isMissingPayload) {
   if (isMissingPayload) {
     return {
@@ -151,10 +179,12 @@ function findAllMatches(text, query) {
   return matches;
 }
 
-class NetworkDetails extends Component {
+export class NetworkDetails extends Component {
   requestPaneRef = React.createRef();
 
   requestEditorRef = React.createRef();
+
+  requestEditorInputRef = React.createRef();
 
   responsePaneRef = React.createRef();
 
@@ -171,7 +201,12 @@ class NetworkDetails extends Component {
     responseCollapseBeforeSearch: null,
     requestSearch: createSearchState(),
     responseSearch: createSearchState(),
+    isEditingRequest: false,
+    requestEditorError: null,
+    isReplaySending: false,
   };
+
+  _isReplaySubmitting = false;
 
   _requestSearchMatches = [];
 
@@ -232,7 +267,11 @@ class NetworkDetails extends Component {
         responseCollapseBeforeSearch: null,
         requestSearch: createSearchState(),
         responseSearch: createSearchState(),
+        isEditingRequest: false,
+        requestEditorError: null,
+        isReplaySending: false,
       });
+      this._isReplaySubmitting = false;
 
       setTimeout(() => {
         this.setState({ isRendering: true });
@@ -286,7 +325,7 @@ class NetworkDetails extends Component {
             gutterSize={6}
             onDragEnd={this._onPaneResize}
           >
-            {this._renderRequestPane(requestText, requestPayloadMissing)}
+            {this._renderRequestPane(requestText, requestPayloadMissing, entryToRender)}
             {this._renderResponsePane(
               responseSource,
               responseText,
@@ -342,6 +381,12 @@ class NetworkDetails extends Component {
               <span>{transport}</span>
             </div>
           )}
+          {entryToRender.replayedFrom && (
+            <div className="payload-metadata-row replay-provenance">
+              <span>Replay</span>
+              <span>{formatReplayProvenance(entryToRender.replayedFrom)}</span>
+            </div>
+          )}
           <div className="payload-metadata-row">
             <span>Payload size (approx)</span>
             <span>{payloadBytes ? formatBytes(payloadBytes) : "Unknown"}</span>
@@ -388,10 +433,13 @@ class NetworkDetails extends Component {
     }
   };
 
-  _renderRequestPane(requestText, requestPayloadMissing) {
-    const { requestSearch } = this.state;
+  _renderRequestPane(requestText, requestPayloadMissing, entryToRender) {
+    const { requestSearch, isEditingRequest, requestEditorError, isReplaySending } = this.state;
+    const replayDisabledReason = getReplayDisabledReason(entryToRender, requestPayloadMissing);
     const canCopyRequest = !requestPayloadMissing && !!requestText;
-    const canSearchRequest = !!requestText;
+    const canSearchRequest = !isEditingRequest && !!requestText;
+    this._activeRequestText = requestText;
+    this._activeReplayEntry = entryToRender;
 
     return (
       <div className="details-pane request-pane" ref={this.requestPaneRef}>
@@ -417,9 +465,18 @@ class NetworkDetails extends Component {
             >
               Search
             </button>
+            <button
+              className="json-action-button replay-edit-button"
+              type="button"
+              title={replayDisabledReason || "Edit this captured request before sending a real backend replay."}
+              onClick={this._openRequestEditor}
+              disabled={!!replayDisabledReason || isEditingRequest}
+            >
+              Edit
+            </button>
           </div>
         </div>
-        {requestSearch.isOpen && (
+        {requestSearch.isOpen && !isEditingRequest && (
           <SearchBar
             compact
             placeholder="Search request"
@@ -438,9 +495,24 @@ class NetworkDetails extends Component {
         )}
         <div className="details-pane-body">
           {/* Plain text only — highlights applied via CSS Highlight API, no React re-renders */}
-          <pre ref={this.requestEditorRef} className="request-viewer">
-            {requestText || <span className="request-viewer-placeholder">No request payload captured.</span>}
-          </pre>
+          {isEditingRequest ? (
+            <div className="replay-editor-shell">
+              <div className="replay-safety-note" role="note">Sends a real backend request and may reuse captured auth and metadata.</div>
+              <textarea ref={this.requestEditorInputRef} className="request-editor-input" aria-label="Editable request JSON"
+                aria-describedby={requestEditorError ? "request-editor-error" : undefined} defaultValue={requestText} spellCheck="false" />
+              {requestEditorError && <div id="request-editor-error" className="payload-warning pane-error" role="alert">{requestEditorError}</div>}
+              <div className="replay-editor-actions">
+                <button className="json-action-button" type="button" onClick={this._formatRequestEditor} disabled={isReplaySending}>Format</button>
+                <button className="json-action-button" type="button" onClick={this._resetRequestEditor} disabled={isReplaySending}>Reset</button>
+                <button className="json-action-button" type="button" onClick={this._cancelRequestEditor} disabled={isReplaySending}>Cancel</button>
+                <button className="json-action-button replay-send-button" type="button" onClick={this._sendEditedRequest} disabled={isReplaySending}>{isReplaySending ? "Sending…" : "Send request"}</button>
+              </div>
+            </div>
+          ) : (
+            <pre ref={this.requestEditorRef} className="request-viewer">
+              {requestText || <span className="request-viewer-placeholder">No request payload captured.</span>}
+            </pre>
+          )}
         </div>
       </div>
     );
@@ -535,6 +607,12 @@ class NetworkDetails extends Component {
   _handleKeydown = (event) => {
     const isCmdF = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f";
 
+    if (event.key === "Escape" && this.state.isEditingRequest) {
+      event.preventDefault();
+      this._cancelRequestEditor();
+      return;
+    }
+
     if (!isCmdF || !this.props.entry) {
       if (event.key === "Escape" && this.state.requestSearch.isOpen) {
         event.preventDefault();
@@ -552,6 +630,8 @@ class NetworkDetails extends Component {
     const activeElement = document.activeElement;
     const isInRequestPane = this.requestPaneRef.current?.contains(activeElement);
     const isInResponsePane = this.responsePaneRef.current?.contains(activeElement);
+
+    if (isInRequestPane && this.state.isEditingRequest) return;
 
     event.preventDefault();
     event.stopPropagation();
@@ -598,7 +678,77 @@ class NetworkDetails extends Component {
     }
   }
 
+  _showReplayError = (message) => {
+    this.setState({ requestEditorError: message });
+    this.props.showToast({ message, type: "error", autoDismiss: 4000 });
+  };
+
+  _openRequestEditor = () => {
+    this._closeRequestSearch();
+    this.setState({ isEditingRequest: true, requestEditorError: null }, () => {
+      this.requestEditorInputRef.current?.focus();
+    });
+  };
+
+  _cancelRequestEditor = () => {
+    if (this.state.isReplaySending) return;
+    this._clearRequestHighlights();
+    this.setState({ isEditingRequest: false, requestEditorError: null });
+  };
+
+  _resetRequestEditor = () => {
+    if (this.requestEditorInputRef.current) this.requestEditorInputRef.current.value = this._activeRequestText || "";
+    this.setState({ requestEditorError: null });
+    this.requestEditorInputRef.current?.focus();
+  };
+
+  _formatRequestEditor = () => {
+    const editor = this.requestEditorInputRef.current;
+    const formatted = formatEditedRequest(editor?.value || "");
+    if (formatted.error) {
+      this._showReplayError(formatted.error);
+      return;
+    }
+    editor.value = formatted.text;
+    this.setState({ requestEditorError: null });
+  };
+
+  _sendEditedRequest = async () => {
+    if (this._isReplaySubmitting || this.state.isReplaySending) return;
+    const parsed = parseEditedRequest(this.requestEditorInputRef.current?.value || "");
+    if (parsed.error) {
+      this._showReplayError(parsed.error);
+      return;
+    }
+    const entry = this._activeReplayEntry;
+    const replayDisabledReason = getReplayDisabledReason(entry, false);
+    if (replayDisabledReason) {
+      this._showReplayError(replayDisabledReason);
+      return;
+    }
+    this._isReplaySubmitting = true;
+    this.setState({ isReplaySending: true, requestEditorError: null });
+    try {
+      await sendReplayRequest({
+        captureId: entry.captureId,
+        replayToken: entry.replay.token,
+        sourceEntryId: entry.entryId,
+        transport: entry.transport,
+        request: parsed.request,
+      });
+      this.props.showToast({ message: "Replay accepted; watch the new request entry", type: "info", autoDismiss: 3500 });
+    } catch (error) {
+      const message = error?.message || "Replay request was not accepted.";
+      this.setState({ requestEditorError: message });
+      this.props.showToast({ message, type: "error", autoDismiss: 4000 });
+    } finally {
+      this._isReplaySubmitting = false;
+      this.setState({ isReplaySending: false });
+    }
+  };
+
   _openRequestSearch = () => {
+    if (this.state.isEditingRequest) return;
     this.setState((prevState) => ({
       requestSearch: {
         ...prevState.requestSearch,

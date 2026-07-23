@@ -1,4 +1,4 @@
-import { formatElapsed, formatFrameUrl } from '../components/NetworkListRow';
+import { formatElapsed, formatFrameUrl, formatReplayProvenance } from '../components/NetworkListRow';
 
 test('formats a compact frame URL while retaining a safe fallback for malformed values', () => {
   expect(formatFrameUrl('https://iframe.example.test:8443/api/v1/rpc?debug=1')).toBe('iframe.example.test:8443/api/v1/rpc?debug=1');
@@ -10,4 +10,9 @@ test('formats pending-completion elapsed values compactly', () => {
   expect(formatElapsed(42.2)).toBe('42 ms');
   expect(formatElapsed(1250)).toBe('1.25 s');
   expect(formatElapsed(-1)).toBe('0 ms');
+});
+
+test('formats replay provenance as a label rather than an entry link', () => {
+  expect(formatReplayProvenance({ transport: 'grpc-web', requestId: 9 })).toBe('Retry of grpc-web request 9');
+  expect(formatReplayProvenance({})).toBe('Retry of an earlier request');
 });
