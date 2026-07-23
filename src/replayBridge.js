@@ -1,6 +1,7 @@
 export const MAX_REPLAY_BYTES = 5 * 1024 * 1024;
 export const MAX_PENDING_REPLAYS = 20;
 export const REPLAY_TIMEOUT_MS = 5000;
+export const REPLAY_TRANSPORTS = Object.freeze(["grpc-web", "connect-web", "protobuf-ts"]);
 const MAX_ATTEMPT_ID_RETRIES = 8;
 
 function byteLength(value) {
@@ -34,7 +35,7 @@ export function validateReplayRequest(request) {
 export function validateReplayRoute({ captureId, replayToken, transport }) {
   if (typeof captureId !== "string" || captureId.length === 0 || captureId.length > 256) return "A valid originating frame is required for replay.";
   if (typeof replayToken !== "string" || replayToken.length === 0 || replayToken.length > 512) return "A valid replay handle is required.";
-  if (transport !== "grpc-web" && transport !== "connect-web") return "A valid replay transport is required.";
+  if (!REPLAY_TRANSPORTS.includes(transport)) return "A valid replay transport is required.";
   return null;
 }
 

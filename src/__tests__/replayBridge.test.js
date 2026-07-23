@@ -1,4 +1,4 @@
-import { createReplayBridge, MAX_REPLAY_BYTES, validateReplayRequest, validateReplayRoute } from '../replayBridge';
+import { createReplayBridge, MAX_REPLAY_BYTES, REPLAY_TRANSPORTS, validateReplayRequest, validateReplayRoute } from '../replayBridge';
 
 const makePort = () => ({ postMessage: jest.fn() });
 
@@ -91,4 +91,6 @@ test('replay bridge rejects replaced-port work and invalid routing before postin
   await expect(bridge.send({ captureId: 'frame-a', replayToken: 'token', sourceEntryId: 1, transport: 'other', request: {} })).rejects.toThrow('transport');
   expect(secondPort.postMessage).not.toHaveBeenCalled();
   expect(validateReplayRoute({ captureId: 'frame-a', replayToken: 'token', transport: 'grpc-web' })).toBeNull();
+  expect(validateReplayRoute({ captureId: 'frame-a', replayToken: 'token', transport: 'protobuf-ts' })).toBeNull();
+  expect(REPLAY_TRANSPORTS).toEqual(['grpc-web', 'connect-web', 'protobuf-ts']);
 });
