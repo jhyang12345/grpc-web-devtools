@@ -2,6 +2,9 @@
 
 (() => {
   const GRPC_EVENT_TYPE = "__GRPCWEB_DEVTOOLS__";
+  const PAGE_REPLAY_REQUEST_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__";
+  const PAGE_REPLAY_ACK_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_ACK__";
+  const PAGE_REPLAY_REJECTED_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_REJECTED__";
   const MAX_QUEUE_SIZE = 100;
   const MAX_RECONNECT_ATTEMPTS = 5;
   const RECONNECT_INTERVAL_MS = 3000;
@@ -68,6 +71,27 @@
     }
   }
 
+  function sendPanelMessage(action, data) {
+    const message = { action, target: "panel", data };
+    setupPortIfNeeded();
+    if (port && acknowledged) {
+      flushQueue();
+      try { port.postMessage(message); return; } catch (_) {}
+    }
+    messageQueue.push(message);
+    if (messageQueue.length > MAX_QUEUE_SIZE) messageQueue.shift();
+  }
+
+  function cloneReplayResult(data) {
+    return {
+      captureId,
+      replayToken: typeof data.replayToken === "string" ? data.replayToken : undefined,
+      sourceEntryId: Number.isFinite(data.sourceEntryId) ? data.sourceEntryId : undefined,
+      reason: typeof data.reason === "string" ? data.reason : undefined,
+      message: typeof data.message === "string" ? data.message : undefined,
+    };
+  }
+
   function setupPortIfNeeded() {
     if (port || !chrome || !chrome.runtime) return;
     try {
@@ -79,6 +103,22 @@
           reconnectAttempts = 0;
           stopReconnectTimer();
           flushQueue();
+          return;
+        }
+        if (
+          message && message.action === "replay_request" && message.target === "content" &&
+          message.data && message.data.captureId === captureId
+        ) {
+          try {
+            window.postMessage({ type: PAGE_REPLAY_REQUEST_TYPE, ...message.data }, "*");
+          } catch (_) {
+            sendPanelMessage("replay_rejected", {
+              captureId,
+              replayToken: typeof message.data.replayToken === "string" ? message.data.replayToken : undefined,
+              sourceEntryId: Number.isFinite(message.data.sourceEntryId) ? message.data.sourceEntryId : undefined,
+              reason: "Unable to deliver the replay request to the originating frame.",
+            });
+          }
         }
       });
       port.onDisconnect.addListener(() => {
@@ -107,18 +147,19 @@
     ["request", "response", "error", "status"].forEach(field => {
       if (event[field] != null) event[field] = limitPayload(event[field]);
     });
-    const message = { action: "gRPCNetworkCall", target: "panel", data: event };
-    setupPortIfNeeded();
-    if (port && acknowledged) {
-      flushQueue();
-      try { port.postMessage(message); return; } catch (_) {}
-    }
-    messageQueue.push(message);
-    if (messageQueue.length > MAX_QUEUE_SIZE) messageQueue.shift();
+    sendPanelMessage("gRPCNetworkCall", event);
   }
 
   window.addEventListener("message", event => {
-    if (event.source === window && event.data && event.data.type === GRPC_EVENT_TYPE) sendNetworkCall(event.data);
+    if (event.source !== window || !event.data) return;
+    if (event.data.type === GRPC_EVENT_TYPE) {
+      sendNetworkCall(event.data);
+    } else if (
+      (event.data.type === PAGE_REPLAY_ACK_TYPE || event.data.type === PAGE_REPLAY_REJECTED_TYPE) &&
+      event.data.captureId === captureId
+    ) {
+      sendPanelMessage(event.data.type === PAGE_REPLAY_ACK_TYPE ? "replay_ack" : "replay_rejected", cloneReplayResult(event.data));
+    }
   }, false);
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
