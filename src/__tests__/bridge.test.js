@@ -178,8 +178,16 @@ test("content forwards only matching replay commands and relays page acknowledge
   ports[0].onMessage.emit({ action: "init_ack" });
   ports[0].onMessage.emit({ action: "replay_request", target: "content", data: { captureId: "other-frame", replayToken: "nope" } });
   expect(window.postMessage).not.toHaveBeenCalled();
-  ports[0].onMessage.emit({ action: "replay_request", target: "content", data: { captureId, replayToken: "token" } });
+  ports[0].onMessage.emit({ action: "replay_request", target: "content", data: { captureId, replayToken: "token", type: "spoofed" } });
   expect(window.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", captureId, replayToken: "token" }), "*");
-  eventListeners.message({ source: window, data: { type: "__GRPCWEB_DEVTOOLS_REPLAY_ACK__", captureId, replayToken: "token" } });
-  expect(ports[0].posted.at(-1)).toEqual(expect.objectContaining({ action: "replay_ack", target: "panel", data: expect.objectContaining({ captureId, replayToken: "token" }) }));
+  eventListeners.message({ source: window, data: {
+    type: "__GRPCWEB_DEVTOOLS_REPLAY_ACK__", captureId,
+    replayToken: "t".repeat(600), replayAttemptId: "a".repeat(600), reason: "r".repeat(600), message: "m".repeat(600),
+  } });
+  expect(ports[0].posted.at(-1)).toEqual(expect.objectContaining({ action: "replay_ack", target: "panel", data: expect.objectContaining({ captureId }) }));
+  const result = ports[0].posted.at(-1).data;
+  expect(result.replayToken).toHaveLength(512);
+  expect(result.replayAttemptId).toHaveLength(512);
+  expect(result.reason).toHaveLength(512);
+  expect(result.message).toHaveLength(512);
 });

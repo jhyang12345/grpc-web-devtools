@@ -367,3 +367,74 @@ test("Connect rejects an aborted replay source when no fresh signal constructor 
     global.AbortController = originalAbortController;
   }
 });
+
+test("delegated unary calls reuse their active rpc capture and replay once", () => {
+  const events = capturedEvents();
+  class Request {
+    constructor(value = "one") { this.value = value; this.toObject = jest.fn(() => ({ value: this.value })); }
+    setValue(value) { this.value = value; }
+  }
+  const originalRpc = jest.fn((method, request, metadata, info, callback) => callback(null, { toObject: () => ({ value: request.value }) }));
+  const client = { client_: {
+    rpcCall: originalRpc,
+    serverStreaming: jest.fn(),
+    unaryCall(method, request, metadata, info) { return this.rpcCall(method, request, metadata, info, () => {}); },
+  } };
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  const request = new Request();
+  client.client_.unaryCall("Demo/Delegated", request, {}, {});
+  const initialEvents = events.filter(event => event.method === "Demo/Delegated");
+  const originalStart = initialEvents.find(event => event.phase === "start");
+  expect(request.toObject).toHaveBeenCalledTimes(1);
+  expect(initialEvents.filter(event => event.phase === "start")).toHaveLength(1);
+  expect(initialEvents.filter(event => event.phase === "complete")).toHaveLength(1);
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: {
+    type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "grpc-web", captureId: "frame-delegated",
+    replayToken: originalStart.replay.token, replayAttemptId: "delegated-attempt", request: { value: "edited" },
+  } }));
+  expect(originalRpc).toHaveBeenCalledTimes(2);
+  expect(request.toObject).toHaveBeenCalledTimes(1);
+  const replayEvents = events.filter(event => event.method === "Demo/Delegated" && event.replayedFrom?.captureId === "frame-delegated");
+  expect(replayEvents.map(event => event.phase)).toEqual(["start", "complete"]);
+  expect(events.filter(event => event.type === "__GRPCWEB_DEVTOOLS_REPLAY_ACK__" && event.replayAttemptId === "delegated-attempt")).toHaveLength(1);
+});
+
+test("serialization errors advertise replay as unavailable without retaining a handle", () => {
+  const events = capturedEvents();
+  const request = { toObject: jest.fn(() => { throw new Error("cannot serialize"); }) };
+  const backend = jest.fn((method, value, metadata, info, callback) => callback(null, {}));
+  const client = { client_: { rpcCall: backend, serverStreaming: jest.fn() } };
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  client.client_.rpcCall("Demo/SerializationFailure", request, {}, {}, jest.fn());
+  const start = events.find(event => event.method === "Demo/SerializationFailure" && event.phase === "start");
+  expect(request.toObject).toHaveBeenCalledTimes(1);
+  expect(start.replay).toEqual({ available: false, reason: "The captured request could not be serialized for replay." });
+  expect(backend).toHaveBeenCalledTimes(1);
+});
+
+test("replay token allocation does not overwrite colliding handles for either transport", async () => {
+  const events = capturedEvents();
+  window.dispatchEvent(new Event("pagehide"));
+  jest.spyOn(Math, "random").mockReturnValue(0);
+  const grpcBackend = jest.fn((method, request, metadata, info, callback) => callback(null, {}));
+  const client = { client_: { rpcCall: grpcBackend, serverStreaming: jest.fn() } };
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  client.client_.rpcCall("Demo/CollisionOne", { toObject: () => ({ value: 1 }) }, {}, {}, jest.fn());
+  client.client_.rpcCall("Demo/CollisionTwo", { toObject: () => ({ value: 2 }) }, {}, {}, jest.fn());
+  const grpcStarts = events.filter(event => event.transport === "grpc-web" && event.phase === "start");
+  expect(grpcStarts[0].replay.available).toBe(true);
+  expect(grpcStarts[1].replay).toEqual({ available: false, reason: "Unable to allocate a replay handle." });
+
+  class Message { constructor(value) { this.value = value; } toJson() { return { value: this.value }; } }
+  const next = jest.fn(async () => ({ stream: false, message: new Message("ok") }));
+  loadInterceptor("connect-web-interceptor.js");
+  const interceptor = window.__CONNECT_WEB_DEVTOOLS__(next);
+  await interceptor({ stream: false, method: { name: "Demo/ConnectCollisionOne" }, message: new Message("one") });
+  await interceptor({ stream: false, method: { name: "Demo/ConnectCollisionTwo" }, message: new Message("two") });
+  const connectStarts = events.filter(event => event.transport === "connect-web" && event.phase === "start");
+  expect(connectStarts[0].replay.available).toBe(true);
+  expect(connectStarts[1].replay).toEqual({ available: false, reason: "Unable to allocate a replay handle." });
+});

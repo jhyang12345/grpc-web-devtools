@@ -84,12 +84,23 @@
   }
 
   function registerReplay(payload, invoke) {
+    if (isPlainObject(payload) && payload.__error) {
+      return { available: false, reason: "The captured request could not be serialized for replay." };
+    }
     const serialized = safeStringify(payload);
     if (!serialized || byteLength(serialized) > MAX_PAYLOAD_BYTES) {
       return { available: false, reason: "The captured request exceeds the 5 MiB replay limit." };
     }
     pruneRegistry();
-    const token = randomToken();
+    let token;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const candidate = randomToken();
+      if (!state.registry.has(candidate)) {
+        token = candidate;
+        break;
+      }
+    }
+    if (!token) return { available: false, reason: "Unable to allocate a replay handle." };
     state.registry.set(token, { lastUsed: monotonicNow(), invoke });
     pruneRegistry();
     return { available: true, token };
@@ -206,11 +217,14 @@
 
     target.rpcCall = function rpcCall(method, request, metadata, methodInfo, callback) {
       const context = this[ACTIVE_REPLAY];
-      const requestPayload = serializeRequest(request);
-      const capture = this[ACTIVE_UNARY] || createUnaryCapture(method, request, requestPayload, context && context.replayedFrom, requestId => registerReplay(requestPayload, (json, command) => {
-        const replayRequest = reconstruct(method, request, json);
-        return withReplay(target, { replayedFrom: replayedFrom(command, requestId) }, () => target.rpcCall(method, replayRequest, metadata, methodInfo, () => {}));
-      }));
+      const activeCapture = this[ACTIVE_UNARY];
+      const capture = activeCapture || (() => {
+        const requestPayload = serializeRequest(request);
+        return createUnaryCapture(method, request, requestPayload, context && context.replayedFrom, requestId => registerReplay(requestPayload, (json, command) => {
+          const replayRequest = reconstruct(method, request, json);
+          return withReplay(target, { replayedFrom: replayedFrom(command, requestId) }, () => target.rpcCall(method, replayRequest, metadata, methodInfo, () => {}));
+        }));
+      })();
       try {
         return originalRpcCall.call(this, method, request, metadata, methodInfo, (error, response) => {
           capture.complete(error, response);

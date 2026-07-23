@@ -94,13 +94,14 @@
   }
 
   function cloneReplayResult(data) {
+    const shortString = (value, limit = 512) => typeof value === "string" ? value.slice(0, limit) : undefined;
     return {
       captureId,
-      replayToken: typeof data.replayToken === "string" ? data.replayToken : undefined,
-      replayAttemptId: typeof data.replayAttemptId === "string" ? data.replayAttemptId : undefined,
+      replayToken: shortString(data.replayToken),
+      replayAttemptId: shortString(data.replayAttemptId),
       sourceEntryId: Number.isFinite(data.sourceEntryId) ? data.sourceEntryId : undefined,
-      reason: typeof data.reason === "string" ? data.reason : undefined,
-      message: typeof data.message === "string" ? data.message : undefined,
+      reason: shortString(data.reason),
+      message: shortString(data.message),
     };
   }
 
@@ -122,7 +123,7 @@
           message.data && message.data.captureId === captureId
         ) {
           try {
-            window.postMessage({ type: PAGE_REPLAY_REQUEST_TYPE, ...message.data }, "*");
+            window.postMessage({ ...message.data, type: PAGE_REPLAY_REQUEST_TYPE }, "*");
           } catch (_) {
             sendPanelMessage("replay_rejected", {
               captureId,
