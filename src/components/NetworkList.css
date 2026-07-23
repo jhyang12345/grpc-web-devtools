@@ -86,7 +86,7 @@
 .data-grid .data-row {
   color: var(--toolbar-color);
   cursor: pointer;
-  height: 36px;
+  height: 58px;
   padding: 4px 6px;
   box-sizing: border-box;
   display: flex;
@@ -121,11 +121,25 @@
   overflow: hidden;
 }
 
+.data-grid .data-row-timing {
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--text-secondary-color);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
 .data-grid .data-row.selected .data-row-meta {
   color: rgba(255, 255, 255, 0.85);
 }
 
 .data-grid .data-row.error .data-row-meta {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.data-grid .data-row.error .data-row-timing {
   color: inherit;
   opacity: 0.85;
 }

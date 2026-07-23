@@ -19,6 +19,22 @@ function formatListTimestamp(timestamp) {
   return `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}:${padTimePart(date.getSeconds())}.${padTimePart(date.getMilliseconds(), 3)}`;
 }
 
+export function formatFrameUrl(location) {
+  if (!location) return 'Frame URL unavailable';
+  try {
+    const url = new URL(location);
+    return `${url.host}${url.pathname}${url.search}${url.hash}`;
+  } catch (_) {
+    return String(location);
+  }
+}
+
+export function formatElapsed(duration) {
+  if (!Number.isFinite(duration)) return '';
+  const value = Math.max(0, duration);
+  return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`;
+}
+
 class NetworkListRow extends PureComponent {
   render() {
     const { index, data, style, selectLogEntry, selectedIdx } = this.props;
@@ -26,6 +42,9 @@ class NetworkListRow extends PureComponent {
     const cachedTiming = getNetworkEntry(log.entryId)?.timing;
     const timing = cachedTiming || log.timing;
     const timestampLabel = formatListTimestamp(timing?.requestTimestamp);
+    const completed = Number.isFinite(timing?.completionTimestamp);
+    const elapsedLabel = completed ? formatElapsed(timing?.duration) : 'Pending';
+    const frameUrl = formatFrameUrl(log.location);
 
     return (
       <div
@@ -35,8 +54,9 @@ class NetworkListRow extends PureComponent {
       >
         <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
         <div className="data-row-content">
-          <span className="data-row-title">{log.endpoint}</span>
-          <div className="data-row-meta">{timestampLabel || 'Waiting for timing...'}</div>
+          <span className="data-row-title">{log.endpoint || log.method}</span>
+          <div className="data-row-meta" title={log.location || undefined}>{frameUrl}</div>
+          <div className="data-row-timing">{timestampLabel || 'Waiting for timing...'} · {elapsedLabel}</div>
         </div>
       </div>
     );

@@ -1,4 +1,5 @@
 import reducer, { clearLog, clearLogAndCache, networkLog, selectLogEntry, setPreserveLog, logNetworkEntry } from '../state/network';
+import { setFilterValue } from '../state/toolbar';
 
 test('manual clear ignores Preserve Log', () => {
   let state = reducer(undefined, setPreserveLog(true));
@@ -28,4 +29,12 @@ test('a real clear cancels queued log batches', () => {
   expect(dispatch).toHaveBeenCalledTimes(1);
   expect(dispatch).toHaveBeenCalledWith(clearLog({ force: true }));
   jest.useRealTimers();
+});
+
+test('filter matches the full frame URL', () => {
+  let state = reducer(undefined, networkLog({ entryId: 1, method: 'Demo/Call', location: 'https://iframe.example.test:8443/rpc?tenant=blue' }));
+  state = reducer(state, setFilterValue('tenant=blue'));
+  expect(state.log).toHaveLength(1);
+  state = reducer(state, setFilterValue('not-present'));
+  expect(state.log).toHaveLength(0);
 });

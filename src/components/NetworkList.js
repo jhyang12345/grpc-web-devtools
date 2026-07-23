@@ -9,7 +9,7 @@ import NetworkListRow from './NetworkListRow';
 
 import './NetworkList.css';
 
-const ROW_HEIGHT = 36;
+const ROW_HEIGHT = 58;
 
 class NetworkList extends Component {
   constructor(props) {

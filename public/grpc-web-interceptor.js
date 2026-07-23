@@ -3,6 +3,7 @@
   const TRANSPORT = "grpc-web";
   const INSTRUMENTED = "__grpcWebDevtoolsInstrumented__";
   const ACTIVE_UNARY = "__grpcWebDevtoolsActiveUnary__";
+  const monotonicNow = () => (window.performance && typeof window.performance.now === "function" ? window.performance.now() : Date.now());
 
   const nextRequestId = () => {
     const requestId = window.__grpcWebDevtoolsRequestId || 1;
@@ -37,6 +38,7 @@
   const createUnaryCapture = (method, request) => {
     const requestId = nextRequestId();
     const requestTimestamp = Date.now();
+    const elapsedStart = monotonicNow();
     let completed = false;
     post({
       phase: "start",
@@ -58,7 +60,7 @@
           requestId,
           timing: timing(requestTimestamp, {
             completionTimestamp,
-            duration: completionTimestamp - requestTimestamp,
+            duration: Math.max(0, monotonicNow() - elapsedStart),
             messageCount: error ? 0 : 1,
           }),
         };
@@ -121,6 +123,7 @@
     target.serverStreaming = function serverStreaming(method, request, metadata, methodInfo) {
       const requestId = nextRequestId();
       const requestTimestamp = Date.now();
+      const elapsedStart = monotonicNow();
       const requestPayload = serialize(request, method, "request");
       let messageCount = 0;
       let firstMessageTimestamp;
@@ -146,9 +149,9 @@
           requestId,
           timing: timing(requestTimestamp, {
             completionTimestamp,
-            duration: completionTimestamp - requestTimestamp,
+            duration: Math.max(0, monotonicNow() - elapsedStart),
             messageCount,
-            timeToFirstMessage: firstMessageTimestamp == null ? null : firstMessageTimestamp - requestTimestamp,
+            timeToFirstMessage: firstMessageTimestamp == null ? null : Math.max(0, firstMessageTimestamp - elapsedStart),
           }),
         };
         if (phase === "error") event.error = serializeError(value);
@@ -160,7 +163,7 @@
         const stream = originalStreaming.call(this, method, request, metadata, methodInfo);
         stream.on("data", response => {
           messageCount += 1;
-          if (firstMessageTimestamp == null) firstMessageTimestamp = Date.now();
+          if (firstMessageTimestamp == null) firstMessageTimestamp = monotonicNow();
           post({
             phase: "message",
             method,
@@ -169,7 +172,7 @@
             response: serialize(response, method, "streaming response"),
             timing: timing(requestTimestamp, {
               messageCount,
-              timeToFirstMessage: firstMessageTimestamp - requestTimestamp,
+              timeToFirstMessage: Math.max(0, firstMessageTimestamp - elapsedStart),
             }),
           });
         });

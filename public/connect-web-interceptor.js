@@ -1,6 +1,7 @@
 (() => {
   const POST_TYPE = "__GRPCWEB_DEVTOOLS__";
   const TRANSPORT = "connect-web";
+  const monotonicNow = () => (window.performance && typeof window.performance.now === "function" ? window.performance.now() : Date.now());
 
   const nextRequestId = () => {
     const requestId = window.__grpcWebDevtoolsRequestId || 1;
@@ -24,13 +25,13 @@
   const post = payload => window.postMessage({ type: POST_TYPE, transport: TRANSPORT, ...payload }, "*");
   const timing = (requestTimestamp, extra) => ({ requestTimestamp, ...extra });
 
-  const readStream = async function* (req, stream, requestId, requestTimestamp) {
+  const readStream = async function* (req, stream, requestId, requestTimestamp, elapsedStart) {
     let messageCount = 0;
     let firstMessageTimestamp;
     try {
       for await (const message of stream) {
         messageCount += 1;
-        if (firstMessageTimestamp == null) firstMessageTimestamp = Date.now();
+        if (firstMessageTimestamp == null) firstMessageTimestamp = monotonicNow();
         post({
           phase: "message",
           method: req.method.name,
@@ -39,7 +40,7 @@
           response: serialize(message, "streaming response"),
           timing: timing(requestTimestamp, {
             messageCount,
-            timeToFirstMessage: firstMessageTimestamp - requestTimestamp,
+            timeToFirstMessage: Math.max(0, firstMessageTimestamp - elapsedStart),
           }),
         });
         yield message;
@@ -52,9 +53,9 @@
         requestId,
         timing: timing(requestTimestamp, {
           completionTimestamp,
-          duration: completionTimestamp - requestTimestamp,
+          duration: Math.max(0, monotonicNow() - elapsedStart),
           messageCount,
-          timeToFirstMessage: firstMessageTimestamp == null ? null : firstMessageTimestamp - requestTimestamp,
+          timeToFirstMessage: firstMessageTimestamp == null ? null : Math.max(0, firstMessageTimestamp - elapsedStart),
         }),
       });
     } catch (error) {
@@ -67,9 +68,9 @@
         error: serializeError(error),
         timing: timing(requestTimestamp, {
           completionTimestamp,
-          duration: completionTimestamp - requestTimestamp,
+          duration: Math.max(0, monotonicNow() - elapsedStart),
           messageCount,
-          timeToFirstMessage: firstMessageTimestamp == null ? null : firstMessageTimestamp - requestTimestamp,
+          timeToFirstMessage: firstMessageTimestamp == null ? null : Math.max(0, firstMessageTimestamp - elapsedStart),
         }),
       });
       throw error;
@@ -79,6 +80,7 @@
   const execute = async (next, req) => {
     const requestId = nextRequestId();
     const requestTimestamp = Date.now();
+    const elapsedStart = monotonicNow();
     const methodType = req.stream ? "server_streaming" : "unary";
     post({
       phase: "start",
@@ -92,7 +94,7 @@
     try {
       const response = await next(req);
       if (response.stream) {
-        return { ...response, message: readStream(req, response.message, requestId, requestTimestamp) };
+        return { ...response, message: readStream(req, response.message, requestId, requestTimestamp, elapsedStart) };
       }
       const completionTimestamp = Date.now();
       post({
@@ -103,7 +105,7 @@
         response: serialize(response.message, "response"),
         timing: timing(requestTimestamp, {
           completionTimestamp,
-          duration: completionTimestamp - requestTimestamp,
+          duration: Math.max(0, monotonicNow() - elapsedStart),
           messageCount: 1,
         }),
       });
@@ -116,7 +118,7 @@
         methodType,
         requestId,
         error: serializeError(error),
-        timing: timing(requestTimestamp, { completionTimestamp, duration: completionTimestamp - requestTimestamp, messageCount: 0 }),
+        timing: timing(requestTimestamp, { completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 0 }),
       });
       throw error;
     }

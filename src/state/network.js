@@ -37,7 +37,7 @@ function matchesFilter(entry, filterValue) {
     return true;
   }
 
-  return [entry.method, entry.endpoint, entry.methodType]
+  return [entry.method, entry.endpoint, entry.methodType, entry.location]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(query));
 }

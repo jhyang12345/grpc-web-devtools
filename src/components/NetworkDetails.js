@@ -46,13 +46,19 @@ function padTimePart(value, size = 2) {
   return String(value).padStart(size, "0");
 }
 
-function formatTimestamp(timestamp) {
+export function formatTimestamp(timestamp) {
   if (!Number.isFinite(timestamp)) {
     return "";
   }
 
   const date = new Date(timestamp);
   return `${date.getFullYear()}-${padTimePart(date.getMonth() + 1)}-${padTimePart(date.getDate())} ${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}:${padTimePart(date.getSeconds())}.${padTimePart(date.getMilliseconds(), 3)}`;
+}
+
+export function formatDuration(duration) {
+  if (!Number.isFinite(duration)) return "";
+  const value = Math.max(0, duration);
+  return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`;
 }
 
 function createSearchState() {
@@ -293,13 +299,29 @@ class NetworkDetails extends Component {
         <div className="payload-metadata">
           {(requestLocation || timing || transport || payloadBytes) && <div className="payload-metadata-title">Metadata</div>}
           <div className="payload-metadata-row">
-            <span>Location</span>
+            <span>Frame URL</span>
             <span title={requestLocation}>{requestLocation || '(not captured — reload page)'}</span>
           </div>
           {timing?.requestTimestamp != null && (
             <div className="payload-metadata-row">
-              <span>Requested at</span>
+              <span>Started</span>
               <span title={formatTimestamp(timing.requestTimestamp)}>{formatTimestamp(timing.requestTimestamp)}</span>
+            </div>
+          )}
+          <div className="payload-metadata-row">
+            <span>Completed</span>
+            <span>{timing?.completionTimestamp != null ? formatTimestamp(timing.completionTimestamp) : "Pending"}</span>
+          </div>
+          {timing?.duration != null && (
+            <div className="payload-metadata-row">
+              <span>Duration</span>
+              <span>{formatDuration(timing.duration)}</span>
+            </div>
+          )}
+          {timing?.timeToFirstMessage != null && (
+            <div className="payload-metadata-row">
+              <span>Time to first message</span>
+              <span>{formatDuration(timing.timeToFirstMessage)}</span>
             </div>
           )}
           {(entryToRender.messageCount != null || timing?.messageCount != null) && (

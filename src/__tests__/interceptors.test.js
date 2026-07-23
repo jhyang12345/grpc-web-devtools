@@ -42,6 +42,20 @@ test("gRPC-Web enablement is idempotent and emits start before completion", () =
   expect(events[1].timing.duration).toEqual(expect.any(Number));
 });
 
+test("gRPC lifecycle keeps wall-clock timestamps while using monotonic elapsed time", () => {
+  const events = capturedEvents();
+  const client = { client_: {
+    rpcCall: jest.fn((method, request, metadata, info, callback) => callback(null, { toObject: () => ({ ok: true }) })),
+    serverStreaming: jest.fn(),
+  } };
+  jest.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(500);
+  jest.spyOn(window.performance, 'now').mockReturnValueOnce(10).mockReturnValueOnce(35);
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  client.client_.rpcCall("Demo/Monotonic", { toObject: () => ({}) }, {}, {}, jest.fn());
+  expect(events[1].timing).toEqual(expect.objectContaining({ requestTimestamp: 1000, completionTimestamp: 500, duration: 25 }));
+});
+
 test("gRPC callback and PromiseClient unary calls capture success and failure once", async () => {
   const events = capturedEvents();
   const client = { client_: {} };
