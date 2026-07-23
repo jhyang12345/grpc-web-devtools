@@ -3,7 +3,7 @@
 import React, { PureComponent } from 'react';
 import './NetworkEmpty.css';
 
-function getEmptyStateContent(mode, filterValue) {
+export function getEmptyStateContent(mode, filterValue) {
   const modifier = navigator.platform.indexOf('Mac') === 0 ? 'Cmd' : 'Ctrl';
 
   if (mode === 'filtered-empty') {
@@ -18,15 +18,15 @@ function getEmptyStateContent(mode, filterValue) {
 
   if (mode === 'no-selection') {
     return {
-      title: 'Select a request to inspect its payload.',
-      detail: 'Choose any request from the list to inspect its captured details.',
+      title: 'Select a request to inspect, edit, or replay it.',
+      detail: 'Choose a captured request from the list to inspect its details or edit its JSON before replaying it.',
       link: null,
     };
   }
 
   return {
     title: 'Inspecting gRPC network activity...',
-    detail: `Perform a request or reload with ${modifier} R to capture it.`,
+    detail: `Perform a request or reload with ${modifier} R to capture it, then select it to inspect or replay it.`,
     link: null,
   };
 }

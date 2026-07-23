@@ -191,9 +191,12 @@ The registry limit is independent of the existing payload-cache limits.
 Actual RPC success and failure are represented only by the newly emitted
 request lifecycle. An acknowledgement is not presented as RPC success.
 
-The editor disables repeat submission while a command is awaiting
-acknowledgement. A bounded timeout restores the button and reports that the
-originating frame may no longer be available.
+Each panel command includes a random `replayAttemptId`. The panel keeps at most
+20 pending attempts, resolves or rejects only a response with the matching ID,
+and treats a replaced/disconnected panel port as a rejection. The editor
+disables repeat submission while a command is awaiting acknowledgement. A
+five-second timeout restores the button and reports that the originating frame
+may no longer be available.
 
 ## Request reconstruction
 
