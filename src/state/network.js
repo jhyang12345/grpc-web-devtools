@@ -167,6 +167,8 @@ function buildSummaryEntry(entry) {
     status: !!entry.status,
     messages: !!entry.messages?.length,
     requestId: entry.requestId,
+    replay: entry.replay,
+    replayedFrom: entry.replayedFrom,
   };
 }
 

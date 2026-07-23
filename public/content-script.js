@@ -86,6 +86,7 @@
     return {
       captureId,
       replayToken: typeof data.replayToken === "string" ? data.replayToken : undefined,
+      replayAttemptId: typeof data.replayAttemptId === "string" ? data.replayAttemptId : undefined,
       sourceEntryId: Number.isFinite(data.sourceEntryId) ? data.sourceEntryId : undefined,
       reason: typeof data.reason === "string" ? data.reason : undefined,
       message: typeof data.message === "string" ? data.message : undefined,
@@ -115,6 +116,7 @@
             sendPanelMessage("replay_rejected", {
               captureId,
               replayToken: typeof message.data.replayToken === "string" ? message.data.replayToken : undefined,
+              replayAttemptId: typeof message.data.replayAttemptId === "string" ? message.data.replayAttemptId : undefined,
               sourceEntryId: Number.isFinite(message.data.sourceEntryId) ? message.data.sourceEntryId : undefined,
               reason: "Unable to deliver the replay request to the originating frame.",
             });

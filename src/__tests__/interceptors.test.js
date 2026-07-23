@@ -49,7 +49,9 @@ test("gRPC lifecycle keeps wall-clock timestamps while using monotonic elapsed t
     serverStreaming: jest.fn(),
   } };
   jest.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(500);
-  jest.spyOn(window.performance, 'now').mockReturnValueOnce(10).mockReturnValueOnce(35);
+  jest.spyOn(window.performance, 'now')
+    .mockReturnValueOnce(10).mockReturnValueOnce(11).mockReturnValueOnce(12)
+    .mockReturnValueOnce(13).mockReturnValueOnce(35);
   loadInterceptor("grpc-web-interceptor.js");
   window.__GRPCWEB_DEVTOOLS__([client]);
   client.client_.rpcCall("Demo/Monotonic", { toObject: () => ({}) }, {}, {}, jest.fn());
@@ -139,4 +141,121 @@ test("Connect stream completion is terminal after messages", async () => {
   for await (const _ of result.message) {}
   expect(events.map(event => event.phase)).toEqual(["start", "message", "complete"]);
   expect(events.at(-1).timing).toEqual(expect.objectContaining({ completionTimestamp: expect.any(Number), duration: expect.any(Number), messageCount: 1 }));
+});
+
+test("gRPC replay invokes the original transport once with a fresh lifecycle and provenance", () => {
+  const events = capturedEvents();
+  class Request {
+    constructor(value = "initial") { this.value = value; }
+    toObject() { return { value: this.value }; }
+    setValue(value) { this.value = value; }
+  }
+  const originalRpc = jest.fn((method, request, metadata, info, callback) => callback(null, { toObject: () => ({ value: request.value }) }));
+  const client = { client_: {
+    rpcCall: originalRpc,
+    serverStreaming: jest.fn(),
+  } };
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  client.client_.rpcCall("Demo/Replay", new Request(), {}, {}, jest.fn());
+  const originalStart = events.find(event => event.phase === "start");
+  expect(originalStart.replay).toEqual(expect.objectContaining({ available: true, token: expect.any(String) }));
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: {
+    type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "grpc-web", captureId: "frame-a",
+    replayToken: originalStart.replay.token, replayAttemptId: "attempt-a", request: { value: "edited" },
+  } }));
+  expect(originalRpc).toHaveBeenCalledTimes(2);
+  const replayStart = events.filter(event => event.phase === "start").at(-1);
+  expect(replayStart).toEqual(expect.objectContaining({ requestId: originalStart.requestId + 1, replayedFrom: { captureId: "frame-a", transport: "grpc-web", requestId: originalStart.requestId } }));
+  expect(events.at(-1)).toEqual(expect.objectContaining({ type: "__GRPCWEB_DEVTOOLS_REPLAY_ACK__", replayAttemptId: "attempt-a" }));
+});
+
+test("gRPC replay adapter and unsupported nested fallback reject before backend invocation", () => {
+  const events = capturedEvents();
+  class Request {
+    toObject() { return { nested: { value: 1 } }; }
+    getNested() { return null; }
+  }
+  const originalRpc = jest.fn((method, request, metadata, info, callback) => callback(null, {}));
+  const client = { client_: { rpcCall: originalRpc, serverStreaming: jest.fn() } };
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  client.client_.rpcCall("Demo/Nested", new Request(), {}, {}, jest.fn());
+  const token = events.find(event => event.phase === "start").replay.token;
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "grpc-web", replayToken: token, request: { nested: { value: 2 } } } }));
+  expect(originalRpc).toHaveBeenCalledTimes(1);
+  expect(events.at(-1)).toEqual(expect.objectContaining({ type: "__GRPCWEB_DEVTOOLS_REPLAY_REJECTED__" }));
+  window.__GRPCWEB_DEVTOOLS__.registerMethod("Demo/Nested", { fromJson: json => ({ adapted: json.nested.value }) });
+  const nextToken = events.find(event => event.phase === "start").replay.token;
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "grpc-web", replayToken: nextToken, request: { nested: { value: 3 } } } }));
+  expect(originalRpc).toHaveBeenCalledTimes(2);
+});
+
+test("Connect replay drains streaming responses and reports provenance", async () => {
+  const events = capturedEvents();
+  class Message {
+    constructor(json = {}) { this.value = json.value; }
+    static fromJson(json) { return new Message(json); }
+    toJson() { return { value: this.value }; }
+  }
+  async function* stream() { yield new Message({ value: "part" }); }
+  const next = jest.fn(async () => ({ stream: true, message: stream() }));
+  loadInterceptor("connect-web-interceptor.js");
+  const interceptor = window.__CONNECT_WEB_DEVTOOLS__(next);
+  await interceptor({ stream: true, method: { name: "Demo/Stream" }, message: new Message({ value: "initial" }) });
+  const originalStart = events.find(event => event.phase === "start");
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "connect-web", captureId: "frame-c", replayToken: originalStart.replay.token, request: { value: "replayed" } } }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(next).toHaveBeenCalledTimes(2);
+  expect(events.some(event => event.phase === "message" && event.replayedFrom?.captureId === "frame-c")).toBe(true);
+  expect(events.some(event => event.phase === "complete" && event.replayedFrom?.captureId === "frame-c")).toBe(true);
+});
+
+test("gRPC Promise and server-streaming replays invoke their original backends once", async () => {
+  const events = capturedEvents();
+  class Request { constructor(value = "one") { this.value = value; } toObject() { return { value: this.value }; } setValue(value) { this.value = value; } }
+  const unaryBackend = jest.fn((method, request) => Promise.resolve({ toObject: () => ({ value: request.value }) }));
+  const streams = [];
+  const streamBackend = jest.fn(() => { const handlers = {}; const stream = { on: (name, fn) => { handlers[name] = fn; return stream; }, handlers }; streams.push(stream); return stream; });
+  const client = { client_: { rpcCall: jest.fn(), unaryCall: unaryBackend, serverStreaming: streamBackend } };
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  await client.client_.unaryCall("Demo/Promise", new Request(), { metadata: true });
+  const promiseStart = events.find(event => event.method === "Demo/Promise" && event.phase === "start");
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "grpc-web", captureId: "frame", replayToken: promiseStart.replay.token, request: { value: "two" } } }));
+  await Promise.resolve();
+  expect(unaryBackend).toHaveBeenCalledTimes(2);
+  client.client_.serverStreaming("Demo/Stream", new Request(), {}, {});
+  const streamStart = events.filter(event => event.method === "Demo/Stream" && event.phase === "start").at(-1);
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "grpc-web", captureId: "frame", replayToken: streamStart.replay.token, request: { value: "three" } } }));
+  expect(streamBackend).toHaveBeenCalledTimes(2);
+  streams[1].handlers.data({ toObject: () => ({ value: "three" }) });
+  streams[1].handlers.status({ code: 0 });
+  expect(events.some(event => event.method === "Demo/Stream" && event.phase === "complete" && event.replayedFrom?.captureId === "frame")).toBe(true);
+});
+
+test("replay handles expire, evict by LRU limit, clear on pagehide, and reject oversized requests", () => {
+  const events = capturedEvents();
+  class Request { constructor(value = "ok") { this.value = value; } toObject() { return { value: this.value }; } setValue(value) { this.value = value; } }
+  const backend = jest.fn((method, request, metadata, info, callback) => callback(null, {}));
+  const client = { client_: { rpcCall: backend, serverStreaming: jest.fn() } };
+  const clock = jest.spyOn(window.performance, "now").mockReturnValue(0);
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  client.client_.rpcCall("Demo/TTL", new Request(), {}, {}, jest.fn());
+  const ttlToken = events.find(event => event.method === "Demo/TTL" && event.phase === "start").replay.token;
+  clock.mockReturnValue(10 * 60 * 1000 + 1);
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "grpc-web", replayToken: ttlToken, request: { value: "late" } } }));
+  expect(events.at(-1)).toEqual(expect.objectContaining({ type: "__GRPCWEB_DEVTOOLS_REPLAY_REJECTED__" }));
+  clock.mockReturnValue(0);
+  for (let index = 0; index < 101; index += 1) client.client_.rpcCall(`Demo/LRU${index}`, new Request(String(index)), {}, {}, jest.fn());
+  const firstToken = events.find(event => event.method === "Demo/LRU0" && event.phase === "start").replay.token;
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "grpc-web", replayToken: firstToken, request: { value: "evicted" } } }));
+  expect(events.at(-1)).toEqual(expect.objectContaining({ type: "__GRPCWEB_DEVTOOLS_REPLAY_REJECTED__" }));
+  const retainedToken = events.filter(event => event.method === "Demo/LRU100" && event.phase === "start").at(-1).replay.token;
+  window.dispatchEvent(new Event("pagehide"));
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "grpc-web", replayToken: retainedToken, request: { value: "cleared" } } }));
+  expect(events.at(-1)).toEqual(expect.objectContaining({ type: "__GRPCWEB_DEVTOOLS_REPLAY_REJECTED__" }));
+  client.client_.rpcCall("Demo/Large", { toObject: () => ({ value: "x".repeat(5 * 1024 * 1024 + 1) }) }, {}, {}, jest.fn());
+  expect(events.filter(event => event.method === "Demo/Large" && event.phase === "start").at(-1).replay).toEqual(expect.objectContaining({ available: false }));
 });

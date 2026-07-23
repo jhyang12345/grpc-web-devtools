@@ -38,3 +38,18 @@ test('filter matches the full frame URL', () => {
   state = reducer(state, setFilterValue('not-present'));
   expect(state.log).toHaveLength(0);
 });
+
+test('batched summaries retain replay descriptors and provenance, never replay closures', () => {
+  jest.useFakeTimers();
+  const dispatch = jest.fn();
+  logNetworkEntry({
+    captureId: 'frame-b', transport: 'connect-web', requestId: 9, phase: 'start',
+    replay: { available: true, token: 'opaque-token' },
+    replayedFrom: { captureId: 'frame-a', transport: 'connect-web', requestId: 8 },
+  })(dispatch);
+  jest.runOnlyPendingTimers();
+  const summary = dispatch.mock.calls[0][0].payload[0];
+  expect(summary).toEqual(expect.objectContaining({ replay: { available: true, token: 'opaque-token' }, replayedFrom: expect.objectContaining({ requestId: 8 }) }));
+  expect(Object.values(summary).some(value => typeof value === 'function')).toBe(false);
+  jest.useRealTimers();
+});

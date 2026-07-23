@@ -54,6 +54,7 @@ function rejectReplay(connection, data, reason) {
       data: {
         captureId: isCaptureId(safeData.captureId) ? safeData.captureId : undefined,
         replayToken: typeof safeData.replayToken === "string" ? safeData.replayToken : undefined,
+        replayAttemptId: typeof safeData.replayAttemptId === "string" ? safeData.replayAttemptId : undefined,
         sourceEntryId: Number.isFinite(safeData.sourceEntryId) ? safeData.sourceEntryId : undefined,
         reason: String(reason),
       },

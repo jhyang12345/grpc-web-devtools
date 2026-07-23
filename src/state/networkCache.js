@@ -80,7 +80,7 @@ function evictIfNeeded() {
 }
 
 function mergeEntry(existing, incoming) {
-  ["method", "methodType", "transport", "captureId", "requestId", "location"].forEach(field => {
+  ["method", "methodType", "transport", "captureId", "requestId", "location", "replay", "replayedFrom"].forEach(field => {
     if (incoming[field] != null && (existing[field] == null || field !== "location")) existing[field] = incoming[field];
   });
   if (incoming.request != null) existing.request = incoming.request;

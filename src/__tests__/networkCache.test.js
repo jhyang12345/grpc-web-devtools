@@ -31,3 +31,13 @@ test('uses frame-aware cache identities and prunes mappings on eviction', () => 
   for (let index = 0; index < 500; index += 1) addNetworkEntry({ captureId: 'extra', transport: 'grpc-web', requestId: index + 2, phase: 'start' });
   expect(getCacheDebugState()).toEqual({ size: 500, mappings: 500 });
 });
+
+test('retains only clone-safe replay metadata with the bounded request entry', () => {
+  const replay = { available: true, token: 'opaque-token' };
+  const replayedFrom = { captureId: 'frame-a', transport: 'grpc-web', requestId: 4 };
+  let entry = addNetworkEntry({ captureId: 'frame-b', transport: 'grpc-web', requestId: 5, phase: 'start', replay, replayedFrom });
+  entry = addNetworkEntry({ captureId: 'frame-b', transport: 'grpc-web', requestId: 5, phase: 'complete', response: { ok: true }, replayedFrom });
+  expect(entry.replay).toEqual(replay);
+  expect(entry.replayedFrom).toEqual(replayedFrom);
+  expect(JSON.stringify(entry)).not.toContain('function');
+});
