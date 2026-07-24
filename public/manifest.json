@@ -17,7 +17,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["connect-web-interceptor.js", "grpc-web-interceptor.js"],
+      "resources": ["connect-web-interceptor.js", "grpc-web-interceptor.js", "protobuf-ts-interceptor.js"],
       "matches": ["<all_urls>"]
     }
   ],
