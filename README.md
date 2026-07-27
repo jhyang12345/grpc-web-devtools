@@ -34,16 +34,20 @@ or
 
 ## Usage
 
-```javascript
-const enableDevTools = window.__GRPCWEB_DEVTOOLS__ || (() => {
-});
+```ts
 const client = new EchoServiceClient('http://myapi.com');
-enableDevTools([
-  client,
-]);
+
+const installDevTools = () => window.__GRPCWEB_DEVTOOLS__?.([client]);
+installDevTools();
+window.addEventListener('grpc-web-dev-tools-ready', installDevTools);
 ```
 
 > NOTE: Requires that your generated client(s) use `protoc-gen-grpc-web` >= 1.0.4
+
+Connect-ES and protobuf-ts use transport interceptors instead. See the
+[complete client integration guide](docs/client-integration.md) for copyable
+JavaScript/TypeScript setup, replay adapters, feature limits, and
+troubleshooting.
 
 ### Inspect, edit, and replay a captured request
 
@@ -113,32 +117,25 @@ To stop the example:
 make example-down
 ```
 
-## Connect-Web
+## Connect-ES
 
-grpc-web-devtools now also supports [connect-web](https://github.com/bufbuild/connect-web)!
+grpc-web-devtools supports both the gRPC-Web and Connect protocols through
+[`@connectrpc/connect-web`](https://connectrpc.com/docs/web/getting-started/).
+Use a late-bound wrapper so the transport also works when it is created before
+the extension injects its page API:
 
 ```ts
-// __CONNECT_WEB_DEVTOOLS__ is loaded in as a script, so it is not guaranteed to be loaded before your code.
-const interceptors: Interceptor[] = window.__CONNECT_WEB_DEVTOOLS__ !== "undefined" ?
-  [window.__CONNECT_WEB_DEVTOOLS__]
-  : [];
-// To get around the fact that __CONNECT_WEB_DEVTOOLS__ might not be loaded, we can listen for a custom event,
-// and then push the interceptor to our array once loaded.
-window.addEventListener("connect-web-dev-tools-ready", () => {
-  if (typeof window.__CONNECT_WEB_DEVTOOLS__ !== "undefined") {
-    interceptors.push(window.__CONNECT_WEB_DEVTOOLS__);
-  }
-});
-// Now we can use the interceptors in our transport
-const transport: Transport = createGrpcWebTransport({
-  baseUrl: getApiHostname(),
-  interceptors,
+const devtoolsInterceptor: Interceptor = (next) => (request) => {
+  const devtools = window.__CONNECT_WEB_DEVTOOLS__;
+  return devtools ? devtools(next)(request) : next(request);
+};
+
+const transport = createGrpcWebTransport({
+  baseUrl: 'https://api.example.com',
+  interceptors: [devtoolsInterceptor, authInterceptor],
 });
 ```
-This will also work for the connect protocol
-```ts
-const transport: Transport = ConnectTransportOptions({
-  baseUrl: getApiHostname(),
-  interceptors,
-});
-```
+
+The same wrapper works with `createConnectTransport()`. protobuf-ts is also
+supported for unary and server-streaming calls; its setup is in the
+[client integration guide](docs/client-integration.md#protobuf-ts).
