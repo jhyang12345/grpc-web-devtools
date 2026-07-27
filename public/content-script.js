@@ -6,8 +6,9 @@
   const PAGE_REPLAY_ACK_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_ACK__";
   const PAGE_REPLAY_REJECTED_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_REJECTED__";
   const MAX_QUEUE_SIZE = 100;
-  const MAX_RECONNECT_ATTEMPTS = 5;
-  const RECONNECT_INTERVAL_MS = 3000;
+  const RECONNECT_INITIAL_MS = 250;
+  const RECONNECT_MAX_MS = 30000;
+  const ACK_TIMEOUT_MS = 5000;
   const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
   const captureId = (() => {
     const bytes = new Uint32Array(2);
@@ -21,8 +22,9 @@
   let port = null;
   let acknowledged = false;
   let fallbackRequestId = 1;
-  let reconnectAttempts = 0;
+  let reconnectDelay = RECONNECT_INITIAL_MS;
   let reconnectTimer = null;
+  let ackTimer = null;
   const messageQueue = [];
 
   const safeStringify = value => {
@@ -59,27 +61,59 @@
   inject("connect-web-interceptor.js");
 
   function stopReconnectTimer() {
-    if (reconnectTimer) clearInterval(reconnectTimer);
+    if (reconnectTimer != null) clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
 
-  function startReconnectTimer() {
-    if (reconnectTimer || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return;
-    reconnectTimer = setInterval(() => {
-      if (acknowledged) return stopReconnectTimer();
-      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return stopReconnectTimer();
-      if (port) {
-        try { port.disconnect(); } catch (_) {}
-        port = null;
-      }
-      reconnectAttempts += 1;
+  function stopAckTimer() {
+    if (ackTimer != null) clearTimeout(ackTimer);
+    ackTimer = null;
+  }
+
+  function scheduleReconnect(delay = reconnectDelay) {
+    if (reconnectTimer != null || port) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
       setupPortIfNeeded();
-    }, RECONNECT_INTERVAL_MS);
+    }, delay);
+    reconnectDelay = Math.min(Math.max(RECONNECT_INITIAL_MS, reconnectDelay * 2), RECONNECT_MAX_MS);
+  }
+
+  function markPortBroken(currentPort) {
+    if (!currentPort || currentPort !== port) return;
+    stopAckTimer();
+    port = null;
+    acknowledged = false;
+    try { currentPort.disconnect(); } catch (_) {}
+    scheduleReconnect();
+  }
+
+  function armAckTimeout(currentPort) {
+    stopAckTimer();
+    ackTimer = setTimeout(() => {
+      ackTimer = null;
+      markPortBroken(currentPort);
+    }, ACK_TIMEOUT_MS);
+  }
+
+  function markAcknowledged() {
+    stopAckTimer();
+    stopReconnectTimer();
+    acknowledged = true;
+    reconnectDelay = RECONNECT_INITIAL_MS;
+    flushQueue();
   }
 
   function flushQueue() {
     while (acknowledged && port && messageQueue.length) {
-      try { port.postMessage(messageQueue.shift()); } catch (_) { break; }
+      const currentPort = port;
+      try {
+        currentPort.postMessage(messageQueue[0]);
+        messageQueue.shift();
+      } catch (_) {
+        markPortBroken(currentPort);
+        break;
+      }
     }
   }
 
@@ -88,7 +122,10 @@
     setupPortIfNeeded();
     if (port && acknowledged) {
       flushQueue();
-      try { port.postMessage(message); return; } catch (_) {}
+      if (port && acknowledged) {
+        const currentPort = port;
+        try { currentPort.postMessage(message); return; } catch (_) { markPortBroken(currentPort); }
+      }
     }
     messageQueue.push(message);
     if (messageQueue.length > MAX_QUEUE_SIZE) messageQueue.shift();
@@ -108,15 +145,15 @@
 
   function setupPortIfNeeded() {
     if (port || !chrome || !chrome.runtime) return;
+    let nextPort;
     try {
-      port = chrome.runtime.connect({ name: "content" });
+      nextPort = chrome.runtime.connect({ name: "content" });
+      port = nextPort;
       acknowledged = false;
-      port.onMessage.addListener(message => {
-        if (message && message.action === "init_ack") {
-          acknowledged = true;
-          reconnectAttempts = 0;
-          stopReconnectTimer();
-          flushQueue();
+      nextPort.onMessage.addListener(message => {
+        if (nextPort !== port) return;
+        if (message && (message.action === "init_ack" || message.action === "heartbeat_ack")) {
+          markAcknowledged();
           return;
         }
         if (
@@ -136,19 +173,30 @@
           }
         }
       });
-      port.onDisconnect.addListener(() => {
-        port = null;
-        acknowledged = false;
-        startReconnectTimer();
-      });
-      port.postMessage({ action: "init", data: { captureId } });
-      // A successful connect is not healthy until background acknowledges
-      // registration. Keep the bounded retry timer alive for a silent port.
-      startReconnectTimer();
+      nextPort.onDisconnect.addListener(() => markPortBroken(nextPort));
+      nextPort.postMessage({ action: "init", data: { captureId } });
+      // A port is not usable until the restarted MV3 worker acknowledges it.
+      armAckTimeout(nextPort);
     } catch (_) {
-      port = null;
+      if (port === nextPort) port = null;
       acknowledged = false;
-      startReconnectTimer();
+      stopAckTimer();
+      try { if (nextPort) nextPort.disconnect(); } catch (_) {}
+      scheduleReconnect();
+    }
+  }
+
+  function probeConnection() {
+    reconnectDelay = RECONNECT_INITIAL_MS;
+    stopReconnectTimer();
+    if (!port) return scheduleReconnect(0);
+    const currentPort = port;
+    acknowledged = false;
+    try {
+      currentPort.postMessage({ action: "heartbeat" });
+      armAckTimeout(currentPort);
+    } catch (_) {
+      markPortBroken(currentPort);
     }
   }
 
@@ -181,10 +229,18 @@
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request && request.action === "ping") {
-      setupPortIfNeeded();
-      sendResponse({ success: !!port, captureId });
+      probeConnection();
+      sendResponse({ success: !!port, connected: acknowledged, captureId });
     }
   });
+
+  window.addEventListener("pageshow", probeConnection, false);
+  window.addEventListener("online", probeConnection, false);
+  if (document.addEventListener) {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") probeConnection();
+    }, false);
+  }
 
   setupPortIfNeeded();
 })();

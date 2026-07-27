@@ -17,6 +17,32 @@ const makePort = (name, tabId) => ({
   postMessage(message) { this.posted.push(message); },
 });
 
+const timerQueue = () => {
+  let nextId = 1;
+  const timers = new Map();
+  return {
+    setTimeout(fn) {
+      const id = nextId++;
+      timers.set(id, fn);
+      return id;
+    },
+    clearTimeout(id) {
+      timers.delete(id);
+    },
+    runNext() {
+      const entry = timers.entries().next().value;
+      if (!entry) return false;
+      const [id, fn] = entry;
+      timers.delete(id);
+      fn();
+      return true;
+    },
+    size() {
+      return timers.size;
+    },
+  };
+};
+
 test("background keeps multiple frame ports and reports their health to the bound panel", () => {
   const onConnect = listenerList();
   const chrome = { runtime: { onConnect } };
@@ -83,9 +109,9 @@ test("background rejects malformed or stale replay targets and cleans disconnect
   expect(panel.posted.at(-1)).toEqual(expect.objectContaining({ action: "replay_rejected", data: expect.objectContaining({ captureId: "frame-a" }) }));
 });
 
-test("content retries only until an init acknowledgement is received", () => {
+test("content retries until acknowledged and recovers again after a later disconnect", () => {
   const source = fs.readFileSync(path.join(__dirname, "../../public/content-script.js"), "utf8");
-  const ticks = [];
+  const timers = timerQueue();
   const ports = [];
   const chrome = {
     runtime: {
@@ -113,23 +139,26 @@ test("content retries only until an init acknowledgement is received", () => {
     Date,
     Math,
     String,
-    setInterval: fn => { ticks.push(fn); return ticks.length; },
-    clearInterval: jest.fn(),
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
   });
   expect(document.head.appendChild.mock.calls.map(([script]) => script.src)).toEqual([
     "protobuf-ts-interceptor.js",
     "grpc-web-interceptor.js",
     "connect-web-interceptor.js",
   ]);
-  for (let index = 0; index < 7; index += 1) ticks[0]();
-  expect(ports).toHaveLength(6); // one initial attempt plus five capped retries
+  while (ports.length < 8) expect(timers.runNext()).toBe(true);
+  expect(ports).toHaveLength(8);
   ports.at(-1).onMessage.emit({ action: "init_ack" });
-  ticks[0]();
-  expect(ports).toHaveLength(6);
+  expect(timers.size()).toBe(0);
+  ports.at(-1).onDisconnect.emit();
+  expect(timers.runNext()).toBe(true);
+  expect(ports).toHaveLength(9);
 });
 
 test("content truncates oversized payloads before the extension bridge", () => {
   const source = fs.readFileSync(path.join(__dirname, "../../public/content-script.js"), "utf8");
+  const timers = timerQueue();
   const ports = [];
   const eventListeners = {};
   const chrome = {
@@ -147,7 +176,7 @@ test("content truncates oversized payloads before the extension bridge", () => {
   const document = { createElement: () => ({ remove: jest.fn() }), head: { appendChild: jest.fn() } };
   vm.runInNewContext(source, {
     chrome, window, document, Uint32Array, TextEncoder, Date, Math, String,
-    setInterval: () => 1, clearInterval: jest.fn(),
+    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
   });
   ports[0].onMessage.emit({ action: "init_ack" });
   eventListeners.message({ source: window, data: { type: "__GRPCWEB_DEVTOOLS__", requestId: 7, request: { body: 'x'.repeat(5 * 1024 * 1024 + 1) } } });
@@ -157,8 +186,53 @@ test("content truncates oversized payloads before the extension bridge", () => {
   expect(delivered.request.preview).toHaveLength(2000);
 });
 
+test("content preserves a message that discovers a stale port and flushes it after reconnect", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../../public/content-script.js"), "utf8");
+  const timers = timerQueue();
+  const ports = [];
+  const eventListeners = {};
+  const chrome = {
+    runtime: {
+      getURL: name => name,
+      connect: () => {
+        const port = makePort("content");
+        port.disconnect = () => port.onDisconnect.emit();
+        ports.push(port);
+        return port;
+      },
+      onMessage: listenerList(),
+    },
+  };
+  const window = {
+    location: { href: "https://example.test/frame" },
+    crypto: { getRandomValues: values => values.fill(1) },
+    addEventListener: (name, listener) => { eventListeners[name] = listener; },
+  };
+  const document = { createElement: () => ({ remove: jest.fn() }), head: { appendChild: jest.fn() } };
+  vm.runInNewContext(source, {
+    chrome, window, document, Uint32Array, TextEncoder, Date, Math, String, Number,
+    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+  });
+  ports[0].onMessage.emit({ action: "init_ack" });
+  const originalPost = ports[0].postMessage.bind(ports[0]);
+  ports[0].postMessage = message => {
+    if (message.action === "gRPCNetworkCall") throw new Error("stale port");
+    originalPost(message);
+  };
+
+  eventListeners.message({ source: window, data: { type: "__GRPCWEB_DEVTOOLS__", requestId: 7, request: { value: "retained" } } });
+  expect(timers.runNext()).toBe(true);
+  expect(ports).toHaveLength(2);
+  ports[1].onMessage.emit({ action: "init_ack" });
+  expect(ports[1].posted.at(-1)).toEqual(expect.objectContaining({
+    action: "gRPCNetworkCall",
+    data: expect.objectContaining({ requestId: 7, request: { value: "retained" } }),
+  }));
+});
+
 test("content forwards only matching replay commands and relays page acknowledgements", () => {
   const source = fs.readFileSync(path.join(__dirname, "../../public/content-script.js"), "utf8");
+  const timers = timerQueue();
   const ports = [];
   const eventListeners = {};
   const chrome = {
@@ -177,7 +251,7 @@ test("content forwards only matching replay commands and relays page acknowledge
   const document = { createElement: () => ({ remove: jest.fn() }), head: { appendChild: jest.fn() } };
   vm.runInNewContext(source, {
     chrome, window, document, Uint32Array, TextEncoder, Date, Math, String, Number,
-    setInterval: () => 1, clearInterval: jest.fn(),
+    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
   });
   const captureId = ports[0].posted[0].data.captureId;
   ports[0].onMessage.emit({ action: "init_ack" });

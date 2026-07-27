@@ -11,8 +11,9 @@ import toolbarReducer, { setConnectionStatus } from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 import toastReducer from './state/toast';
 import { configureReplayBridge, disconnectReplayBridge, handleReplayBridgeMessage } from './replayBridge';
+import { createPanelConnection } from './panelConnection';
 
-var port, tabId
+var panelConnection = null
 var currentInspectedUrl = ''
 
 function refreshInspectedUrl() {
@@ -27,53 +28,17 @@ function refreshInspectedUrl() {
   } catch (_) {}
 }
 
-function setupPanelPortIfNeeded() {
-  // Check if port exists and is connected
-  if (port) {
-    return; // Already connected
-  }
-
-  if (!chrome || !chrome.runtime) {
-    console.error('[gRPC DevTools] Chrome runtime not available');
-    return;
-  }
-
-  try {
-    tabId = chrome.devtools.inspectedWindow.tabId;
-    port = chrome.runtime.connect(null, { name: "panel" });
-    configureReplayBridge(port);
-    port.postMessage({ tabId, action: "init" });
-    port.onMessage.addListener(_onMessageRecived);
-    port.onDisconnect.addListener(_onPortDisconnect);
-
-    port.postMessage({ action: 'heartbeat' });
-  } catch (error) {
-    console.error('[gRPC DevTools] Failed to reconnect panel port:', error);
-    port = null;
-  }
-}
-
 function _cleanupListeners() {
+  if (panelConnection) panelConnection.stop();
+  panelConnection = null;
   disconnectReplayBridge("Replay connection was closed.");
   try {
-    if (port) port.onMessage.removeListener(_onMessageRecived);
     if (chrome && chrome.devtools && chrome.devtools.network) {
       chrome.devtools.network.onNavigated.removeListener(_onNavigated);
     }
   } catch (error) {
     // no-op: devtools panel may not exist
   }
-}
-
-function _onPortDisconnect() {
-  disconnectReplayBridge("Replay connection was disconnected.");
-  if (store) {
-    store.dispatch(setConnectionStatus('disconnected'));
-  }
-  try { if (port) port.onMessage.removeListener(_onMessageRecived); } catch (_) {}
-  // Set port to null to allow reconnection attempts
-  // Note: We don't auto-reconnect here because user may have intentionally closed DevTools
-  port = null;
 }
 
 function _onNavigated(url) {
@@ -93,14 +58,18 @@ const store = configureStore({
 // Setup port for communication with the background script
 if (chrome) {
   try {
-    tabId = chrome.devtools.inspectedWindow.tabId;
-    port = chrome.runtime.connect(null, { name: "panel" });
-    configureReplayBridge(port);
-    port.postMessage({ tabId, action: "init" });
-    port.onMessage.addListener(_onMessageRecived);
-    port.onDisconnect.addListener(_onPortDisconnect);
-
-    port.postMessage({ action: 'heartbeat' });
+    const tabId = chrome.devtools.inspectedWindow.tabId;
+    panelConnection = createPanelConnection({
+      tabId,
+      connect: () => chrome.runtime.connect(null, { name: "panel" }),
+      onMessage: _onMessageRecived,
+      onStateChange: status => store.dispatch(setConnectionStatus(status)),
+      onPortChange: nextPort => {
+        if (nextPort) configureReplayBridge(nextPort);
+        else disconnectReplayBridge("Replay connection was disconnected.");
+      },
+    });
+    panelConnection.start();
 
     if (chrome.devtools && chrome.devtools.network) {
       chrome.devtools.network.onNavigated.addListener(_onNavigated);
@@ -110,19 +79,8 @@ if (chrome) {
 
     window.addEventListener('unload', _cleanupListeners);
 
-    // Export setupPanelPortIfNeeded for manual reconnection from Toolbar
-    window.setupPanelPortIfNeeded = setupPanelPortIfNeeded;
-
-    // Periodically check connection status with heartbeat
-    setInterval(() => {
-      if (port) {
-        try {
-          port.postMessage({ action: 'heartbeat' });
-        } catch (error) {
-          store.dispatch(setConnectionStatus('disconnected'));
-        }
-      }
-    }, 2000); // Check every 2 seconds for faster disconnection detection
+    // Export a manual reset while automatic recovery continues in the background.
+    window.setupPanelPortIfNeeded = () => panelConnection && panelConnection.reconnectNow();
 
     // Global error handlers for resiliency
     window.onerror = (message, source, lineno, colno, error) => {

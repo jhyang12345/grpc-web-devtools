@@ -37,8 +37,8 @@ export class Toolbar extends Component {
     const statusTitle = connectionStatus === 'connected'
       ? "DevTools connected"
       : connectionStatus === 'pending'
-        ? "Waiting for content script registration; reconnect is available"
-        : "DevTools connection lost - try closing and reopening panel";
+        ? "Waiting for content script registration; automatic recovery is active"
+        : "DevTools connection lost; automatic recovery is active";
     return (
       <>
         <div className="toolbar">
@@ -88,7 +88,7 @@ export class Toolbar extends Component {
                   <button
                     onClick={this._onReconnect}
                     className="reconnect-button"
-                    title="Attempt to reconnect to content script"
+                    title="Restart the automatic connection recovery now"
                   >
                     Reconnect
                   </button>
