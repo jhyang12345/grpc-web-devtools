@@ -49,6 +49,11 @@ Connect-ES and protobuf-ts use transport interceptors instead. See the
 JavaScript/TypeScript setup, replay adapters, feature limits, and
 troubleshooting.
 
+LLM coding agents can use the executable
+[`grpc-web-client-integration` skill](skills/grpc-web-client-integration/SKILL.md)
+to detect the client stack, apply the matching integration, and verify the
+required source signals.
+
 ### Inspect, edit, and replay a captured request
 
 1. Perform the gRPC-Web or Connect-Web call you want to inspect.

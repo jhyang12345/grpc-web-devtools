@@ -1,0 +1,4 @@
+interface:
+  display_name: "gRPC-Web Client Integration"
+  short_description: "Integrate web RPC clients with DevTools"
+  default_prompt: "Use $grpc-web-client-integration to add and verify full gRPC-Web DevTools support in this web client."
