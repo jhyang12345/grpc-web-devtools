@@ -2,6 +2,7 @@
   "use strict";
 
   const API_NAME = "__GRPCWEB_DEVTOOLS_PROTOBUF_TS__";
+  const READY_EVENT = "grpc-web-dev-tools-protobuf-ts-ready";
   const PROTOCOL_VERSION = 1;
   const EVENT_TYPE = "__GRPCWEB_DEVTOOLS__";
   const REPLAY_REQUEST_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__";
@@ -31,6 +32,7 @@
   const state = getState();
   if (state.api) {
     window[API_NAME] = state.api;
+    window.dispatchEvent(new CustomEvent(READY_EVENT));
     return;
   }
 
@@ -513,4 +515,5 @@
     interceptServerStreaming: context => captureServerStreaming(context),
   });
   window[API_NAME] = state.api;
+  window.dispatchEvent(new CustomEvent(READY_EVENT));
 })();

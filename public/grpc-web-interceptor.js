@@ -1,5 +1,6 @@
 (() => {
   const POST_TYPE = "__GRPCWEB_DEVTOOLS__";
+  const READY_EVENT = "grpc-web-dev-tools-ready";
   const REPLAY_REQUEST_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__";
   const REPLAY_ACK_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_ACK__";
   const REPLAY_REJECTED_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_REJECTED__";
@@ -340,4 +341,5 @@
   window.addEventListener("pagehide", cleanup, false);
   window.addEventListener("unload", cleanup, false);
   Object.defineProperty(window, LISTENER_KEY, { configurable: true, value: { onReplay, cleanup } });
+  window.dispatchEvent(new CustomEvent(READY_EVENT));
 })();

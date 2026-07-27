@@ -24,6 +24,17 @@ test.each([
   expect(typeof window.__CONNECT_WEB_DEVTOOLS__).toBe("function");
 });
 
+test.each([
+  ["grpc-web-interceptor.js", "grpc-web-dev-tools-ready", "__GRPCWEB_DEVTOOLS__"],
+  ["connect-web-interceptor.js", "connect-web-dev-tools-ready", "__CONNECT_WEB_DEVTOOLS__"],
+])("%s announces when its page API is ready", (script, eventName, apiName) => {
+  const listener = jest.fn();
+  window.addEventListener(eventName, listener, { once: true });
+  loadInterceptor(script);
+  expect(listener).toHaveBeenCalledTimes(1);
+  expect(typeof window[apiName]).toBe("function");
+});
+
 test("gRPC-Web enablement is idempotent and emits start before completion", () => {
   const events = capturedEvents();
   const client = { client_: {} };

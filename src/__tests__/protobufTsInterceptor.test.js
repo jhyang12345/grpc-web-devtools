@@ -105,6 +105,8 @@ afterEach(() => {
 });
 
 test("installs one stable versioned protobuf-ts runtime", () => {
+  const listener = jest.fn();
+  window.addEventListener("grpc-web-dev-tools-protobuf-ts-ready", listener);
   const runtime = loadRuntime();
   expect(runtime).toEqual(expect.objectContaining({
     protocolVersion: 1,
@@ -114,6 +116,8 @@ test("installs one stable versioned protobuf-ts runtime", () => {
 
   loadRuntime();
   expect(window.__GRPCWEB_DEVTOOLS_PROTOBUF_TS__).toBe(runtime);
+  expect(listener).toHaveBeenCalledTimes(2);
+  window.removeEventListener("grpc-web-dev-tools-protobuf-ts-ready", listener);
 });
 
 test("emits unary start before the backend and completes with timing and status", async () => {
