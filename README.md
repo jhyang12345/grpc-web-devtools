@@ -152,6 +152,25 @@ To stop the example:
 make example-down
 ```
 
+## Publishing to the Chrome Web Store
+
+1. Bump the version in `public/manifest.json` and `package.json` to the same value.
+2. Build:
+   ```bash
+   npm run build
+   ```
+3. Create the zip **from inside** the `build/` directory so `manifest.json` sits at the root (not inside a `build/` folder):
+   ```bash
+   cd build && zip -r ../grpc-web-inspector-<version>.zip . && cd ..
+   ```
+4. Test the zip before uploading:
+   ```bash
+   rm -rf ~/Desktop/ext-test && mkdir ~/Desktop/ext-test
+   cd ~/Desktop/ext-test && unzip ~/path/to/grpc-web-inspector-<version>.zip
+   ```
+   Then in Chrome go to `chrome://extensions` → **Developer mode** → **Load unpacked** → select `~/Desktop/ext-test`. Open DevTools on any page and verify the panel renders correctly.
+5. Upload the zip at the [Chrome Developer Dashboard](https://chrome.google.com/webstore/devconsole) → your listing → **Package** → **Upload new package**.
+
 ## Connect-ES
 
 grpc-web-devtools supports both the gRPC-Web and Connect protocols through
