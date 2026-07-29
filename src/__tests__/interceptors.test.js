@@ -143,6 +143,28 @@ test("Connect unary success and failure report terminal lifecycle events", async
   expect(events.map(event => event.phase)).toEqual(["start", "complete", "start", "error"]);
 });
 
+test("Connect request capture keeps default-valued scalar fields", async () => {
+  const events = capturedEvents();
+  loadInterceptor("connect-web-interceptor.js");
+  const requestMessage = {
+    countryCode: "",
+    toJson: jest.fn(options => options?.emitDefaultValues ? { countryCode: "" } : {}),
+  };
+  const interceptor = window.__CONNECT_WEB_DEVTOOLS__(async () => ({
+    stream: false,
+    message: { toJson: () => ({ ok: true }) },
+  }));
+
+  await interceptor({
+    stream: false,
+    method: { name: "Demo/DefaultValue" },
+    message: requestMessage,
+  });
+
+  expect(requestMessage.toJson).toHaveBeenCalledWith({ emitDefaultValues: true });
+  expect(events.find(event => event.phase === "start").request).toEqual({ countryCode: "" });
+});
+
 test("Connect stream completion is terminal after messages", async () => {
   const events = capturedEvents();
   loadInterceptor("connect-web-interceptor.js");

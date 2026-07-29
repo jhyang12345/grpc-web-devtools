@@ -174,6 +174,37 @@ test("emits unary start before the backend and completes with timing and status"
   });
 });
 
+test("captures protobuf-ts request defaults without changing response JSON options", async () => {
+  const messages = capturePostedMessages();
+  const runtime = loadRuntime();
+  const method = makeMethod("DefaultValue");
+  method.I.toJson.mockImplementation((message, options) => (
+    options?.emitDefaultValues ? { countryCode: message.countryCode } : {}
+  ));
+  const unary = makeUnaryCall(method, { countryCode: "" });
+
+  runtime.interceptUnary({
+    baseUrl: "https://api.example.test",
+    next: jest.fn(() => unary.call),
+    method,
+    input: { countryCode: "" },
+    options: { debug: true, jsonOptions: { useProtoFieldName: true } },
+  });
+
+  expect(messages.find(message => message.phase === "start").request).toEqual({ countryCode: "" });
+  expect(method.I.toJson).toHaveBeenCalledWith(
+    { countryCode: "" },
+    { useProtoFieldName: true, emitDefaultValues: true }
+  );
+
+  unary.resolve({ countryCode: "" });
+  await flushPromises();
+  expect(method.O.toJson).toHaveBeenCalledWith(
+    { countryCode: "" },
+    { useProtoFieldName: true }
+  );
+});
+
 test("replays edited JSON through the original pipeline and records provenance", () => {
   const messages = capturePostedMessages();
   const runtime = loadRuntime();

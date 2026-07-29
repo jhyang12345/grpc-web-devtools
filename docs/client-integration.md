@@ -221,6 +221,14 @@ For the best result:
 4. Keep authentication and other application interceptors after the DevTools
    wrapper so replay runs through them again.
 
+Connect-Web and protobuf-ts request capture enables default-valued scalar
+fields in protobuf JSON output. For example, `{ "countryCode": "" }` stays
+visible in the request pane instead of collapsing to `{}`. This is the complete
+logical protobuf message value, not proof that every default value was encoded
+on the wire. Standard proto3 fields with implicit presence omit default values
+from the binary wire format; declare a field `optional` or use a wrapper type if
+the backend needs to distinguish an omitted value from an explicitly empty one.
+
 Replay is available only for captured requests. Page-side replay handles expire
 after ten minutes and are limited to 100 per transport. A request must be 5 MiB
 or smaller and still present in the panel payload cache. Reloading, discarding,

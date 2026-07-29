@@ -66,6 +66,13 @@ entry. The panel labels it as a retry of the original request. Its list and
 details views show the exact **Frame URL**, start time, completion time,
 duration, and time-to-first-message (TTFM) for streams.
 
+Connect-Web and protobuf-ts request capture includes default-valued scalar
+fields, so values such as `{ "countryCode": "" }` remain visible instead of
+appearing as `{}`. This represents the complete protobuf message value. With
+ordinary proto3 implicit presence, an empty string can still be omitted from the
+binary wire format; use an `optional` field or a wrapper type when the server
+must distinguish "unset" from "set to empty".
+
 > **Warning:** Replay sends a real backend request. It may reuse the captured
 > request's authentication and metadata. An acknowledgement only means the
 > page accepted and scheduled the replay; the new request entry records the

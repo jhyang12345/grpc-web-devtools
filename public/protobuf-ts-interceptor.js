@@ -94,9 +94,12 @@
     };
   }
 
-  function serializeMessage(messageType, message, options) {
+  function serializeMessage(messageType, message, options, emitDefaultValues = false) {
     try {
-      return limitPayload(messageType.toJson(message, options.jsonOptions));
+      const jsonOptions = emitDefaultValues
+        ? { ...(options && options.jsonOptions), emitDefaultValues: true }
+        : options && options.jsonOptions;
+      return limitPayload(messageType.toJson(message, jsonOptions));
     } catch (error) {
       return {
         payload: { __error: `Protobuf JSON serialization failed: ${errorMessage(error)}` },
@@ -315,7 +318,7 @@
     const requestId = nextRequestId();
     const requestTimestamp = Date.now();
     const elapsedStart = monotonicNow();
-    const requestPayload = serializeMessage(method.I, input, options);
+    const requestPayload = serializeMessage(method.I, input, options, true);
     const replayOptions = snapshotReplayOptions(options);
     const replay = registerReplay(requestPayload, (editedRequest, command) => {
       const nextOptions = replayOptions();
@@ -409,7 +412,7 @@
     const requestId = nextRequestId();
     const requestTimestamp = Date.now();
     const elapsedStart = monotonicNow();
-    const requestPayload = serializeMessage(method.I, input, options);
+    const requestPayload = serializeMessage(method.I, input, options, true);
     const replayOptions = snapshotReplayOptions(options);
     const replay = registerReplay(requestPayload, (editedRequest, command) => {
       const nextOptions = replayOptions();

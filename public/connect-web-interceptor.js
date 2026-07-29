@@ -41,7 +41,11 @@
   }
 
   function serializeRequest(value) {
-    try { return value && typeof value.toJson === "function" ? value.toJson() : value; } catch (error) {
+    try {
+      return value && typeof value.toJson === "function"
+        ? value.toJson({ emitDefaultValues: true })
+        : value;
+    } catch (error) {
       return { __error: `Serialization failed for request: ${error && error.message || "unknown error"}` };
     }
   }
