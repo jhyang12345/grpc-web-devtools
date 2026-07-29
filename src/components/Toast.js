@@ -5,7 +5,7 @@ import { connect } from 'react-redux';
 import { hideToast } from '../state/toast';
 import './Toast.css';
 
-class Toast extends Component {
+export class Toast extends Component {
   componentDidUpdate(prevProps) {
     const { visible, autoDismiss, hideToast } = this.props;
 
@@ -42,8 +42,14 @@ class Toast extends Component {
       return null;
     }
 
+    const isAssertive = type === 'error' || type === 'warning';
+
     return (
-      <div className={`toast toast-${type} ${visible ? 'toast-visible' : ''}`}>
+      <div
+        className={`toast toast-${type} ${visible ? 'toast-visible' : ''}`}
+        role={isAssertive ? 'alert' : 'status'}
+        aria-live={isAssertive ? 'assertive' : 'polite'}
+      >
         <div className="toast-content">
           {type === 'success' && (
             <svg className="toast-icon" width="16" height="16" viewBox="0 0 16 16">

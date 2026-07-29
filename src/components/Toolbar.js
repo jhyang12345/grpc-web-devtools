@@ -33,7 +33,6 @@ export class Toolbar extends Component {
   render() {
     const { preserveLog, toolbar } = this.props;
     const { connectionStatus } = toolbar;
-    const statusColor = connectionStatus === 'connected' ? '#0a0' : connectionStatus === 'pending' ? '#fa0' : '#f00';
     const statusTitle = connectionStatus === 'connected'
       ? "DevTools connected"
       : connectionStatus === 'pending'
@@ -66,22 +65,10 @@ export class Toolbar extends Component {
             </span>
             <ToolbarDivider />
             <span
-              className="toolbar-item"
+              className={`toolbar-item connection-status connection-status--${connectionStatus}`}
               title={statusTitle}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontSize: '12px',
-                color: statusColor
-              }}
             >
-              <span style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: statusColor
-              }} />
+              <span className="connection-status-dot" />
               {connectionStatus === 'connected' ? 'Connected' : (
                 <>
                   {connectionStatus === 'pending' ? 'Connecting...' : 'Disconnected'}

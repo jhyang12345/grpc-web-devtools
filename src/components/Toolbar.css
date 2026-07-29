@@ -4,6 +4,8 @@
   border-bottom: var(--divider-border);
   flex: none;
   padding: 0 2px;
+  position: relative;
+  z-index: var(--z-toolbar);
   user-select: none;
 }
 
@@ -12,7 +14,6 @@
   white-space: nowrap;
   height: 26px;
   overflow: hidden;
-  z-index: 12;
   display: flex;
   flex: none;
   align-items: center;
@@ -69,6 +70,12 @@
   outline-width: 0;
 }
 
+.toolbar-item:focus-visible,
+.reconnect-button:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: -2px;
+}
+
 .toolbar-button {
   white-space: nowrap;
   overflow: hidden;
@@ -113,4 +120,29 @@
 
 .reconnect-button:hover {
   background-color: var(--button-hover-bg);
+}
+
+.connection-status {
+  --connection-status-color: var(--status-disconnected);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--connection-status-color);
+}
+
+.connection-status--connected {
+  --connection-status-color: var(--status-connected);
+}
+
+.connection-status--pending {
+  --connection-status-color: var(--status-pending);
+}
+
+.connection-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: currentColor;
+  flex: none;
 }

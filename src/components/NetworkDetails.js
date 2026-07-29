@@ -94,6 +94,17 @@ function stringifyJson(value) {
   }
 }
 
+export function getJsonViewerTheme(matchesDarkMode) {
+  return matchesDarkMode ? "twilight" : "rjv-default";
+}
+
+function getPreferredJsonViewerTheme() {
+  const matchesDarkMode = typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  return getJsonViewerTheme(matchesDarkMode);
+}
+
 export function getReplayDisabledReason(entry, requestPayloadMissing) {
   if (requestPayloadMissing) return "Full request payload is no longer available.";
   if (!entry?.request || entry.request.__truncated) return "This request payload was truncated and cannot be replayed.";
@@ -204,6 +215,7 @@ export class NetworkDetails extends Component {
     isEditingRequest: false,
     requestEditorError: null,
     isReplaySending: false,
+    jsonViewerTheme: getPreferredJsonViewerTheme(),
   };
 
   _isReplaySubmitting = false;
@@ -225,6 +237,14 @@ export class NetworkDetails extends Component {
   componentDidMount() {
     this._isMounted = true;
     document.addEventListener("keydown", this._handleKeydown, true);
+    if (typeof window.matchMedia === "function") {
+      this._themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      if (typeof this._themeMediaQuery.addEventListener === "function") {
+        this._themeMediaQuery.addEventListener("change", this._handleThemeChange);
+      } else if (typeof this._themeMediaQuery.addListener === "function") {
+        this._themeMediaQuery.addListener(this._handleThemeChange);
+      }
+    }
 
     // componentDidUpdate doesn't fire on initial mount. If the component mounts with an entry
     // already selected (MainLayout only renders us when hasSelectedEntry=true), we need to
@@ -245,6 +265,14 @@ export class NetworkDetails extends Component {
     this._isMounted = false;
     this._invalidateReplaySubmission();
     document.removeEventListener("keydown", this._handleKeydown, true);
+    if (this._themeMediaQuery) {
+      if (typeof this._themeMediaQuery.removeEventListener === "function") {
+        this._themeMediaQuery.removeEventListener("change", this._handleThemeChange);
+      } else if (typeof this._themeMediaQuery.removeListener === "function") {
+        this._themeMediaQuery.removeListener(this._handleThemeChange);
+      }
+      this._themeMediaQuery = null;
+    }
     if (this._requestSearchDebounceTimer) {
       clearTimeout(this._requestSearchDebounceTimer);
     }
@@ -527,8 +555,7 @@ export class NetworkDetails extends Component {
   }
 
   _renderResponsePane(responseSource, responseText, responsePayloadMissing, isResponseTruncated, hasResponsePayload) {
-    const { responseSearch, responseCollapsed, isRendering } = this.state;
-    const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "twilight" : "rjv-default";
+    const { responseSearch, responseCollapsed, isRendering, jsonViewerTheme } = this.state;
     const canCopyResponse = hasResponsePayload && !!responseText;
     const canSearchResponse = hasResponsePayload && !!responseText;
     const expandLabel = responseCollapsed === false ? "Collapse" : "Expand";
@@ -594,7 +621,7 @@ export class NetworkDetails extends Component {
             isRendering={isRendering}
             responseSource={responseSource}
             responseCollapsed={responseCollapsed}
-            theme={theme}
+            theme={jsonViewerTheme}
           />
         </div>
       </div>
@@ -689,6 +716,10 @@ export class NetworkDetails extends Component {
   _showReplayError = (message) => {
     this._safeSetState({ requestEditorError: message });
     this.props.showToast({ message, type: "error", autoDismiss: 4000 });
+  };
+
+  _handleThemeChange = (event) => {
+    this._safeSetState({ jsonViewerTheme: getJsonViewerTheme(event.matches) });
   };
 
   _safeSetState = (nextState, callback) => {

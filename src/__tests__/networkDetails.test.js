@@ -3,7 +3,7 @@ jest.mock('../replayBridge', () => ({
   sendReplayRequest: jest.fn(),
 }));
 
-import { buildResponseSource, formatDuration, formatTimestamp, formatEditedRequest, formatReplayProvenance, getReplayDisabledReason, NetworkDetails, parseEditedRequest } from '../components/NetworkDetails';
+import { buildResponseSource, formatDuration, formatTimestamp, formatEditedRequest, formatReplayProvenance, getJsonViewerTheme, getReplayDisabledReason, NetworkDetails, parseEditedRequest } from '../components/NetworkDetails';
 import { sendReplayRequest } from '../replayBridge';
 
 beforeEach(() => {
@@ -43,6 +43,15 @@ test('formats wall-clock times and monotonic elapsed values for detail metadata'
   expect(formatTimestamp(new Date(2026, 0, 2, 3, 4, 5, 6).getTime())).toBe('2026-01-02 03:04:05.006');
   expect(formatDuration(7.6)).toBe('8 ms');
   expect(formatDuration(1500)).toBe('1.50 s');
+});
+
+test('maps live color-scheme changes to the matching JSON viewer theme', () => {
+  expect(getJsonViewerTheme(false)).toBe('rjv-default');
+  expect(getJsonViewerTheme(true)).toBe('twilight');
+
+  const component = makeReplayEditor();
+  component._handleThemeChange({ matches: true });
+  expect(component.state.jsonViewerTheme).toBe('twilight');
 });
 
 test('validates and formats locally edited replay JSON without accepting arrays or invalid text', () => {

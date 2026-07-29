@@ -53,6 +53,11 @@
   background-color: var(--button-hover-bg);
 }
 
+.search-btn:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 1px;
+}
+
 .search-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;

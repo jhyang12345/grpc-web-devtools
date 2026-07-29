@@ -10,6 +10,8 @@ body {
   width: 100%;
   position: relative;
   overflow: hidden;
+  background-color: var(--network-bg);
+  color: var(--text-color);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
     "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
     sans-serif;
@@ -33,7 +35,8 @@ code {
 #root {
   margin-right: 0px;
   margin-bottom: 0px;
-  background-color: white;
+  background-color: var(--network-bg);
+  color: var(--text-color);
   overflow: hidden;
   position: absolute !important;
   left: 0;
@@ -47,6 +50,7 @@ code {
 }
 
 :root {
+  color-scheme: light;
   --accent-color: #1a73e8;
   --toolbar-bg-color: #f3f3f3; 
   --toolbar-color: #5a5a5a;
@@ -57,9 +61,12 @@ code {
   --selection-fg-color: white;
   --toolbar-input-text: #000;
   --toolbar-input-bg: #fff;
+  --toolbar-input-placeholder: #70757a;
   --focus-ring-inactive-shadow: 0 0 0 1px #e0e0e0;
   --focus-ring-active-shadow: 0 0 0 1px var(--accent-color);
+  --focus-outline-color: #1a73e8;
   --enabled-color: #d80000;
+  --error-text-color: #c5221f;
   --network-color-text: #777;
   --network-bg: #fff;
   --network-row-odd: #f5f5f5;
@@ -73,6 +80,21 @@ code {
   --button-text: #333;
   --button-border: #ccc;
   --button-hover-bg: #f5f5f5;
+  --status-connected: #137333;
+  --status-pending: #995700;
+  --status-disconnected: #c5221f;
+  --toast-success-bg: #0b6b4f;
+  --toast-error-bg: #b3261e;
+  --toast-info-bg: #0b57a4;
+  --toast-warning-bg: #8a4b00;
+  --toast-text: #fff;
+  --error-surface-bg: #fff7e0;
+  --error-surface-border: #e0a844;
+  --error-surface-title: #8a4b00;
+  --error-surface-code-bg: #fffdf7;
+  --error-surface-button-bg: #a85d00;
+  --error-surface-button-hover-bg: #8d4e00;
+  --error-surface-button-text: #fff;
   --scrollbar-track: #eef0f2;
   --scrollbar-thumb: #a2aab3;
   --scrollbar-thumb-hover: #7f8994;
@@ -87,35 +109,52 @@ code {
   --replay-send-border: #814700;
   --replay-send-hover-bg: #8d4e00;
   --replay-send-text: #fff;
+  --z-resizer: 10;
+  --z-toolbar: 20;
+  --z-toast: 100;
 
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --accent-color: #0e639c;
+    color-scheme: dark;
+    --accent-color: #4da3df;
     --toolbar-bg-color: #333333;
     --toolbar-color: #a5a5a5;
     --toolbar-color-hover: #ccc;
     --divider-border: 1px solid #3d3d3d;
     --divider-color: #3d3d3d;
+    --selection-bg-color: #0e639c;
     --toolbar-input-text: #bdc6cf;
     --toolbar-input-bg: #242424;
+    --toolbar-input-placeholder: #929aa3;
     --focus-ring-inactive-shadow: 0 0 0 1px #5a5a5a;
     --focus-ring-active-shadow: 0 0 0 1px var(--accent-color);
+    --focus-outline-color: #6cb6e8;
     --enabled-color: #ff4d4d;
-    --network-color-text: #888888;
+    --error-text-color: #ff8585;
+    --network-color-text: #a8b0b8;
     --network-bg: #242424;
     --network-row-odd: #292929;
     --network-row-hover: #14253fb3;
     --network-row-icon-fill: rgba(255, 255, 255, 0.8);
     --border-color: #3d3d3d;
     --text-color: #bdc6cf;
-    --text-secondary-color: #888888;
+    --text-secondary-color: #a8b0b8;
     --hover-bg-color: #14253fb3;
     --button-bg: #3d3d3d;
     --button-text: #bdc6cf;
     --button-border: #5a5a5a;
     --button-hover-bg: #4a4a4a;
+    --status-connected: #5dcc7a;
+    --status-pending: #f2b84b;
+    --status-disconnected: #ff8585;
+    --error-surface-bg: #2d281d;
+    --error-surface-border: #6f5830;
+    --error-surface-title: #f0b44b;
+    --error-surface-code-bg: #1f1d18;
+    --error-surface-button-bg: #a76410;
+    --error-surface-button-hover-bg: #bd7416;
     --scrollbar-track: #242424;
     --scrollbar-thumb: #5f6368;
     --scrollbar-thumb-hover: #7a7f85;
@@ -132,13 +171,15 @@ code {
     --replay-send-text: #fff7ea;
   }
 
-  input[type=checkbox] {
-    filter: invert(80%);
-  }
-
   a {
     color: #ababab;
   }
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--toolbar-input-placeholder);
+  opacity: 1;
 }
 
 /* Compact scroll surfaces keep Windows rails from overpowering dense DevTools panes. */

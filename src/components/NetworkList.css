@@ -80,7 +80,7 @@
 }
 
 .data-grid .data .data-row.error {
-  color:rgb(216, 0, 0);
+  color: var(--error-text-color);
 }
 
 .data-grid .data-row {
@@ -130,8 +130,13 @@
   overflow: hidden;
 }
 
-.data-grid .data-row.selected .data-row-meta {
+.data-grid .data-row.selected .data-row-meta,
+.data-grid .data-row.selected .data-row-timing {
   color: rgba(255, 255, 255, 0.85);
+}
+
+.data-grid .data-row.selected.error {
+  color: var(--selection-fg-color);
 }
 
 .data-grid .data-row.error .data-row-meta {
