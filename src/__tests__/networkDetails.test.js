@@ -3,7 +3,8 @@ jest.mock('../replayBridge', () => ({
   sendReplayRequest: jest.fn(),
 }));
 
-import { buildResponseSource, formatDuration, formatTimestamp, formatEditedRequest, formatReplayProvenance, getJsonViewerTheme, getReplayDisabledReason, NetworkDetails, parseEditedRequest } from '../components/NetworkDetails';
+import { buildResponseSource, formatDuration, formatTimestamp, formatEditedRequest, formatReplayProvenance, getJsonViewerTheme, getReplayDisabledReason, getRequestEditorPaneSizes, NetworkDetails, parseEditedRequest } from '../components/NetworkDetails';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { sendReplayRequest } from '../replayBridge';
 
 beforeEach(() => {
@@ -13,11 +14,12 @@ beforeEach(() => {
 function makeReplayEditor() {
   const component = new NetworkDetails({ showToast: jest.fn() });
   component._isMounted = true;
-  component.setState = (next) => {
+  component.setState = (next, callback) => {
     const update = typeof next === 'function' ? next(component.state) : next;
     component.state = { ...component.state, ...update };
+    if (callback) callback();
   };
-  component.requestEditorInputRef.current = { value: '{"value":1}' };
+  component.requestEditorInputRef.current = { value: '{"value":1}', focus: jest.fn() };
   return component;
 }
 
@@ -58,6 +60,35 @@ test('validates and formats locally edited replay JSON without accepting arrays 
   expect(parseEditedRequest('{')).toEqual({ error: 'Request body must contain valid JSON.' });
   expect(parseEditedRequest('[]')).toEqual({ error: 'Request body must be a JSON object.' });
   expect(formatEditedRequest('{"b":2,"a":1}')).toEqual({ request: { b: 2, a: 1 }, text: '{\n  "b": 2,\n  "a": 1\n}' });
+});
+
+test('request edit mode keeps actions above the editor and temporarily expands its pane', () => {
+  expect(getRequestEditorPaneSizes([33, 67])).toEqual([70, 30]);
+  expect(getRequestEditorPaneSizes([80, 20])).toEqual([80, 20]);
+  expect(getRequestEditorPaneSizes(null)).toEqual([70, 30]);
+
+  const component = makeReplayEditor();
+  component.state = { ...component.state, paneSizes: [33, 67] };
+  component._closeRequestSearch = jest.fn();
+  component._clearRequestHighlights = jest.fn();
+  component._openRequestEditor();
+
+  expect(component.state.isEditingRequest).toBe(true);
+  expect(component.state.paneSizes).toEqual([70, 30]);
+  expect(component.requestEditorInputRef.current.focus).toHaveBeenCalled();
+
+  const markup = renderToStaticMarkup(component._renderRequestPane(
+    '{\n  "value": 1\n}',
+    false,
+    replayEntry(7)
+  ));
+  expect(markup).toContain('class="details-pane request-pane is-editing"');
+  expect(markup).toContain('aria-label="Request editor actions"');
+  expect(markup.indexOf('Send request')).toBeLessThan(markup.indexOf('Editable request JSON'));
+
+  component._cancelRequestEditor();
+  expect(component.state.isEditingRequest).toBe(false);
+  expect(component.state.paneSizes).toEqual([33, 67]);
 });
 
 test('explains replay disabled states and renders plain provenance labels', () => {

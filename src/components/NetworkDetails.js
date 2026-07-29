@@ -34,7 +34,27 @@ class ResponseJsonContent extends PureComponent {
 }
 
 const DEFAULT_PANE_SIZES = [33, 67];
+const REQUEST_EDITOR_PANE_SIZES = [70, 30];
 const PANE_SIZE_STORAGE_KEY = "detailsPaneSizes";
+
+export function getRequestEditorPaneSizes(paneSizes) {
+  if (!Array.isArray(paneSizes) || paneSizes.length !== 2) {
+    return [...REQUEST_EDITOR_PANE_SIZES];
+  }
+
+  const requestSize = Number(paneSizes[0]);
+  const responseSize = Number(paneSizes[1]);
+  const totalSize = requestSize + responseSize;
+  if (!Number.isFinite(requestSize) || !Number.isFinite(responseSize) || totalSize <= 0) {
+    return [...REQUEST_EDITOR_PANE_SIZES];
+  }
+
+  if ((requestSize / totalSize) * 100 >= REQUEST_EDITOR_PANE_SIZES[0]) {
+    return [...paneSizes];
+  }
+
+  return REQUEST_EDITOR_PANE_SIZES.map(size => (size / 100) * totalSize);
+}
 
 function formatBytes(value) {
   if (!Number.isFinite(value)) return "";
@@ -224,6 +244,8 @@ export class NetworkDetails extends Component {
 
   _activeReplaySubmission = null;
 
+  _paneSizesBeforeRequestEdit = null;
+
   _isMounted = false;
 
   _requestSearchMatches = [];
@@ -289,6 +311,8 @@ export class NetworkDetails extends Component {
 
     if (prevEntryId !== nextEntryId && this.state.lastEntryId !== nextEntryId) {
       this._invalidateReplaySubmission();
+      const paneSizes = this._paneSizesBeforeRequestEdit || this.state.paneSizes;
+      this._paneSizesBeforeRequestEdit = null;
       const { cachedEntry, entryToRender } = getRenderableEntry(this.props.entry);
       const requestPayloadMissing = !!this.props.entry?.entryId && !cachedEntry && this.props.entry.request === true;
 
@@ -308,6 +332,7 @@ export class NetworkDetails extends Component {
         isEditingRequest: false,
         requestEditorError: null,
         isReplaySending: false,
+        paneSizes,
       });
       setTimeout(() => {
         this._safeSetState({ isRendering: true });
@@ -357,7 +382,7 @@ export class NetworkDetails extends Component {
             className="details-pane-split vbox flex-auto"
             direction="vertical"
             sizes={this.state.paneSizes}
-            minSize={[180, 220]}
+            minSize={this.state.isEditingRequest ? [240, 160] : [180, 220]}
             gutterSize={6}
             onDragEnd={this._onPaneResize}
           >
@@ -478,38 +503,55 @@ export class NetworkDetails extends Component {
     this._activeReplayEntry = entryToRender;
 
     return (
-      <div className="details-pane request-pane" ref={this.requestPaneRef}>
+      <div className={`details-pane request-pane ${isEditingRequest ? "is-editing" : ""}`} ref={this.requestPaneRef}>
         <div className="details-pane-header">
           <div className="details-pane-title-group">
-            <div className="details-pane-title">Request</div>
-            <div className="details-pane-subtitle">Captured request payload</div>
+            <div className="details-pane-title">{isEditingRequest ? "Edit request" : "Request"}</div>
+            <div className="details-pane-subtitle">
+              {isEditingRequest ? "Review JSON before replay" : "Captured request payload"}
+            </div>
           </div>
-          <div className="details-pane-actions">
-            <button
-              className="json-action-button"
-              type="button"
-              onClick={() => this._copyText("Request", requestText)}
-              disabled={!canCopyRequest}
-            >
-              Copy
-            </button>
-            <button
-              className={`json-action-button ${requestSearch.isOpen ? "is-active" : ""}`}
-              type="button"
-              onClick={() => this._openRequestSearch()}
-              disabled={!canSearchRequest}
-            >
-              Search
-            </button>
-            <button
-              className="json-action-button replay-edit-button"
-              type="button"
-              title={replayDisabledReason || "Edit this captured request before sending a real backend replay."}
-              onClick={this._openRequestEditor}
-              disabled={!!replayDisabledReason || isEditingRequest}
-            >
-              Edit
-            </button>
+          <div
+            className={`details-pane-actions ${isEditingRequest ? "replay-editor-actions" : ""}`}
+            role={isEditingRequest ? "toolbar" : undefined}
+            aria-label={isEditingRequest ? "Request editor actions" : undefined}
+          >
+            {isEditingRequest ? (
+              <>
+                <button className="json-action-button" type="button" onClick={this._formatRequestEditor} disabled={isReplaySending}>Format</button>
+                <button className="json-action-button" type="button" onClick={this._resetRequestEditor} disabled={isReplaySending}>Reset</button>
+                <button className="json-action-button" type="button" onClick={this._cancelRequestEditor} disabled={isReplaySending}>Cancel</button>
+                <button className="json-action-button replay-send-button" type="button" onClick={this._sendEditedRequest} disabled={isReplaySending}>{isReplaySending ? "Sending…" : "Send request"}</button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="json-action-button"
+                  type="button"
+                  onClick={() => this._copyText("Request", requestText)}
+                  disabled={!canCopyRequest}
+                >
+                  Copy
+                </button>
+                <button
+                  className={`json-action-button ${requestSearch.isOpen ? "is-active" : ""}`}
+                  type="button"
+                  onClick={() => this._openRequestSearch()}
+                  disabled={!canSearchRequest}
+                >
+                  Search
+                </button>
+                <button
+                  className="json-action-button replay-edit-button"
+                  type="button"
+                  title={replayDisabledReason || "Edit this captured request before sending a real backend replay."}
+                  onClick={this._openRequestEditor}
+                  disabled={!!replayDisabledReason}
+                >
+                  Edit
+                </button>
+              </>
+            )}
           </div>
         </div>
         {requestSearch.isOpen && !isEditingRequest && (
@@ -529,7 +571,7 @@ export class NetworkDetails extends Component {
             Full request payload is no longer available (evicted from cache).
           </div>
         )}
-        <div className="details-pane-body">
+        <div className={`details-pane-body request-pane-body ${isEditingRequest ? "is-editing" : ""}`}>
           {/* Plain text only — highlights applied via CSS Highlight API, no React re-renders */}
           {isEditingRequest ? (
             <div className="replay-editor-shell">
@@ -537,12 +579,6 @@ export class NetworkDetails extends Component {
               <textarea ref={this.requestEditorInputRef} className="request-editor-input" aria-label="Editable request JSON"
                 aria-describedby={requestEditorError ? "request-editor-error" : undefined} defaultValue={requestText} spellCheck="false" />
               {requestEditorError && <div id="request-editor-error" className="payload-warning pane-error" role="alert">{requestEditorError}</div>}
-              <div className="replay-editor-actions">
-                <button className="json-action-button" type="button" onClick={this._formatRequestEditor} disabled={isReplaySending}>Format</button>
-                <button className="json-action-button" type="button" onClick={this._resetRequestEditor} disabled={isReplaySending}>Reset</button>
-                <button className="json-action-button" type="button" onClick={this._cancelRequestEditor} disabled={isReplaySending}>Cancel</button>
-                <button className="json-action-button replay-send-button" type="button" onClick={this._sendEditedRequest} disabled={isReplaySending}>{isReplaySending ? "Sending…" : "Send request"}</button>
-              </div>
             </div>
           ) : (
             <pre ref={this.requestEditorRef} className="request-viewer">
@@ -629,6 +665,7 @@ export class NetworkDetails extends Component {
   }
 
   _onPaneResize = (sizes) => {
+    this._paneSizesBeforeRequestEdit = null;
     this.setState({ paneSizes: sizes });
     setStorageItem(PANE_SIZE_STORAGE_KEY, sizes);
   };
@@ -737,8 +774,14 @@ export class NetworkDetails extends Component {
   );
 
   _openRequestEditor = () => {
+    if (this.state.isEditingRequest) return;
     this._closeRequestSearch();
-    this._safeSetState({ isEditingRequest: true, requestEditorError: null }, () => {
+    this._paneSizesBeforeRequestEdit = this.state.paneSizes;
+    this._safeSetState({
+      isEditingRequest: true,
+      requestEditorError: null,
+      paneSizes: getRequestEditorPaneSizes(this.state.paneSizes),
+    }, () => {
       this.requestEditorInputRef.current?.focus();
     });
   };
@@ -746,7 +789,13 @@ export class NetworkDetails extends Component {
   _cancelRequestEditor = () => {
     if (this.state.isReplaySending) return;
     this._clearRequestHighlights();
-    this._safeSetState({ isEditingRequest: false, requestEditorError: null });
+    const paneSizes = this._paneSizesBeforeRequestEdit;
+    this._paneSizesBeforeRequestEdit = null;
+    this._safeSetState({
+      isEditingRequest: false,
+      requestEditorError: null,
+      ...(paneSizes ? { paneSizes } : {}),
+    });
   };
 
   _resetRequestEditor = () => {
