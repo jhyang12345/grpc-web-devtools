@@ -335,6 +335,7 @@
     postEvent({
       phase: "start",
       method: methodName,
+      backendUrl: methodName,
       methodType: "unary",
       requestId,
       request: requestPayload.payload,
@@ -457,6 +458,7 @@
     postEvent({
       phase: "start",
       method: methodName,
+      backendUrl: methodName,
       methodType: "server_streaming",
       requestId,
       request: requestPayload.payload,

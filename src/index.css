@@ -193,27 +193,27 @@ textarea::placeholder {
 }
 
 /* Compact scroll surfaces keep Windows rails from overpowering dense DevTools panes. */
-:where(.data, .details-pane-body, .request-viewer, .request-editor-input) {
+:where(.data, .details-pane-body, .request-viewer, .request-editor-input, .payload-metadata-content) {
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   scrollbar-width: thin;
 }
 
 @supports selector(::-webkit-scrollbar) {
-  :where(.data, .details-pane-body, .request-viewer, .request-editor-input) {
+  :where(.data, .details-pane-body, .request-viewer, .request-editor-input, .payload-metadata-content) {
     scrollbar-color: auto;
     scrollbar-width: auto;
   }
 
-  :where(.data, .details-pane-body, .request-viewer, .request-editor-input)::-webkit-scrollbar {
+  :where(.data, .details-pane-body, .request-viewer, .request-editor-input, .payload-metadata-content)::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
 
-  :where(.data, .details-pane-body, .request-viewer, .request-editor-input)::-webkit-scrollbar-track {
+  :where(.data, .details-pane-body, .request-viewer, .request-editor-input, .payload-metadata-content)::-webkit-scrollbar-track {
     background: var(--scrollbar-track);
   }
 
-  :where(.data, .details-pane-body, .request-viewer, .request-editor-input)::-webkit-scrollbar-thumb {
+  :where(.data, .details-pane-body, .request-viewer, .request-editor-input, .payload-metadata-content)::-webkit-scrollbar-thumb {
     min-width: 36px;
     min-height: 36px;
     border: 2px solid var(--scrollbar-track);
@@ -222,21 +222,21 @@ textarea::placeholder {
     background-clip: padding-box;
   }
 
-  :where(.data, .details-pane-body, .request-viewer, .request-editor-input)::-webkit-scrollbar-thumb:hover {
+  :where(.data, .details-pane-body, .request-viewer, .request-editor-input, .payload-metadata-content)::-webkit-scrollbar-thumb:hover {
     background-color: var(--scrollbar-thumb-hover);
   }
 
-  :where(.data, .details-pane-body, .request-viewer, .request-editor-input)::-webkit-scrollbar-thumb:active {
+  :where(.data, .details-pane-body, .request-viewer, .request-editor-input, .payload-metadata-content)::-webkit-scrollbar-thumb:active {
     background-color: var(--scrollbar-thumb-active);
   }
 
-  :where(.data, .details-pane-body, .request-viewer, .request-editor-input)::-webkit-scrollbar-button {
+  :where(.data, .details-pane-body, .request-viewer, .request-editor-input, .payload-metadata-content)::-webkit-scrollbar-button {
     display: none;
     width: 0;
     height: 0;
   }
 
-  :where(.data, .details-pane-body, .request-viewer, .request-editor-input)::-webkit-scrollbar-corner {
+  :where(.data, .details-pane-body, .request-viewer, .request-editor-input, .payload-metadata-content)::-webkit-scrollbar-corner {
     background: var(--scrollbar-track);
   }
 }

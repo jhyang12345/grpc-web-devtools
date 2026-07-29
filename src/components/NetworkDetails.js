@@ -36,6 +36,7 @@ class ResponseJsonContent extends PureComponent {
 const DEFAULT_PANE_SIZES = [33, 67];
 const REQUEST_EDITOR_PANE_SIZES = [70, 30];
 const PANE_SIZE_STORAGE_KEY = "detailsPaneSizes";
+const METADATA_EXPANDED_STORAGE_KEY = "detailsMetadataExpanded";
 
 export function getRequestEditorPaneSizes(paneSizes) {
   if (!Array.isArray(paneSizes) || paneSizes.length !== 2) {
@@ -54,6 +55,14 @@ export function getRequestEditorPaneSizes(paneSizes) {
   }
 
   return REQUEST_EDITOR_PANE_SIZES.map(size => (size / 100) * totalSize);
+}
+
+export function getBackendRequestUrl(entry) {
+  const explicitUrl = typeof entry?.backendUrl === "string" ? entry.backendUrl.trim() : "";
+  if (explicitUrl) return explicitUrl;
+
+  const method = typeof entry?.method === "string" ? entry.method.trim() : "";
+  return /^(https?:\/\/|\/)/i.test(method) ? method : "";
 }
 
 function formatBytes(value) {
@@ -235,6 +244,7 @@ export class NetworkDetails extends Component {
     isEditingRequest: false,
     requestEditorError: null,
     isReplaySending: false,
+    isMetadataExpanded: getStorageItem(METADATA_EXPANDED_STORAGE_KEY, true) !== false,
     jsonViewerTheme: getPreferredJsonViewerTheme(),
   };
 
@@ -362,10 +372,6 @@ export class NetworkDetails extends Component {
       error,
       messages,
       status,
-      timing,
-      payloadBytes,
-      transport,
-      location: requestLocation,
     } = entryToRender;
 
     const requestPayloadMissing = !!entry.entryId && !cachedEntry && entry.request === true;
@@ -396,64 +402,101 @@ export class NetworkDetails extends Component {
             )}
           </Split>
         </div>
-        <div className="payload-metadata">
-          {(requestLocation || timing || transport || payloadBytes) && <div className="payload-metadata-title">Metadata</div>}
-          <div className="payload-metadata-row">
-            <span>Frame URL</span>
-            <span title={requestLocation}>{requestLocation || '(not captured — reload page)'}</span>
-          </div>
-          {timing?.requestTimestamp != null && (
-            <div className="payload-metadata-row">
-              <span>Started</span>
-              <span title={formatTimestamp(timing.requestTimestamp)}>{formatTimestamp(timing.requestTimestamp)}</span>
-            </div>
-          )}
-          <div className="payload-metadata-row">
-            <span>Completed</span>
-            <span>{timing?.completionTimestamp != null ? formatTimestamp(timing.completionTimestamp) : "Pending"}</span>
-          </div>
-          {timing?.duration != null && (
-            <div className="payload-metadata-row">
-              <span>Duration</span>
-              <span>{formatDuration(timing.duration)}</span>
-            </div>
-          )}
-          {timing?.timeToFirstMessage != null && (
-            <div className="payload-metadata-row">
-              <span>Time to first message</span>
-              <span>{formatDuration(timing.timeToFirstMessage)}</span>
-            </div>
-          )}
-          {(entryToRender.messageCount != null || timing?.messageCount != null) && (
-            <div className="payload-metadata-row">
-              <span>Messages</span>
-              <span>{entryToRender.messageCount || timing.messageCount}{entryToRender.droppedMessageCount ? ` (${entryToRender.droppedMessageCount} older messages dropped)` : ""}</span>
-            </div>
-          )}
-          {status != null && (
-            <div className="payload-metadata-row">
-              <span>Status</span>
-              <span>{status.code != null ? `${status.code}${status.details ? `: ${status.details}` : ""}` : JSON.stringify(status)}</span>
-            </div>
-          )}
-          {transport && (
-            <div className="payload-metadata-row">
-              <span>Transport</span>
-              <span>{transport}</span>
-            </div>
-          )}
-          {entryToRender.replayedFrom && (
-            <div className="payload-metadata-row replay-provenance">
-              <span>Replay</span>
-              <span>{formatReplayProvenance(entryToRender.replayedFrom)}</span>
-            </div>
-          )}
-          <div className="payload-metadata-row">
-            <span>Payload size (approx)</span>
-            <span>{payloadBytes ? formatBytes(payloadBytes) : "Unknown"}</span>
-          </div>
-        </div>
+        {this._renderMetadata(entryToRender)}
       </>
+    );
+  };
+
+  _renderMetadata = (entry) => {
+    const { isMetadataExpanded } = this.state;
+    const {
+      timing,
+      payloadBytes,
+      transport,
+      status,
+      location: requestLocation,
+    } = entry;
+    const backendUrl = getBackendRequestUrl(entry);
+
+    return (
+      <section className={`payload-metadata ${isMetadataExpanded ? "is-expanded" : "is-collapsed"}`}>
+        <button
+          className="payload-metadata-toggle"
+          type="button"
+          aria-expanded={isMetadataExpanded}
+          aria-controls="request-metadata-content"
+          onClick={this._toggleMetadata}
+          title={isMetadataExpanded ? "Hide metadata details" : "Show metadata details"}
+        >
+          <span className="payload-metadata-toggle-label">
+            <span className="payload-metadata-chevron" aria-hidden="true">{isMetadataExpanded ? "▾" : "▸"}</span>
+            <span>Metadata</span>
+          </span>
+          <span className="payload-metadata-toggle-hint">{isMetadataExpanded ? "Hide" : "Show details"}</span>
+        </button>
+        {isMetadataExpanded && (
+          <div className="payload-metadata-content" id="request-metadata-content">
+            <div className="payload-metadata-row">
+              <span>Frame URL</span>
+              <span title={requestLocation}>{requestLocation || '(not captured — reload page)'}</span>
+            </div>
+            <div className="payload-metadata-row">
+              <span>Backend request URL</span>
+              <span title={backendUrl}>{backendUrl || "Not available for this capture"}</span>
+            </div>
+            {timing?.requestTimestamp != null && (
+              <div className="payload-metadata-row">
+                <span>Started</span>
+                <span title={formatTimestamp(timing.requestTimestamp)}>{formatTimestamp(timing.requestTimestamp)}</span>
+              </div>
+            )}
+            <div className="payload-metadata-row">
+              <span>Completed</span>
+              <span>{timing?.completionTimestamp != null ? formatTimestamp(timing.completionTimestamp) : "Pending"}</span>
+            </div>
+            {timing?.duration != null && (
+              <div className="payload-metadata-row">
+                <span>Duration</span>
+                <span>{formatDuration(timing.duration)}</span>
+              </div>
+            )}
+            {timing?.timeToFirstMessage != null && (
+              <div className="payload-metadata-row">
+                <span>Time to first message</span>
+                <span>{formatDuration(timing.timeToFirstMessage)}</span>
+              </div>
+            )}
+            {(entry.messageCount != null || timing?.messageCount != null) && (
+              <div className="payload-metadata-row">
+                <span>Messages</span>
+                <span>{entry.messageCount || timing.messageCount}{entry.droppedMessageCount ? ` (${entry.droppedMessageCount} older messages dropped)` : ""}</span>
+              </div>
+            )}
+            {status != null && (
+              <div className="payload-metadata-row">
+                <span>Status</span>
+                <span>{status.code != null ? `${status.code}${status.details ? `: ${status.details}` : ""}` : JSON.stringify(status)}</span>
+              </div>
+            )}
+            {transport && (
+              <div className="payload-metadata-row">
+                <span>Transport</span>
+                <span>{transport}</span>
+              </div>
+            )}
+            {entry.replayedFrom && (
+              <div className="payload-metadata-row replay-provenance">
+                <span>Replay</span>
+                <span>{formatReplayProvenance(entry.replayedFrom)}</span>
+              </div>
+            )}
+            <div className="payload-metadata-row">
+              <span>Payload size (approx)</span>
+              <span>{payloadBytes ? formatBytes(payloadBytes) : "Unknown"}</span>
+            </div>
+          </div>
+        )}
+      </section>
     );
   };
 
@@ -507,7 +550,10 @@ export class NetworkDetails extends Component {
         <div className="details-pane-header">
           <div className="details-pane-title-group">
             <div className="details-pane-title">{isEditingRequest ? "Edit request" : "Request"}</div>
-            <div className="details-pane-subtitle">
+            <div
+              className="details-pane-subtitle"
+              title={isEditingRequest ? "Review JSON before replay" : undefined}
+            >
               {isEditingRequest ? "Review JSON before replay" : "Captured request payload"}
             </div>
           </div>
@@ -674,6 +720,12 @@ export class NetworkDetails extends Component {
     this.setState((prevState) => ({
       responseCollapsed: prevState.responseCollapsed === false ? 1 : false,
     }));
+  };
+
+  _toggleMetadata = () => {
+    const isMetadataExpanded = !this.state.isMetadataExpanded;
+    this.setState({ isMetadataExpanded });
+    setStorageItem(METADATA_EXPANDED_STORAGE_KEY, isMetadataExpanded);
   };
 
   _handleKeydown = (event) => {

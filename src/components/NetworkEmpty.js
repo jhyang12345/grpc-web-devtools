@@ -39,8 +39,8 @@ class NetworkEmpty extends PureComponent {
     return (
       <div className="network-empty">
         <div className="content">
-          <div>{content.title}</div>
-          <div>{content.detail}</div>
+          <div className="network-empty-title">{content.title}</div>
+          <div className="network-empty-detail">{content.detail}</div>
           {content.link && (
             <div>
               <a

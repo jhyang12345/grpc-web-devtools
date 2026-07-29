@@ -3,12 +3,13 @@ jest.mock('../replayBridge', () => ({
   sendReplayRequest: jest.fn(),
 }));
 
-import { buildResponseSource, formatDuration, formatTimestamp, formatEditedRequest, formatReplayProvenance, getJsonViewerTheme, getReplayDisabledReason, getRequestEditorPaneSizes, NetworkDetails, parseEditedRequest } from '../components/NetworkDetails';
+import { buildResponseSource, formatDuration, formatTimestamp, formatEditedRequest, formatReplayProvenance, getBackendRequestUrl, getJsonViewerTheme, getReplayDisabledReason, getRequestEditorPaneSizes, NetworkDetails, parseEditedRequest } from '../components/NetworkDetails';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { sendReplayRequest } from '../replayBridge';
 
 beforeEach(() => {
   sendReplayRequest.mockReset();
+  localStorage.clear();
 });
 
 function makeReplayEditor() {
@@ -45,6 +46,33 @@ test('formats wall-clock times and monotonic elapsed values for detail metadata'
   expect(formatTimestamp(new Date(2026, 0, 2, 3, 4, 5, 6).getTime())).toBe('2026-01-02 03:04:05.006');
   expect(formatDuration(7.6)).toBe('8 ms');
   expect(formatDuration(1500)).toBe('1.50 s');
+});
+
+test('metadata exposes the backend URL and leaves an obvious control when collapsed', () => {
+  expect(getBackendRequestUrl({ backendUrl: 'https://api.example.test/demo.Service/GetThing' }))
+    .toBe('https://api.example.test/demo.Service/GetThing');
+  expect(getBackendRequestUrl({ method: '/demo.Service/GetThing' })).toBe('/demo.Service/GetThing');
+  expect(getBackendRequestUrl({ method: 'Demo/GetThing' })).toBe('');
+
+  const component = makeReplayEditor();
+  const entry = {
+    method: 'demo.Service/GetThing',
+    backendUrl: 'https://api.example.test/demo.Service/GetThing',
+    location: 'https://app.example.test/frame',
+    transport: 'connect-web',
+    timing: { requestTimestamp: 1000 },
+  };
+  const expandedMarkup = renderToStaticMarkup(component._renderMetadata(entry));
+  expect(expandedMarkup).toContain('aria-expanded="true"');
+  expect(expandedMarkup).toContain('Backend request URL');
+  expect(expandedMarkup).toContain('https://api.example.test/demo.Service/GetThing');
+
+  component._toggleMetadata();
+  const collapsedMarkup = renderToStaticMarkup(component._renderMetadata(entry));
+  expect(collapsedMarkup).toContain('aria-expanded="false"');
+  expect(collapsedMarkup).toContain('Show details');
+  expect(collapsedMarkup).not.toContain('Backend request URL');
+  expect(localStorage.getItem('grpc-devtools-detailsMetadataExpanded')).toBe('false');
 });
 
 test('maps live color-scheme changes to the matching JSON viewer theme', () => {

@@ -143,6 +143,34 @@ test("Connect unary success and failure report terminal lifecycle events", async
   expect(events.map(event => event.phase)).toEqual(["start", "complete", "start", "error"]);
 });
 
+test("captures backend request URLs exposed by gRPC-Web and Connect-Web", async () => {
+  const events = capturedEvents();
+  const client = { client_: {
+    rpcCall: jest.fn((method, request, metadata, info, callback) => callback(null, { toObject: () => ({ ok: true }) })),
+    serverStreaming: jest.fn(),
+  } };
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  client.client_.rpcCall("https://api.example.test/demo.Service/GetThing", { toObject: () => ({}) }, {}, {}, jest.fn());
+
+  loadInterceptor("connect-web-interceptor.js");
+  const connect = window.__CONNECT_WEB_DEVTOOLS__(async () => ({
+    stream: false,
+    message: { toJson: () => ({ ok: true }) },
+  }));
+  await connect({
+    stream: false,
+    url: "https://connect.example.test/demo.Service/GetThing",
+    method: { name: "GetThing" },
+    message: { toJson: () => ({}) },
+  });
+
+  expect(events.filter(event => event.phase === "start").map(event => event.backendUrl)).toEqual([
+    "https://api.example.test/demo.Service/GetThing",
+    "https://connect.example.test/demo.Service/GetThing",
+  ]);
+});
+
 test("Connect request capture keeps default-valued scalar fields", async () => {
   const events = capturedEvents();
   loadInterceptor("connect-web-interceptor.js");

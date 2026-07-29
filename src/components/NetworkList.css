@@ -37,39 +37,6 @@
   flex: auto;
 }
 
-.data-grid table {
-  table-layout: fixed;
-  border-spacing: 0;
-  border-collapse: separate;
-  height: 100%;
-  width: 100%;
-}
-
-.data-grid th > div {
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
-}
-
-.data-grid th {
-  text-align: left;
-  background-color: var(--toolbar-bg-color);
-  color: var(--toolbar-color);
-  border-bottom: var(--divider-border);
-  font-weight: normal;
-  vertical-align: middle;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  line-height: 18px;
-  height: 18px;
-  padding: 1px 4px;
-}
-
-.data-grid th.network-name-header {
-  padding-left: 8px;
-}
-
 .data-grid .data .data-row.odd {
   background-color: var(--network-row-odd);
 }
@@ -197,7 +164,7 @@
 }
 
 .data-grid .data-container {
-  top: 27px;
+  top: 0;
   bottom: 0;
   overflow-y: overlay;
   transform: translateZ(0);
@@ -216,13 +183,4 @@
   border-top: 0 none transparent;
   table-layout: fixed;
   height: auto;
-}
-
-.header-container {
-  height: 27px;
-  background-color: var(--toolbar-bg-color);
-  position: absolute;
-  left: 0;
-  right: 0;
-  overflow-x: hidden;
 }

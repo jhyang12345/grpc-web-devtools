@@ -163,6 +163,7 @@
     const requestTimestamp = Date.now();
     const elapsedStart = monotonicNow();
     const methodType = req.stream ? "server_streaming" : "unary";
+    const backendUrl = typeof req.url === "string" && req.url ? req.url : undefined;
     const requestPayload = serializeRequest(req.message);
     const replay = registerReplay(requestPayload, (json, command) => {
       const message = reconstruct(req.message, json);
@@ -172,7 +173,7 @@
         return (async () => { for await (const _ of response.message) {} return response; })();
       });
     });
-    post({ phase: "start", method: req.method.name, methodType, requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, timing: { requestTimestamp } });
+    post({ phase: "start", method: req.method.name, methodType, requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), timing: { requestTimestamp } });
     try {
       const response = await next(req);
       if (response.stream) return { ...response, message: readStream(req, response.message, requestId, requestTimestamp, elapsedStart, replayedFromValue) };

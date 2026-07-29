@@ -150,6 +150,7 @@ test("emits unary start before the backend and completes with timing and status"
     transport: TRANSPORT,
     phase: "start",
     method: "https://api.example.test/demo.Service/GetThing",
+    backendUrl: "https://api.example.test/demo.Service/GetThing",
     methodType: "unary",
     request: { value: "original" },
     replay: { available: true, token: expect.any(String) },

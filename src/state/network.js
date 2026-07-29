@@ -37,7 +37,7 @@ function matchesFilter(entry, filterValue) {
     return true;
   }
 
-  return [entry.method, entry.endpoint, entry.methodType, entry.location]
+  return [entry.method, entry.endpoint, entry.methodType, entry.location, entry.backendUrl]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(query));
 }
@@ -162,6 +162,7 @@ function buildSummaryEntry(entry) {
     transport: entry.transport,
     timing: entry.timing,
     location: entry.location,
+    backendUrl: entry.backendUrl,
     request: !!entry.request,
     response: !!entry.response || !!entry.messages?.length,
     error: !!entry.error,

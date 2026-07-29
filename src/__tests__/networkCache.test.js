@@ -35,8 +35,10 @@ test('uses frame-aware cache identities and prunes mappings on eviction', () => 
 test('retains only clone-safe replay metadata with the bounded request entry', () => {
   const replay = { available: true, token: 'opaque-token' };
   const replayedFrom = { captureId: 'frame-a', transport: 'grpc-web', requestId: 4 };
-  let entry = addNetworkEntry({ captureId: 'frame-b', transport: 'grpc-web', requestId: 5, phase: 'start', replay, replayedFrom });
+  const backendUrl = 'https://api.example.test/demo.Service/GetThing';
+  let entry = addNetworkEntry({ captureId: 'frame-b', transport: 'grpc-web', requestId: 5, phase: 'start', backendUrl, replay, replayedFrom });
   entry = addNetworkEntry({ captureId: 'frame-b', transport: 'grpc-web', requestId: 5, phase: 'complete', response: { ok: true }, replayedFrom });
+  expect(entry.backendUrl).toBe(backendUrl);
   expect(entry.replay).toEqual(replay);
   expect(entry.replayedFrom).toEqual(replayedFrom);
   expect(JSON.stringify(entry)).not.toContain('function');

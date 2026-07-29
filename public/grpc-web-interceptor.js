@@ -65,6 +65,11 @@
     return { code: error && error.code, message: error && error.message ? String(error.message) : String(error || "Unknown RPC error") };
   }
 
+  function backendUrlFromMethod(method) {
+    const value = typeof method === "string" ? method.trim() : "";
+    return /^(https?:\/\/|\/)/i.test(value) ? value : undefined;
+  }
+
   function post(payload) {
     window.postMessage({ type: POST_TYPE, transport: TRANSPORT, ...payload }, "*");
   }
@@ -193,7 +198,8 @@
     const elapsedStart = monotonicNow();
     const replay = createHandle(requestId);
     let completed = false;
-    post({ phase: "start", method, methodType: "unary", requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, timing: { requestTimestamp } });
+    const backendUrl = backendUrlFromMethod(method);
+    post({ phase: "start", method, methodType: "unary", requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), timing: { requestTimestamp } });
     return {
       complete(error, response) {
         if (completed) return;
@@ -272,7 +278,8 @@
         if (stream && typeof stream.on === "function") { stream.on("data", () => {}); stream.on("error", () => {}); }
         return stream;
       });
-      post({ phase: "start", method, methodType: "server_streaming", requestId, request: requestPayload, replay, replayedFrom: context && context.replayedFrom, timing: { requestTimestamp } });
+      const backendUrl = backendUrlFromMethod(method);
+      post({ phase: "start", method, methodType: "server_streaming", requestId, request: requestPayload, replay, replayedFrom: context && context.replayedFrom, ...(backendUrl ? { backendUrl } : {}), timing: { requestTimestamp } });
       const finish = (phase, value) => {
         if (terminal) return;
         terminal = true;

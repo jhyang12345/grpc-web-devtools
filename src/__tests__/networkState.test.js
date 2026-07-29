@@ -44,12 +44,13 @@ test('batched summaries retain replay descriptors and provenance, never replay c
   const dispatch = jest.fn();
   logNetworkEntry({
     captureId: 'frame-b', transport: 'connect-web', requestId: 9, phase: 'start',
+    backendUrl: 'https://api.example.test/demo.Service/GetThing',
     replay: { available: true, token: 'opaque-token' },
     replayedFrom: { captureId: 'frame-a', transport: 'connect-web', requestId: 8 },
   })(dispatch);
   jest.runOnlyPendingTimers();
   const summary = dispatch.mock.calls[0][0].payload[0];
-  expect(summary).toEqual(expect.objectContaining({ captureId: 'frame-b', replay: { available: true, token: 'opaque-token' }, replayedFrom: expect.objectContaining({ requestId: 8 }) }));
+  expect(summary).toEqual(expect.objectContaining({ captureId: 'frame-b', backendUrl: 'https://api.example.test/demo.Service/GetThing', replay: { available: true, token: 'opaque-token' }, replayedFrom: expect.objectContaining({ requestId: 8 }) }));
   expect(Object.values(summary).some(value => typeof value === 'function')).toBe(false);
   jest.useRealTimers();
 });

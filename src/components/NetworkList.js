@@ -11,7 +11,7 @@ import './NetworkList.css';
 
 const ROW_HEIGHT = 58;
 
-class NetworkList extends Component {
+export class NetworkList extends Component {
   constructor(props) {
     super(props);
     this.listRef = createRef();
@@ -78,18 +78,7 @@ class NetworkList extends Component {
           </div>
         )}
         <div className="widget vbox">
-          <div className="data-grid">
-            <div className="header-container">
-              <table className="header">
-                <tbody>
-                  <tr>
-                    <th className="network-name-header">
-                      <div>Name</div>
-                    </th>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+          <div className="data-grid" aria-label="Captured requests">
             <div className="data-container">
               <AutoSizer disableWidth>
                 {({ height }) => (
