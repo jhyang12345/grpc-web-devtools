@@ -83,7 +83,7 @@ class NetworkList extends Component {
               <table className="header">
                 <tbody>
                   <tr>
-                    <th>
+                    <th className="network-name-header">
                       <div>Name</div>
                     </th>
                   </tr>

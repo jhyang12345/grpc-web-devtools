@@ -41,15 +41,21 @@ export function formatReplayProvenance(replayedFrom) {
 }
 
 export function formatReplayTiming(timestampLabel, elapsedLabel, replayedFrom) {
-  const timing = `${timestampLabel || 'Waiting for timing...'} · ${elapsedLabel}`;
-  if (!replayedFrom) return timing;
-  const marker = replayedFrom.transport && Number.isFinite(replayedFrom.requestId)
-    ? `↻ ${replayedFrom.transport} #${replayedFrom.requestId}`
-    : '↻ retry';
-  return `${marker} · ${timing}`;
+  const timing = `${timestampLabel || 'Waiting for timing...'} | ${elapsedLabel}`;
+  return replayedFrom ? `Edited replay | ${timing}` : timing;
 }
 
-class NetworkListRow extends PureComponent {
+export function getNetworkRowClassName(index, selectedIdx, log) {
+  return [
+    'data-row',
+    (index + 1) % 2 === 0 ? null : 'odd',
+    index === selectedIdx ? 'selected' : null,
+    log.error ? 'error' : null,
+    log.replayedFrom ? 'edited-request' : null,
+  ].filter(Boolean).join(' ');
+}
+
+export class NetworkListRow extends PureComponent {
   render() {
     const { index, data, style, selectLogEntry, selectedIdx } = this.props;
     const log = data[index];
@@ -64,13 +70,18 @@ class NetworkListRow extends PureComponent {
 
     return (
       <div
-        className={`data-row ${(index + 1) % 2 === 0 ? "" : "odd"} ${index === selectedIdx ? "selected" : ""} ${log.error ? "error" : ""} `}
+        className={getNetworkRowClassName(index, selectedIdx, log)}
         style={style}
         onClick={() => selectLogEntry(index)}
       >
         <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
         <div className="data-row-content">
-          <span className="data-row-title">{log.endpoint || log.method}</span>
+          <div className="data-row-heading">
+            <span className="data-row-title">{log.endpoint || log.method}</span>
+            {replayProvenance && (
+              <span className="data-row-edited-badge" title={replayProvenance}>Edited</span>
+            )}
+          </div>
           <div className="data-row-meta" title={log.location || undefined}>{frameUrl}</div>
           <div className="data-row-timing" title={replayProvenance || undefined}>{timingLabel}</div>
         </div>

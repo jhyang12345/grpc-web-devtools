@@ -109,6 +109,11 @@ code {
   --replay-send-border: #814700;
   --replay-send-hover-bg: #8d4e00;
   --replay-send-text: #fff;
+  --edited-request-bg: #fff4dc;
+  --edited-request-hover-bg: #ffe8b5;
+  --edited-request-accent: #a85d00;
+  --edited-request-badge-bg: #8d4e00;
+  --edited-request-badge-text: #fff;
   --z-resizer: 10;
   --z-toolbar: 20;
   --z-toast: 100;
@@ -169,6 +174,11 @@ code {
     --replay-send-border: #d18a2e;
     --replay-send-hover-bg: #bd7416;
     --replay-send-text: #fff7ea;
+    --edited-request-bg: #342b1e;
+    --edited-request-hover-bg: #443721;
+    --edited-request-accent: #f0b44b;
+    --edited-request-badge-bg: #5d3a0e;
+    --edited-request-badge-text: #ffe0a3;
   }
 
   a {

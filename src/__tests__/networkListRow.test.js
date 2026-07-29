@@ -1,4 +1,13 @@
-import { formatElapsed, formatFrameUrl, formatReplayProvenance, formatReplayTiming } from '../components/NetworkListRow';
+import React from 'react';
+import { formatElapsed, formatFrameUrl, formatReplayProvenance, formatReplayTiming, getNetworkRowClassName, NetworkListRow } from '../components/NetworkListRow';
+
+function findByClassName(node, className) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.props?.className === className) return node;
+  return React.Children.toArray(node.props?.children)
+    .map(child => findByClassName(child, className))
+    .find(Boolean) || null;
+}
 
 test('formats a compact frame URL while retaining a safe fallback for malformed values', () => {
   expect(formatFrameUrl('https://iframe.example.test:8443/api/v1/rpc?debug=1')).toBe('iframe.example.test:8443/api/v1/rpc?debug=1');
@@ -19,6 +28,27 @@ test('formats replay provenance as a label rather than an entry link', () => {
 
 test('keeps start time and duration alongside the compact replay marker', () => {
   expect(formatReplayTiming('12:34:56.789', '42 ms', { transport: 'grpc-web', requestId: 9 }))
-    .toBe('↻ grpc-web #9 · 12:34:56.789 · 42 ms');
-  expect(formatReplayTiming('12:34:56.789', 'Pending')).toBe('12:34:56.789 · Pending');
+    .toBe('Edited replay | 12:34:56.789 | 42 ms');
+  expect(formatReplayTiming('12:34:56.789', 'Pending')).toBe('12:34:56.789 | Pending');
+});
+
+test('gives edited replay rows an explicit presentation class in every row state', () => {
+  expect(getNetworkRowClassName(0, null, { replayedFrom: { requestId: 1 } }))
+    .toBe('data-row odd edited-request');
+  expect(getNetworkRowClassName(1, 1, { replayedFrom: { requestId: 1 }, error: true }))
+    .toBe('data-row selected error edited-request');
+});
+
+test('renders a visible Edited badge with replay provenance', () => {
+  const replayedFrom = { transport: 'connect-web', requestId: 8 };
+  const tree = new NetworkListRow({
+    index: 0,
+    data: [{ entryId: 9, method: 'Demo/Call', replayedFrom }],
+    style: {},
+    selectLogEntry: jest.fn(),
+    selectedIdx: null,
+  }).render();
+  const badge = findByClassName(tree, 'data-row-edited-badge');
+  expect(badge.props.children).toBe('Edited');
+  expect(badge.props.title).toBe('Retry of connect-web request 8');
 });
