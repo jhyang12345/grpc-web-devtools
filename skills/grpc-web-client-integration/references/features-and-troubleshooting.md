@@ -21,7 +21,8 @@ After integrating a supported client:
 - Only a request already captured by the extension can be replayed.
 - The originating frame and its instrumented client/interceptor must remain
   alive.
-- Handles expire after ten minutes and are limited to 100 per transport.
+- Handles do not expire based on elapsed time and are limited to the 100 most
+  recently used handles per transport.
 - The full request must remain in the panel payload cache and be 5 MiB or
   smaller.
 - Reloading, navigating, or browser-discarding the page destroys its live
@@ -57,8 +58,7 @@ bridge recovery cannot restore page objects destroyed by tab discard.
 
 ### Replay is unavailable or rejected
 
-- Capture a fresh request if the frame reloaded, the handle expired, or it was
-  evicted.
+- Capture a fresh request if the frame reloaded or the handle was evicted.
 - Check for payload truncation or the 5 MiB limit.
 - For generated `grpc-web`, add a method-specific `createRequest` or `fromJson`
   adapter when protobuf setters cannot reconstruct nested/custom values.

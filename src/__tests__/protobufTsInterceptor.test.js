@@ -262,6 +262,46 @@ test("replays edited JSON through the original pipeline and records provenance",
   }));
 });
 
+test("keeps replay handles available regardless of elapsed time", () => {
+  const messages = capturePostedMessages();
+  const clock = jest.spyOn(window.performance, "now").mockReturnValue(0);
+  const runtime = loadRuntime();
+  const method = makeMethod();
+  const original = makeUnaryCall(method, { value: "original" });
+  const replayed = makeUnaryCall(method, { value: "late" });
+  const next = jest.fn()
+    .mockReturnValueOnce(original.call)
+    .mockReturnValueOnce(replayed.call);
+
+  runtime.interceptUnary({
+    baseUrl: "https://api.example.test",
+    next,
+    method,
+    input: { value: "original" },
+    options: {},
+  });
+  const token = messages.find(message => message.phase === "start").replay.token;
+
+  clock.mockReturnValue(24 * 60 * 60 * 1000);
+  window.dispatchEvent(new MessageEvent("message", {
+    source: window,
+    data: {
+      type: REPLAY_REQUEST_TYPE,
+      transport: TRANSPORT,
+      captureId: "frame-a",
+      replayToken: token,
+      replayAttemptId: "late-attempt",
+      request: { value: "late" },
+    },
+  }));
+
+  expect(next).toHaveBeenCalledTimes(2);
+  expect(messages).toContainEqual(expect.objectContaining({
+    type: REPLAY_ACK_TYPE,
+    replayAttemptId: "late-attempt",
+  }));
+});
+
 test("keeps stream messages under one identity and emits a terminal status", async () => {
   const messages = capturePostedMessages();
   const runtime = loadRuntime();

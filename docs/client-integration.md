@@ -229,11 +229,12 @@ on the wire. Standard proto3 fields with implicit presence omit default values
 from the binary wire format; declare a field `optional` or use a wrapper type if
 the backend needs to distinguish an omitted value from an explicitly empty one.
 
-Replay is available only for captured requests. Page-side replay handles expire
-after ten minutes and are limited to 100 per transport. A request must be 5 MiB
-or smaller and still present in the panel payload cache. Reloading, discarding,
-or navigating the originating frame destroys its replay handles. Client-side
-and bidirectional streaming are not supported by this integration.
+Replay is available only for captured requests. Page-side replay handles do not
+expire based on elapsed time and are limited to the 100 most recently used
+handles per transport. A request must be 5 MiB or smaller and still present in
+the panel payload cache. Reloading, discarding, or navigating the originating
+frame destroys its replay handles. Client-side and bidirectional streaming are
+not supported by this integration.
 
 ## Troubleshooting
 
@@ -244,9 +245,9 @@ and bidirectional streaming are not supported by this integration.
   automatic recovery or choose **Reconnect now**. Browser extension workers can
   be suspended while idle; the panel and content bridge reconnect with
   exponential backoff and verify the replacement port with acknowledgements.
-- **Replay is unavailable:** The page may have reloaded, the ten-minute handle
-  may have expired, the 100-handle limit may have evicted it, or the payload may
-  be truncated. Capture a fresh request.
+- **Replay is unavailable:** The page may have reloaded, the 100-handle limit
+  may have evicted the handle, or the payload may be truncated. Capture a fresh
+  request.
 - **Edited generated grpc-web request is rejected:** Register a per-method
   `createRequest` or `fromJson` adapter for fields the default generated setters
   cannot reconstruct.

@@ -7,7 +7,6 @@
   const STATE_KEY = Symbol.for("grpc-web-inspector.connect-replay-state");
   const LISTENER_KEY = Symbol.for("grpc-web-inspector.connect-replay-listener");
   const MAX_REPLAY_HANDLES = 100;
-  const REPLAY_TTL_MS = 10 * 60 * 1000;
   const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
 
   function getState() {
@@ -71,9 +70,7 @@
     return Array.from(bytes, value => value.toString(36)).join("-");
   }
 
-  function pruneRegistry() {
-    const cutoff = monotonicNow() - REPLAY_TTL_MS;
-    state.registry.forEach((handle, token) => { if (handle.lastUsed < cutoff) state.registry.delete(token); });
+  function enforceReplayLimit() {
     while (state.registry.size > MAX_REPLAY_HANDLES) state.registry.delete(state.registry.keys().next().value);
   }
 
@@ -83,7 +80,7 @@
     }
     const serialized = safeStringify(payload);
     if (!serialized || byteLength(serialized) > MAX_PAYLOAD_BYTES) return { available: false, reason: "The captured request exceeds the 5 MiB replay limit." };
-    pruneRegistry();
+    enforceReplayLimit();
     let token;
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const candidate = randomToken();
@@ -93,17 +90,15 @@
       }
     }
     if (!token) return { available: false, reason: "Unable to allocate a replay handle." };
-    state.registry.set(token, { lastUsed: monotonicNow(), invoke });
-    pruneRegistry();
+    state.registry.set(token, { invoke });
+    enforceReplayLimit();
     return { available: true, token };
   }
 
   function getReplay(token) {
-    pruneRegistry();
     const handle = state.registry.get(token);
     if (!handle) return null;
     state.registry.delete(token);
-    handle.lastUsed = monotonicNow();
     state.registry.set(token, handle);
     return handle;
   }
@@ -199,7 +194,7 @@
     const serialized = safeStringify(data.request);
     if (typeof data.replayToken !== "string" || !isPlainObject(data.request) || !serialized || byteLength(serialized) > MAX_PAYLOAD_BYTES) return rejectReplay(data, "The replay request is invalid or exceeds 5 MiB.");
     const handle = getReplay(data.replayToken);
-    if (!handle) return rejectReplay(data, "This replay handle has expired or is unavailable.");
+    if (!handle) return rejectReplay(data, "This replay handle is no longer available.");
     try {
       const result = handle.invoke(data.request, data);
       if (result && typeof result.then === "function") result.catch(() => {});

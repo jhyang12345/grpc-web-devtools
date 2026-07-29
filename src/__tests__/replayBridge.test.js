@@ -25,8 +25,8 @@ test('replay bridge rejects matching rejections, timeouts, and disconnects', asy
   bridge.configure(port);
   const rejected = bridge.send({ captureId: 'frame-a', replayToken: 'token-a', sourceEntryId: 1, transport: 'connect-web', request: { value: 1 } });
   const rejectedAttempt = port.postMessage.mock.calls[0][0].data.replayAttemptId;
-  bridge.handleMessage('replay_rejected', { replayAttemptId: rejectedAttempt, reason: 'Token expired' });
-  await expect(rejected).rejects.toThrow('Token expired');
+  bridge.handleMessage('replay_rejected', { replayAttemptId: rejectedAttempt, reason: 'Token unavailable' });
+  await expect(rejected).rejects.toThrow('Token unavailable');
 
   const timedOut = bridge.send({ captureId: 'frame-a', replayToken: 'token-b', sourceEntryId: 2, transport: 'connect-web', request: { value: 2 } });
   jest.advanceTimersByTime(10);

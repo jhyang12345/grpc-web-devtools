@@ -12,7 +12,6 @@
   const STATE_KEY = Symbol.for("grpc-web-inspector.protobuf-ts-replay-state");
   const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
   const MAX_REPLAY_HANDLES = 100;
-  const REPLAY_TTL_MS = 10 * 60 * 1000;
 
   function getState() {
     if (!window[STATE_KEY]) {
@@ -153,11 +152,7 @@
     return Array.from(values, value => value.toString(36)).join("-");
   }
 
-  function pruneReplayRegistry() {
-    const cutoff = monotonicNow() - REPLAY_TTL_MS;
-    state.registry.forEach((handle, token) => {
-      if (handle.lastUsed < cutoff) state.registry.delete(token);
-    });
+  function enforceReplayLimit() {
     while (state.registry.size > MAX_REPLAY_HANDLES) {
       state.registry.delete(state.registry.keys().next().value);
     }
@@ -181,11 +176,9 @@
   }
 
   function getReplayHandle(token) {
-    pruneReplayRegistry();
     const handle = state.registry.get(token);
     if (!handle) return null;
     state.registry.delete(token);
-    handle.lastUsed = monotonicNow();
     state.registry.set(token, handle);
     return handle;
   }
@@ -218,7 +211,7 @@
 
       const handle = getReplayHandle(command.replayToken);
       if (!handle) {
-        replayResult(REPLAY_REJECTED_TYPE, command, "This replay handle has expired or is unavailable.");
+        replayResult(REPLAY_REJECTED_TYPE, command, "This replay handle is no longer available.");
         return;
       }
       const validationError = validateReplayRequest(command.request);
@@ -251,7 +244,7 @@
     }
 
     installReplayListener();
-    pruneReplayRegistry();
+    enforceReplayLimit();
     let token;
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const candidate = randomToken();
@@ -262,8 +255,8 @@
     }
     if (!token) return { available: false, reason: "Unable to allocate a replay handle." };
 
-    state.registry.set(token, { lastUsed: monotonicNow(), invoke });
-    pruneReplayRegistry();
+    state.registry.set(token, { invoke });
+    enforceReplayLimit();
     return { available: true, token };
   }
 

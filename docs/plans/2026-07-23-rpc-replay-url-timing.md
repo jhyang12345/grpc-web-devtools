@@ -154,10 +154,8 @@ background worker, or the content script.
 Each interceptor owns a private registry inside its IIFE:
 
 - maximum 100 handles per transport;
-- ten-minute time-to-live;
 - LRU eviction on registration and use;
-- periodic lazy expiry during registration and replay, avoiding a permanent
-  cleanup timer;
+- no time-based expiration while the originating page remains alive;
 - random opaque tokens;
 - cleanup on page unload; and
 - no response or stream-message history retained by a handle.
@@ -172,7 +170,7 @@ A handle contains only the minimum invocation state:
 
 The UI treats a replay handle as unavailable when:
 
-- its token expired or was evicted;
+- its token was evicted;
 - the originating frame disconnected or navigated;
 - the request payload was evicted from the panel cache;
 - the captured request is a truncation descriptor;
@@ -395,7 +393,7 @@ Every meaningful stage is committed independently. Nothing is pushed.
   rethrown;
 - replayed calls have new IDs and correct provenance;
 - registry entry 101 evicts the least-recently-used handle;
-- expired tokens reject under fake timers; and
+- handles remain replayable regardless of elapsed time; and
 - unload cleanup makes handles unavailable.
 
 ### Bridge

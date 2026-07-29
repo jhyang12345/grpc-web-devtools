@@ -82,10 +82,10 @@ must distinguish "unset" from "set to empty".
 
 Replay is available only for a request the extension has already captured. The
 originating frame and its instrumented client/interceptor must still be alive.
-Page-side replay handles expire after ten minutes and are bounded to 100 handles
-per transport. The full request body must still be retained in the panel's
-payload cache, must not be truncated, and the edited JSON object must be 5 MiB
-or smaller.
+Page-side replay handles do not expire based on elapsed time and are bounded to
+the 100 most recently used handles per transport. The full request body must
+still be retained in the panel's payload cache, must not be truncated, and the
+edited JSON object must be 5 MiB or smaller.
 
 Arbitrary, uncaptured RPC composition is not supported. Supporting that safely
 requires a future application-provided invocation/catalog adapter; this release

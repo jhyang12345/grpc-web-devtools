@@ -61,8 +61,7 @@ test("gRPC lifecycle keeps wall-clock timestamps while using monotonic elapsed t
   } };
   jest.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(500);
   jest.spyOn(window.performance, 'now')
-    .mockReturnValueOnce(10).mockReturnValueOnce(11).mockReturnValueOnce(12)
-    .mockReturnValueOnce(13).mockReturnValueOnce(35);
+    .mockReturnValueOnce(10).mockReturnValueOnce(35);
   loadInterceptor("grpc-web-interceptor.js");
   window.__GRPCWEB_DEVTOOLS__([client]);
   client.client_.rpcCall("Demo/Monotonic", { toObject: () => ({}) }, {}, {}, jest.fn());
@@ -295,7 +294,7 @@ test("gRPC Promise and server-streaming replays invoke their original backends o
   expect(events.some(event => event.method === "Demo/Stream" && event.phase === "complete" && event.replayedFrom?.captureId === "frame")).toBe(true);
 });
 
-test("replay handles expire, evict by LRU limit, clear on pagehide, and reject oversized requests", () => {
+test("replay handles remain valid over time, evict by LRU limit, clear on pagehide, and reject oversized requests", () => {
   const events = capturedEvents();
   class Request { constructor(value = "ok") { this.value = value; } toObject() { return { value: this.value }; } setValue(value) { this.value = value; } }
   const backend = jest.fn((method, request, metadata, info, callback) => callback(null, {}));
@@ -303,11 +302,13 @@ test("replay handles expire, evict by LRU limit, clear on pagehide, and reject o
   const clock = jest.spyOn(window.performance, "now").mockReturnValue(0);
   loadInterceptor("grpc-web-interceptor.js");
   window.__GRPCWEB_DEVTOOLS__([client]);
-  client.client_.rpcCall("Demo/TTL", new Request(), {}, {}, jest.fn());
-  const ttlToken = events.find(event => event.method === "Demo/TTL" && event.phase === "start").replay.token;
-  clock.mockReturnValue(10 * 60 * 1000 + 1);
-  window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "grpc-web", replayToken: ttlToken, request: { value: "late" } } }));
-  expect(events.at(-1)).toEqual(expect.objectContaining({ type: "__GRPCWEB_DEVTOOLS_REPLAY_REJECTED__" }));
+  client.client_.rpcCall("Demo/NoExpiry", new Request(), {}, {}, jest.fn());
+  const replayToken = events.find(event => event.method === "Demo/NoExpiry" && event.phase === "start").replay.token;
+  clock.mockReturnValue(24 * 60 * 60 * 1000);
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__", transport: "grpc-web", replayToken, request: { value: "late" } } }));
+  expect(backend).toHaveBeenCalledTimes(2);
+  expect(events.at(-1)).toEqual(expect.objectContaining({ type: "__GRPCWEB_DEVTOOLS_REPLAY_ACK__" }));
+  window.dispatchEvent(new Event("pagehide"));
   clock.mockReturnValue(0);
   for (let index = 0; index < 101; index += 1) client.client_.rpcCall(`Demo/LRU${index}`, new Request(String(index)), {}, {}, jest.fn());
   const firstToken = events.find(event => event.method === "Demo/LRU0" && event.phase === "start").replay.token;
@@ -319,6 +320,37 @@ test("replay handles expire, evict by LRU limit, clear on pagehide, and reject o
   expect(events.at(-1)).toEqual(expect.objectContaining({ type: "__GRPCWEB_DEVTOOLS_REPLAY_REJECTED__" }));
   client.client_.rpcCall("Demo/Large", { toObject: () => ({ value: "x".repeat(5 * 1024 * 1024 + 1) }) }, {}, {}, jest.fn());
   expect(events.filter(event => event.method === "Demo/Large" && event.phase === "start").at(-1).replay).toEqual(expect.objectContaining({ available: false }));
+});
+
+test("Connect replay handles remain valid regardless of elapsed time", async () => {
+  const events = capturedEvents();
+  window.dispatchEvent(new Event("pagehide"));
+  class Message {
+    constructor(json = {}) { this.value = json.value; }
+    static fromJson(json) { return new Message(json); }
+    toJson() { return { value: this.value }; }
+  }
+  const next = jest.fn(async () => ({ stream: false, message: new Message({ value: "ok" }) }));
+  const clock = jest.spyOn(window.performance, "now").mockReturnValue(0);
+  loadInterceptor("connect-web-interceptor.js");
+  const interceptor = window.__CONNECT_WEB_DEVTOOLS__(next);
+  await interceptor({ stream: false, method: { name: "Demo/NoExpiry" }, message: new Message({ value: "one" }) });
+  const token = events.find(event => event.method === "Demo/NoExpiry" && event.phase === "start").replay.token;
+
+  clock.mockReturnValue(24 * 60 * 60 * 1000);
+  window.dispatchEvent(new MessageEvent("message", { source: window, data: {
+    type: "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__",
+    transport: "connect-web",
+    replayToken: token,
+    request: { value: "late" },
+  } }));
+
+  expect(next).toHaveBeenCalledTimes(2);
+  expect(events).toContainEqual(expect.objectContaining({
+    type: "__GRPCWEB_DEVTOOLS_REPLAY_ACK__",
+    transport: "connect-web",
+  }));
+  window.dispatchEvent(new Event("pagehide"));
 });
 
 test("existing gRPC clients and Connect interceptors retain shared replay handles after script re-evaluation", async () => {

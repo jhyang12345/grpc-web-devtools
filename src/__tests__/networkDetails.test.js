@@ -123,7 +123,7 @@ test('explains replay disabled states and renders plain provenance labels', () =
   const entry = { request: { value: 1 }, replay: { available: true, token: 'opaque' }, captureId: 'frame-a', transport: 'grpc-web' };
   expect(getReplayDisabledReason(entry, false)).toBeNull();
   expect(getReplayDisabledReason({ ...entry, request: { __truncated: true } }, false)).toMatch(/truncated/);
-  expect(getReplayDisabledReason({ ...entry, replay: { available: false, reason: 'Expired replay handle' } }, false)).toBe('Expired replay handle');
+  expect(getReplayDisabledReason({ ...entry, replay: { available: false, reason: 'Unavailable replay handle' } }, false)).toBe('Unavailable replay handle');
   expect(getReplayDisabledReason(entry, true)).toMatch(/no longer available/);
   expect(formatReplayProvenance({ transport: 'connect-web', requestId: 12 })).toBe('Retry of connect-web request 12');
 });
