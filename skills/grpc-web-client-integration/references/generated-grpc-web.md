@@ -11,11 +11,14 @@ export const echoClient = new EchoServiceClient("https://api.example.com");
 const grpcWebClients = [echoClient];
 
 function installGrpcWebDevtools(): void {
+  if (typeof window === "undefined") return;
   window.__GRPCWEB_DEVTOOLS__?.(grpcWebClients);
 }
 
-installGrpcWebDevtools();
-window.addEventListener("grpc-web-dev-tools-ready", installGrpcWebDevtools);
+if (typeof window !== "undefined") {
+  installGrpcWebDevtools();
+  window.addEventListener("grpc-web-dev-tools-ready", installGrpcWebDevtools);
+}
 ```
 
 Repeated registration is safe. Never freeze a no-op fallback such as this:
@@ -24,6 +27,11 @@ Repeated registration is safe. Never freeze a no-op fallback such as this:
 // Wrong: remains a no-op if the extension injects after this assignment.
 const enableDevTools = window.__GRPCWEB_DEVTOOLS__ || (() => {});
 ```
+
+Keep the installer in a stable client-only setup module, not inside a component
+render path. Reuse the application's existing client instances and endpoints;
+do not regenerate clients or create a parallel client solely for DevTools. In a
+monorepo, apply this setup only in packages that construct browser clients.
 
 For TypeScript, add the minimum ambient declaration:
 
@@ -56,6 +64,7 @@ readiness-safe installer:
 
 ```ts
 function installGrpcWebDevtools(): void {
+  if (typeof window === "undefined") return;
   const devtools = window.__GRPCWEB_DEVTOOLS__;
   if (!devtools) return;
 

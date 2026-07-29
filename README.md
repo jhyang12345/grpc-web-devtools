@@ -51,8 +51,10 @@ troubleshooting.
 
 LLM coding agents can use the executable
 [`grpc-web-client-integration` skill](skills/grpc-web-client-integration/SKILL.md)
-to detect the client stack, apply the matching integration, and verify the
-required source signals.
+to audit an existing client without changing it, identify exact missing source
+signals, and apply only the minimal authorized integration changes when needed.
+The package-scoped inspector also reports `file:line` evidence, nested-package
+boundaries, SSR risks, legacy Connect usage, and relevant validation commands.
 
 ### Inspect, edit, and replay a captured request
 

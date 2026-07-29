@@ -1,5 +1,54 @@
 # Features and troubleshooting
 
+## Efficient debugging workflow
+
+1. Run the package-scoped scanner first:
+
+   ```bash
+   node <skill-directory>/scripts/inspect-client.mjs <client-root> --format text
+   ```
+
+   Start at every reported `file:line`. If nested packages are reported, rerun
+   against the package that owns the browser transport.
+2. Trace one path only: dependency -> client or transport factory -> final
+   interceptor list -> first RPC. Record all factories or instances, but avoid
+   broad refactors while diagnosing.
+3. In the inspected page's console, use this read-only capability probe:
+
+   ```js
+   ({
+     grpcWeb: typeof window.__GRPCWEB_DEVTOOLS__,
+     connect: typeof window.__CONNECT_WEB_DEVTOOLS__,
+     protobufTs: window.__GRPCWEB_DEVTOOLS_PROTOBUF_TS__?.protocolVersion,
+   })
+   ```
+
+4. Trigger one already-safe application RPC and follow its lifecycle from start
+   to completion/error. Do not replay merely as a connectivity probe.
+5. Run `--check --format text`, then only the existing validation commands the
+   scanner lists. Save the JSON report when opening an issue.
+
+For a useful diagnostic bundle, include the scanner JSON, dependency versions,
+the active factory `file:line`, the capability probe, RPC shape, and the first
+failing lifecycle phase. Redact request bodies, authorization metadata, tokens,
+and service URLs unless they are explicitly safe to share.
+
+### Symptom routing
+
+- **No stack detected:** verify the exact package root, nested workspace, and
+  installed dependency namespace.
+- **Signals found only in tests/declarations:** locate the runtime setup module;
+  types and fixtures do not install the integration.
+- **Calls appear only after reload:** fix immediate registration or use a
+  late-bound wrapper; do not add delays.
+- **Only one client or transport appears:** enumerate all factories and
+  long-lived instances.
+- **Replay loses auth or tracing:** inspect interceptor order without reordering
+  unrelated interceptors.
+- **URL is missing or incorrect:** reuse the transport's exact runtime base URL.
+- **Capture stops after idle:** inspect bridge connection state before touching
+  application RPC code.
+
 ## Full-feature checklist
 
 After integrating a supported client:

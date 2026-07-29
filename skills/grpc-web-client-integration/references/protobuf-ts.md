@@ -43,14 +43,18 @@ const baseUrl = "https://api.example.com";
 
 const grpcWebDevtoolsInterceptor: RpcInterceptor = {
   interceptUnary(next, method, input, options) {
-    const devtools = window.__GRPCWEB_DEVTOOLS_PROTOBUF_TS__;
+    const devtools = typeof window === "undefined"
+      ? undefined
+      : window.__GRPCWEB_DEVTOOLS_PROTOBUF_TS__;
     return devtools
       ? devtools.interceptUnary({ baseUrl, next, method, input, options })
       : next(method, input, options);
   },
 
   interceptServerStreaming(next, method, input, options) {
-    const devtools = window.__GRPCWEB_DEVTOOLS_PROTOBUF_TS__;
+    const devtools = typeof window === "undefined"
+      ? undefined
+      : window.__GRPCWEB_DEVTOOLS_PROTOBUF_TS__;
     return devtools
       ? devtools.interceptServerStreaming({
           baseUrl,
@@ -73,3 +77,9 @@ The per-call lookup removes the need for a readiness listener. The extension
 also emits `grpc-web-dev-tools-protobuf-ts-ready` if the application has another
 reason to observe installation. Keep the DevTools wrapper before application
 interceptors so replay passes through them again.
+
+Reuse the existing `baseUrl`, transport instance, fetch configuration, and
+interceptor array. Insert the wrapper without reordering existing interceptors.
+Check the installed protobuf-ts types because interceptor signatures can vary by
+version; do not upgrade the runtime or regenerate messages merely to match this
+example.
