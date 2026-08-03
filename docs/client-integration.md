@@ -1,4 +1,26 @@
-# Client integration
+# Set up gRPC-Web Inspector in a web application
+
+Use this guide to connect an existing browser application to the gRPC-Web
+Inspector extension. The application does not need to add a package or take a
+hard dependency on the extension: each integration checks for an optional
+page-level API and otherwise sends RPCs normally.
+
+The code examples use TypeScript. For JavaScript, remove the type-only imports
+and annotations.
+
+## Before you start
+
+1. Install gRPC-Web Inspector from the
+   [Chrome Web Store](https://chrome.google.com/webstore/detail/grpc-web-developer-tools/kanmilmfkjnoladbbamlclhccicldjaj)
+   or [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/grpc-web-developer-tools/).
+2. Identify the RPC client used by the web application:
+   generated `grpc-web`, Connect-ES, or protobuf-ts.
+3. Add the matching integration below before the first RPC that should appear
+   in the Inspector.
+4. If the application uses server-side rendering, run the setup only in the
+   browser or guard browser globals with `typeof window !== "undefined"`.
+
+## Choose the matching setup
 
 The extension can observe traffic only after the web application opts its RPC
 client or transport into the page API injected by the extension. Add the
@@ -206,19 +228,20 @@ for every call. The extension also emits
 `grpc-web-dev-tools-protobuf-ts-ready` for applications that need an explicit
 readiness signal.
 
-## What enables the full feature set
+## Verify the integration
 
-For the best result:
+After adding the matching setup:
 
-1. Install the integration before creating or issuing the RPCs you want to
-   inspect. Requests made before registration are not retroactively captured.
-2. Open the browser DevTools panel and make a new request. The entry should show
+1. Build and reload the web application.
+2. Open browser DevTools, select the **gRPC-Web** panel, and make a new request.
+   Requests made before registration are not retroactively captured.
+3. Confirm that the new entry shows
    its request, response or stream messages, status/error, frame URL, start and
    completion times, duration, and stream time-to-first-message.
-3. Select the entry, choose **Edit**, change its JSON, and choose **Send
+4. Select the entry, choose **Edit**, change its JSON, and choose **Send
    request**. Replay performs a real backend call through the originating page
    frame.
-4. Keep authentication and other application interceptors after the DevTools
+5. Keep authentication and other application interceptors after the DevTools
    wrapper so replay runs through them again.
 
 Connect-Web and protobuf-ts request capture enables default-valued scalar

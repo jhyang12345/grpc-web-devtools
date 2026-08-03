@@ -45,8 +45,8 @@ window.addEventListener('grpc-web-dev-tools-ready', installDevTools);
 > NOTE: Requires that your generated client(s) use `protoc-gen-grpc-web` >= 1.0.4
 
 Connect-ES and protobuf-ts use transport interceptors instead. See the
-[complete client integration guide](docs/client-integration.md) for copyable
-JavaScript/TypeScript setup, replay adapters, feature limits, and
+[web application setup guide](docs/client-integration.md) for standalone,
+copyable JavaScript/TypeScript setup, replay adapters, feature limits, and
 troubleshooting.
 
 LLM coding agents can use the executable
