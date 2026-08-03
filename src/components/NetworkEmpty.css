@@ -31,6 +31,19 @@
   margin-top: 6px;
 }
 
+.network-empty-help {
+  margin-top: 12px;
+}
+
+.network-empty-help a {
+  color: var(--accent-color);
+}
+
+.network-empty-help a:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 2px;
+}
+
 @media (max-width: 520px) {
   .network-empty {
     padding: 16px;

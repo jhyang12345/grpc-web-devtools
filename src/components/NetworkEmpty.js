@@ -3,6 +3,9 @@
 import React, { PureComponent } from 'react';
 import './NetworkEmpty.css';
 
+export const CLIENT_INTEGRATION_GUIDE_URL =
+  'https://github.com/jhyang12345/grpc-web-devtools/blob/master/docs/client-integration.md';
+
 export function getEmptyStateContent(mode, filterValue) {
   const modifier = navigator.platform.indexOf('Mac') === 0 ? 'Cmd' : 'Ctrl';
 
@@ -27,7 +30,10 @@ export function getEmptyStateContent(mode, filterValue) {
   return {
     title: 'Inspecting gRPC network activity...',
     detail: `Perform a request or reload with ${modifier} R to capture it, then select it to inspect or replay it.`,
-    link: null,
+    link: {
+      href: CLIENT_INTEGRATION_GUIDE_URL,
+      label: 'Set up your web application',
+    },
   };
 }
 
@@ -42,7 +48,7 @@ class NetworkEmpty extends PureComponent {
           <div className="network-empty-title">{content.title}</div>
           <div className="network-empty-detail">{content.detail}</div>
           {content.link && (
-            <div>
+            <div className="network-empty-help">
               <a
                 target="_blank"
                 rel="noopener noreferrer"
