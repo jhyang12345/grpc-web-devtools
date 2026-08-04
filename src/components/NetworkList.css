@@ -166,12 +166,12 @@
 .data-grid .data-container {
   top: 0;
   bottom: 0;
-  overflow-y: overlay;
+  /* react-window owns scrolling; a scrollable wrapper adds a second scrollbar. */
+  overflow: hidden;
   transform: translateZ(0);
   position: absolute;
   left: 0;
   right: 0;
-  overflow-x: hidden;
 }
 
 .data-grid .data {
