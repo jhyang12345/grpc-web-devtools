@@ -7,20 +7,23 @@ import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache } from '../state/network';
 import { toggleFilter, setDefaultCollapsed, setConnectionStatus } from '../state/toolbar';
 import { setStorageItem } from '../utils/localStorage';
+import { translate } from '../i18n';
+import { setLanguagePreferenceAndPersist } from '../state/localization';
 import TrashIcon from '../icons/Trash';
 import FilterIcon from '../icons/Filter';
+import SettingsPopover from './SettingsPopover';
 import './Toolbar.css';
 
 export class Toolbar extends Component {
   _renderButtons() {
-    const { clearLog, toggleFilter, toolbar: { filterIsEnabled, filterIsOpen }} = this.props;
+    const { clearLog, toggleFilter, locale = 'en', toolbar: { filterIsEnabled, filterIsOpen }} = this.props;
     return (
         <>
-          <ToolbarButton title="Clear log history" onClick={() => clearLog({ force: true })} >
+          <ToolbarButton title={translate(locale, 'toolbar.clearLogTitle')} onClick={() => clearLog({ force: true })} >
             <TrashIcon />
           </ToolbarButton>
           <ToolbarButton
-            title="Filter"
+            title={translate(locale, 'toolbar.filterTitle')}
             onClick={() => toggleFilter()}
             className={(filterIsOpen ? "open " : "") + (filterIsEnabled ? "enabled" : "")}
            >
@@ -31,57 +34,66 @@ export class Toolbar extends Component {
   }
 
   render() {
-    const { preserveLog, toolbar } = this.props;
+    const { preserveLog, toolbar, locale = 'en', languagePreference = 'auto' } = this.props;
     const { connectionStatus } = toolbar;
     const statusTitle = connectionStatus === 'connected'
-      ? "DevTools connected"
+      ? translate(locale, 'toolbar.connectedTitle')
       : connectionStatus === 'pending'
-        ? "Waiting for content script registration; automatic recovery is active"
-        : "DevTools connection lost; automatic recovery is active";
+        ? translate(locale, 'toolbar.pendingTitle')
+        : translate(locale, 'toolbar.disconnectedTitle');
     return (
       <>
         <div className="toolbar">
           <div className="toolbar-shadow">
-            {this._renderButtons()}
-            <ToolbarDivider />
-            <span className="toolbar-item checkbox" title="Do not clear log on page reload / navigation">
-              <input
-                type="checkbox"
-                id="ui-checkbox-preserve-log"
-                checked={preserveLog}
-                onChange={this._onPreserveLogChanged}
-              />
-              <label htmlFor="ui-checkbox-preserve-log">Preserve log</label>
-            </span>
-            <ToolbarDivider />
-            <span className="toolbar-item checkbox" title="Collapse JSON details by default when selecting entries">
-              <input
-                type="checkbox"
-                id="ui-checkbox-default-collapsed"
-                checked={toolbar.defaultCollapsed}
-                onChange={this._onDefaultCollapsedChanged}
-              />
-              <label htmlFor="ui-checkbox-default-collapsed">Collapsed</label>
-            </span>
-            <ToolbarDivider />
-            <span
-              className={`toolbar-item connection-status connection-status--${connectionStatus}`}
-              title={statusTitle}
-            >
-              <span className="connection-status-dot" />
-              {connectionStatus === 'connected' ? 'Connected' : (
-                <>
-                  {connectionStatus === 'pending' ? 'Connecting...' : 'Disconnected'}
-                  <button
-                    onClick={this._onReconnect}
-                    className="reconnect-button"
-                    title="Restart the automatic connection recovery now"
-                  >
-                    Reconnect
-                  </button>
-                </>
-              )}
-            </span>
+            <div className="toolbar-main">
+              {this._renderButtons()}
+              <ToolbarDivider />
+              <span className="toolbar-item checkbox" title={translate(locale, 'toolbar.preserveLogTitle')}>
+                <input
+                  type="checkbox"
+                  id="ui-checkbox-preserve-log"
+                  checked={preserveLog}
+                  onChange={this._onPreserveLogChanged}
+                />
+                <label htmlFor="ui-checkbox-preserve-log">{translate(locale, 'toolbar.preserveLog')}</label>
+              </span>
+              <ToolbarDivider />
+              <span className="toolbar-item checkbox" title={translate(locale, 'toolbar.collapsedTitle')}>
+                <input
+                  type="checkbox"
+                  id="ui-checkbox-default-collapsed"
+                  checked={toolbar.defaultCollapsed}
+                  onChange={this._onDefaultCollapsedChanged}
+                />
+                <label htmlFor="ui-checkbox-default-collapsed">{translate(locale, 'toolbar.collapsed')}</label>
+              </span>
+              <ToolbarDivider />
+              <span
+                className={`toolbar-item connection-status connection-status--${connectionStatus}`}
+                title={statusTitle}
+              >
+                <span className="connection-status-dot" />
+                {connectionStatus === 'connected' ? translate(locale, 'toolbar.connected') : (
+                  <>
+                    {connectionStatus === 'pending'
+                      ? translate(locale, 'toolbar.connecting')
+                      : translate(locale, 'toolbar.disconnected')}
+                    <button
+                      onClick={this._onReconnect}
+                      className="reconnect-button"
+                      title={translate(locale, 'toolbar.reconnectTitle')}
+                    >
+                      {translate(locale, 'toolbar.reconnect')}
+                    </button>
+                  </>
+                )}
+              </span>
+            </div>
+            <SettingsPopover
+              locale={locale}
+              preference={languagePreference}
+              onLanguageChange={this.props.setLanguagePreferenceAndPersist}
+            />
           </div>
         </div>
       </>
@@ -143,6 +155,14 @@ class ToolbarButton extends Component {
 const mapStateToProps = state => ({
   preserveLog: state.network.preserveLog,
   toolbar: state.toolbar,
+  languagePreference: state.localization.preference,
 });
-const mapDispatchToProps = { setPreserveLog, clearLog: clearLogAndCache, toggleFilter, setDefaultCollapsed, setConnectionStatus };
+const mapDispatchToProps = {
+  setPreserveLog,
+  clearLog: clearLogAndCache,
+  toggleFilter,
+  setDefaultCollapsed,
+  setConnectionStatus,
+  setLanguagePreferenceAndPersist,
+};
 export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);

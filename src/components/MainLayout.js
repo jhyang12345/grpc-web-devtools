@@ -10,25 +10,27 @@ import NetworkList from './NetworkList';
 
 class MainLayout extends Component {
   _renderDetailsPane() {
-    const { hasVisibleEntries, hasCapturedEntries, filterValue, hasSelectedEntry } = this.props;
+    const { hasVisibleEntries, hasCapturedEntries, filterValue, hasSelectedEntry, locale } = this.props;
 
     if (!hasVisibleEntries) {
       return (
         <NetworkEmpty
           mode={hasCapturedEntries ? 'filtered-empty' : 'empty'}
           filterValue={filterValue}
+          locale={locale}
         />
       );
     }
 
     if (!hasSelectedEntry) {
-      return <NetworkEmpty mode="no-selection" />;
+      return <NetworkEmpty mode="no-selection" locale={locale} />;
     }
 
-    return <NetworkDetails />;
+    return <NetworkDetails locale={locale} />;
   }
 
   render() {
+    const { locale } = this.props;
     return (
       <div className="vbox flex-auto">
         <div className="shadow-split-widget hbox widget">
@@ -39,7 +41,7 @@ class MainLayout extends Component {
             cursor="ew-resize"
           >
             <div className="main-layout-pane main-layout-pane-list">
-              <NetworkList />
+              <NetworkList locale={locale} />
             </div>
             <div className="main-layout-pane main-layout-pane-details">
               {this._renderDetailsPane()}

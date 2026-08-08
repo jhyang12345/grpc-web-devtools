@@ -8,6 +8,7 @@ import { getNetworkEntry } from "../state/networkCache";
 import { showToast } from "../state/toast";
 import { sendReplayRequest, validateReplayRequest } from "../replayBridge";
 import { getStorageItem, setStorageItem } from "../utils/localStorage";
+import { translate } from "../i18n";
 import MethodHeader from "./MethodHeader";
 import SearchBar from "./SearchBar";
 import "./NetworkDetails.css";
@@ -15,9 +16,9 @@ import "./NetworkDetails.css";
 // Isolated so it never re-renders when parent search state changes.
 class ResponseJsonContent extends PureComponent {
   render() {
-    const { isRendering, responseSource, responseCollapsed, theme } = this.props;
+    const { isRendering, responseSource, responseCollapsed, theme, locale = "en" } = this.props;
     if (!isRendering) {
-      return <div className="payload-warning">Loading payload...</div>;
+      return <div className="payload-warning">{translate(locale, "details.loadingPayload")}</div>;
     }
     return (
       <ReactJson
@@ -134,37 +135,72 @@ function getPreferredJsonViewerTheme() {
   return getJsonViewerTheme(matchesDarkMode);
 }
 
-export function getReplayDisabledReason(entry, requestPayloadMissing) {
-  if (requestPayloadMissing) return "Full request payload is no longer available.";
-  if (!entry?.request || entry.request.__truncated) return "This request payload was truncated and cannot be replayed.";
-  if (!entry?.replay?.available) return entry?.replay?.reason || "Replay is unavailable for this captured request.";
-  if (!entry.replay.token) return "This replay handle is no longer available.";
-  if (!entry.captureId) return "The originating frame is not available for replay.";
-  if (!entry.transport) return "The captured transport is not available for replay.";
+export function getReplayDisabledReason(entry, requestPayloadMissing, locale = "en") {
+  if (requestPayloadMissing) return translate(locale, "replay.requestMissing");
+  if (!entry?.request || entry.request.__truncated) return translate(locale, "replay.requestTruncated");
+  if (!entry?.replay?.available) return entry?.replay?.reason || translate(locale, "replay.unavailable");
+  if (!entry.replay.token) return translate(locale, "replay.handleMissing");
+  if (!entry.captureId) return translate(locale, "replay.frameMissing");
+  if (!entry.transport) return translate(locale, "replay.transportMissing");
   return null;
 }
 
-export function parseEditedRequest(text) {
-  let request;
-  try { request = JSON.parse(text); } catch (_) { return { error: "Request body must contain valid JSON." }; }
-  const validationError = validateReplayRequest(request);
-  return validationError ? { error: validationError } : { request };
+const REPLAY_VALIDATION_KEYS = {
+  "Request body must be a JSON object.": "replay.jsonObject",
+  "Request body could not be serialized.": "replay.serializeFailed",
+  "Request body exceeds the 5 MiB replay limit.": "replay.sizeLimit",
+};
+
+const REPLAY_RUNTIME_KEYS = {
+  "A valid originating frame is required for replay.": "replay.routeFrame",
+  "A valid replay handle is required.": "replay.routeHandle",
+  "A valid replay transport is required.": "replay.routeTransport",
+  "Replay connection was replaced.": "replay.connectionReplaced",
+  "Replay connection is unavailable.": "replay.connectionUnavailable",
+  "Too many replay requests are awaiting acknowledgement.": "replay.tooManyPending",
+  "Unable to allocate a replay attempt ID.": "replay.attemptId",
+  "Replay acknowledgement timed out; the originating frame may no longer be available.": "replay.timeout",
+  "Replay was rejected by the originating frame.": "replay.rejectedByFrame",
+  "Replay connection was closed.": "replay.connectionClosed",
+  "Replay connection was disconnected.": "replay.connectionDisconnected",
+};
+
+function localizeReplayValidationError(message, locale) {
+  const key = REPLAY_VALIDATION_KEYS[message];
+  return key ? translate(locale, key) : message;
 }
 
-export function formatEditedRequest(text) {
-  const parsed = parseEditedRequest(text);
+function localizeReplayRuntimeError(message, locale) {
+  const key = REPLAY_RUNTIME_KEYS[message];
+  return key ? translate(locale, key) : message;
+}
+
+export function parseEditedRequest(text, locale = "en") {
+  let request;
+  try { request = JSON.parse(text); } catch (_) { return { error: translate(locale, "replay.invalidJson") }; }
+  const validationError = validateReplayRequest(request);
+  return validationError ? { error: localizeReplayValidationError(validationError, locale) } : { request };
+}
+
+export function formatEditedRequest(text, locale = "en") {
+  const parsed = parseEditedRequest(text, locale);
   return parsed.error ? parsed : { request: parsed.request, text: JSON.stringify(parsed.request, null, 2) };
 }
 
-export function formatReplayProvenance(replayedFrom) {
-  if (!replayedFrom?.transport || !Number.isFinite(replayedFrom.requestId)) return "Retry of an earlier request";
-  return `Retry of ${replayedFrom.transport} request ${replayedFrom.requestId}`;
+export function formatReplayProvenance(replayedFrom, locale = "en") {
+  if (!replayedFrom?.transport || !Number.isFinite(replayedFrom.requestId)) {
+    return translate(locale, "network.replayEarlier");
+  }
+  return translate(locale, "network.replayFrom", {
+    transport: replayedFrom.transport,
+    requestId: replayedFrom.requestId,
+  });
 }
 
-export function buildResponseSource(response, error, messages, status, isMissingPayload) {
+export function buildResponseSource(response, error, messages, status, isMissingPayload, locale = "en") {
   if (isMissingPayload) {
     return {
-      message: "Full response payload is no longer available.",
+      message: translate(locale, "details.fullResponseUnavailable"),
     };
   }
 
@@ -189,7 +225,7 @@ export function buildResponseSource(response, error, messages, status, isMissing
   }
 
   return {
-    message: "No response captured.",
+    message: translate(locale, "details.noResponse"),
   };
 }
 
@@ -377,7 +413,8 @@ export class NetworkDetails extends Component {
     const requestPayloadMissing = !!entry.entryId && !cachedEntry && entry.request === true;
     const responsePayloadMissing = !!entry.entryId && !cachedEntry && (entry.response === true || entry.error === true || entry.messages === true || entry.status === true);
     const requestText = requestPayloadMissing ? "" : stringifyJson(entryToRender?.request);
-    const responseSource = buildResponseSource(response, error, messages, status, responsePayloadMissing);
+    const { locale = "en" } = this.props;
+    const responseSource = buildResponseSource(response, error, messages, status, responsePayloadMissing, locale);
     const hasResponsePayload = !responsePayloadMissing && (response != null || error != null || messages?.length || status != null);
     const responseText = stringifyJson(responseSource);
 
@@ -409,6 +446,7 @@ export class NetworkDetails extends Component {
 
   _renderMetadata = (entry) => {
     const { isMetadataExpanded } = this.state;
+    const { locale = "en" } = this.props;
     const {
       timing,
       payloadBytes,
@@ -426,73 +464,81 @@ export class NetworkDetails extends Component {
           aria-expanded={isMetadataExpanded}
           aria-controls="request-metadata-content"
           onClick={this._toggleMetadata}
-          title={isMetadataExpanded ? "Hide metadata details" : "Show metadata details"}
+          title={isMetadataExpanded
+            ? translate(locale, "details.hideMetadataTitle")
+            : translate(locale, "details.showMetadataTitle")}
         >
           <span className="payload-metadata-toggle-label">
             <span className="payload-metadata-chevron" aria-hidden="true">{isMetadataExpanded ? "▾" : "▸"}</span>
-            <span>Metadata</span>
+            <span>{translate(locale, "details.metadata")}</span>
           </span>
-          <span className="payload-metadata-toggle-hint">{isMetadataExpanded ? "Hide" : "Show details"}</span>
+          <span className="payload-metadata-toggle-hint">
+            {isMetadataExpanded ? translate(locale, "details.hide") : translate(locale, "details.showDetails")}
+          </span>
         </button>
         {isMetadataExpanded && (
           <div className="payload-metadata-content" id="request-metadata-content">
             <div className="payload-metadata-row">
-              <span>Frame URL</span>
-              <span title={requestLocation}>{requestLocation || '(not captured — reload page)'}</span>
+              <span>{translate(locale, "details.frameUrl")}</span>
+              <span title={requestLocation}>{requestLocation || translate(locale, "details.frameUrlMissing")}</span>
             </div>
             <div className="payload-metadata-row">
-              <span>Backend request URL</span>
-              <span title={backendUrl}>{backendUrl || "Not available for this capture"}</span>
+              <span>{translate(locale, "details.backendUrl")}</span>
+              <span title={backendUrl}>{backendUrl || translate(locale, "details.backendUrlMissing")}</span>
             </div>
             {timing?.requestTimestamp != null && (
               <div className="payload-metadata-row">
-                <span>Started</span>
+                <span>{translate(locale, "details.started")}</span>
                 <span title={formatTimestamp(timing.requestTimestamp)}>{formatTimestamp(timing.requestTimestamp)}</span>
               </div>
             )}
             <div className="payload-metadata-row">
-              <span>Completed</span>
-              <span>{timing?.completionTimestamp != null ? formatTimestamp(timing.completionTimestamp) : "Pending"}</span>
+              <span>{translate(locale, "details.completed")}</span>
+              <span>{timing?.completionTimestamp != null
+                ? formatTimestamp(timing.completionTimestamp)
+                : translate(locale, "network.pending")}</span>
             </div>
             {timing?.duration != null && (
               <div className="payload-metadata-row">
-                <span>Duration</span>
+                <span>{translate(locale, "details.duration")}</span>
                 <span>{formatDuration(timing.duration)}</span>
               </div>
             )}
             {timing?.timeToFirstMessage != null && (
               <div className="payload-metadata-row">
-                <span>Time to first message</span>
+                <span>{translate(locale, "details.ttfm")}</span>
                 <span>{formatDuration(timing.timeToFirstMessage)}</span>
               </div>
             )}
             {(entry.messageCount != null || timing?.messageCount != null) && (
               <div className="payload-metadata-row">
-                <span>Messages</span>
-                <span>{entry.messageCount || timing.messageCount}{entry.droppedMessageCount ? ` (${entry.droppedMessageCount} older messages dropped)` : ""}</span>
+                <span>{translate(locale, "details.messages")}</span>
+                <span>{entry.messageCount || timing.messageCount}{entry.droppedMessageCount
+                  ? ` (${translate(locale, "details.olderMessagesDropped", { count: entry.droppedMessageCount })})`
+                  : ""}</span>
               </div>
             )}
             {status != null && (
               <div className="payload-metadata-row">
-                <span>Status</span>
+                <span>{translate(locale, "details.status")}</span>
                 <span>{status.code != null ? `${status.code}${status.details ? `: ${status.details}` : ""}` : JSON.stringify(status)}</span>
               </div>
             )}
             {transport && (
               <div className="payload-metadata-row">
-                <span>Transport</span>
+                <span>{translate(locale, "details.transport")}</span>
                 <span>{transport}</span>
               </div>
             )}
             {entry.replayedFrom && (
               <div className="payload-metadata-row replay-provenance">
-                <span>Replay</span>
-                <span>{formatReplayProvenance(entry.replayedFrom)}</span>
+                <span>{translate(locale, "details.replay")}</span>
+                <span>{formatReplayProvenance(entry.replayedFrom, locale)}</span>
               </div>
             )}
             <div className="payload-metadata-row">
-              <span>Payload size (approx)</span>
-              <span>{payloadBytes ? formatBytes(payloadBytes) : "Unknown"}</span>
+              <span>{translate(locale, "details.payloadSize")}</span>
+              <span>{payloadBytes ? formatBytes(payloadBytes) : translate(locale, "details.unknown")}</span>
             </div>
           </div>
         )}
@@ -539,7 +585,8 @@ export class NetworkDetails extends Component {
 
   _renderRequestPane(requestText, requestPayloadMissing, entryToRender) {
     const { requestSearch, isEditingRequest, requestEditorError, isReplaySending } = this.state;
-    const replayDisabledReason = getReplayDisabledReason(entryToRender, requestPayloadMissing);
+    const { locale = "en" } = this.props;
+    const replayDisabledReason = getReplayDisabledReason(entryToRender, requestPayloadMissing, locale);
     const canCopyRequest = !requestPayloadMissing && !!requestText;
     const canSearchRequest = !isEditingRequest && !!requestText;
     this._activeRequestText = requestText;
@@ -549,35 +596,41 @@ export class NetworkDetails extends Component {
       <div className={`details-pane request-pane ${isEditingRequest ? "is-editing" : ""}`} ref={this.requestPaneRef}>
         <div className="details-pane-header">
           <div className="details-pane-title-group">
-            <div className="details-pane-title">{isEditingRequest ? "Edit request" : "Request"}</div>
+            <div className="details-pane-title">
+              {isEditingRequest ? translate(locale, "details.editRequest") : translate(locale, "details.request")}
+            </div>
             <div
               className="details-pane-subtitle"
-              title={isEditingRequest ? "Review JSON before replay" : undefined}
+              title={isEditingRequest ? translate(locale, "details.reviewJson") : undefined}
             >
-              {isEditingRequest ? "Review JSON before replay" : "Captured request payload"}
+              {isEditingRequest
+                ? translate(locale, "details.reviewJson")
+                : translate(locale, "details.capturedRequest")}
             </div>
           </div>
           <div
             className={`details-pane-actions ${isEditingRequest ? "replay-editor-actions" : ""}`}
             role={isEditingRequest ? "toolbar" : undefined}
-            aria-label={isEditingRequest ? "Request editor actions" : undefined}
+            aria-label={isEditingRequest ? translate(locale, "details.requestEditorActions") : undefined}
           >
             {isEditingRequest ? (
               <>
-                <button className="json-action-button" type="button" onClick={this._formatRequestEditor} disabled={isReplaySending}>Format</button>
-                <button className="json-action-button" type="button" onClick={this._resetRequestEditor} disabled={isReplaySending}>Reset</button>
-                <button className="json-action-button" type="button" onClick={this._cancelRequestEditor} disabled={isReplaySending}>Cancel</button>
-                <button className="json-action-button replay-send-button" type="button" onClick={this._sendEditedRequest} disabled={isReplaySending}>{isReplaySending ? "Sending…" : "Send request"}</button>
+                <button className="json-action-button" type="button" onClick={this._formatRequestEditor} disabled={isReplaySending}>{translate(locale, "details.format")}</button>
+                <button className="json-action-button" type="button" onClick={this._resetRequestEditor} disabled={isReplaySending}>{translate(locale, "details.reset")}</button>
+                <button className="json-action-button" type="button" onClick={this._cancelRequestEditor} disabled={isReplaySending}>{translate(locale, "details.cancel")}</button>
+                <button className="json-action-button replay-send-button" type="button" onClick={this._sendEditedRequest} disabled={isReplaySending}>
+                  {isReplaySending ? translate(locale, "details.sending") : translate(locale, "details.sendRequest")}
+                </button>
               </>
             ) : (
               <>
                 <button
                   className="json-action-button"
                   type="button"
-                  onClick={() => this._copyText("Request", requestText)}
+                  onClick={() => this._copyText("request", requestText)}
                   disabled={!canCopyRequest}
                 >
-                  Copy
+                  {translate(locale, "details.copy")}
                 </button>
                 <button
                   className={`json-action-button ${requestSearch.isOpen ? "is-active" : ""}`}
@@ -585,16 +638,16 @@ export class NetworkDetails extends Component {
                   onClick={() => this._openRequestSearch()}
                   disabled={!canSearchRequest}
                 >
-                  Search
+                  {translate(locale, "details.search")}
                 </button>
                 <button
                   className="json-action-button replay-edit-button"
                   type="button"
-                  title={replayDisabledReason || "Edit this captured request before sending a real backend replay."}
+                  title={replayDisabledReason || translate(locale, "details.editReplayTitle")}
                   onClick={this._openRequestEditor}
                   disabled={!!replayDisabledReason}
                 >
-                  Edit
+                  {translate(locale, "details.edit")}
                 </button>
               </>
             )}
@@ -603,7 +656,8 @@ export class NetworkDetails extends Component {
         {requestSearch.isOpen && !isEditingRequest && (
           <SearchBar
             compact
-            placeholder="Search request"
+            locale={locale}
+            placeholder={translate(locale, "search.requestPlaceholder")}
             matchCount={requestSearch.matchCount}
             currentIndex={requestSearch.currentIndex}
             onChange={this._onRequestSearchChange}
@@ -614,21 +668,21 @@ export class NetworkDetails extends Component {
         )}
         {requestPayloadMissing && (
           <div className="payload-warning pane-warning">
-            Full request payload is no longer available (evicted from cache).
+            {translate(locale, "details.requestEvicted")}
           </div>
         )}
         <div className={`details-pane-body request-pane-body ${isEditingRequest ? "is-editing" : ""}`}>
           {/* Plain text only — highlights applied via CSS Highlight API, no React re-renders */}
           {isEditingRequest ? (
             <div className="replay-editor-shell">
-              <div className="replay-safety-note" role="note">Sends a real backend request and may reuse captured auth and metadata.</div>
-              <textarea ref={this.requestEditorInputRef} className="request-editor-input" aria-label="Editable request JSON"
+              <div className="replay-safety-note" role="note">{translate(locale, "details.replaySafety")}</div>
+              <textarea ref={this.requestEditorInputRef} className="request-editor-input" aria-label={translate(locale, "details.editableRequestJson")}
                 aria-describedby={requestEditorError ? "request-editor-error" : undefined} defaultValue={requestText} spellCheck="false" />
               {requestEditorError && <div id="request-editor-error" className="payload-warning pane-error" role="alert">{requestEditorError}</div>}
             </div>
           ) : (
             <pre ref={this.requestEditorRef} className="request-viewer">
-              {requestText || <span className="request-viewer-placeholder">No request payload captured.</span>}
+              {requestText || <span className="request-viewer-placeholder">{translate(locale, "details.noRequest")}</span>}
             </pre>
           )}
         </div>
@@ -638,25 +692,28 @@ export class NetworkDetails extends Component {
 
   _renderResponsePane(responseSource, responseText, responsePayloadMissing, isResponseTruncated, hasResponsePayload) {
     const { responseSearch, responseCollapsed, isRendering, jsonViewerTheme } = this.state;
+    const { locale = "en" } = this.props;
     const canCopyResponse = hasResponsePayload && !!responseText;
     const canSearchResponse = hasResponsePayload && !!responseText;
-    const expandLabel = responseCollapsed === false ? "Collapse" : "Expand";
+    const expandLabel = responseCollapsed === false
+      ? translate(locale, "details.collapse")
+      : translate(locale, "details.expand");
 
     return (
       <div className="details-pane response-pane" ref={this.responsePaneRef}>
         <div className="details-pane-header">
           <div className="details-pane-title-group">
-            <div className="details-pane-title">Response</div>
-            <div className="details-pane-subtitle">Captured response payload</div>
+            <div className="details-pane-title">{translate(locale, "details.response")}</div>
+            <div className="details-pane-subtitle">{translate(locale, "details.capturedResponse")}</div>
           </div>
           <div className="details-pane-actions">
             <button
               className="json-action-button"
               type="button"
-              onClick={() => this._copyText("Response", responseText)}
+              onClick={() => this._copyText("response", responseText)}
               disabled={!canCopyResponse}
             >
-              Copy
+              {translate(locale, "details.copy")}
             </button>
             <button
               className={`json-action-button ${responseSearch.isOpen ? "is-active" : ""}`}
@@ -664,7 +721,7 @@ export class NetworkDetails extends Component {
               onClick={() => this._openResponseSearch()}
               disabled={!canSearchResponse}
             >
-              Search
+              {translate(locale, "details.search")}
             </button>
             <button
               className="json-action-button"
@@ -679,7 +736,8 @@ export class NetworkDetails extends Component {
         {responseSearch.isOpen && (
           <SearchBar
             compact
-            placeholder="Search response"
+            locale={locale}
+            placeholder={translate(locale, "search.responsePlaceholder")}
             matchCount={responseSearch.matchCount}
             currentIndex={responseSearch.currentIndex}
             onChange={this._onResponseSearchChange}
@@ -690,12 +748,12 @@ export class NetworkDetails extends Component {
         )}
         {responsePayloadMissing && (
           <div className="payload-warning pane-warning">
-            Full response payload is no longer available (evicted from cache).
+            {translate(locale, "details.responseEvicted")}
           </div>
         )}
         {!responsePayloadMissing && isResponseTruncated && (
           <div className="payload-warning pane-warning">
-            Response payload was truncated in cache.
+            {translate(locale, "details.responseTruncated")}
           </div>
         )}
         <div className="details-pane-body details-pane-json" ref={this.responseBodyRef}>
@@ -704,6 +762,7 @@ export class NetworkDetails extends Component {
             responseSource={responseSource}
             responseCollapsed={responseCollapsed}
             theme={jsonViewerTheme}
+            locale={locale}
           />
         </div>
       </div>
@@ -771,7 +830,7 @@ export class NetworkDetails extends Component {
     }
   };
 
-  async _copyText(label, text) {
+  async _copyText(kind, text) {
     if (!text) {
       return;
     }
@@ -788,14 +847,18 @@ export class NetworkDetails extends Component {
         document.body.removeChild(tempTextArea);
       }
 
+      const { locale = "en" } = this.props;
+      const label = translate(locale, `copy.${kind}Label`);
       this.props.showToast({
-        message: `${label} copied to clipboard`,
+        message: translate(locale, "copy.success", { label }),
         type: "success",
         autoDismiss: 2000,
       });
     } catch (error) {
+      const { locale = "en" } = this.props;
+      const label = translate(locale, `copy.${kind}Label`);
       this.props.showToast({
-        message: `Failed to copy ${label.toLowerCase()}`,
+        message: translate(locale, "copy.failure", { label }),
         type: "error",
         autoDismiss: 4000,
       });
@@ -858,7 +921,7 @@ export class NetworkDetails extends Component {
 
   _formatRequestEditor = () => {
     const editor = this.requestEditorInputRef.current;
-    const formatted = formatEditedRequest(editor?.value || "");
+    const formatted = formatEditedRequest(editor?.value || "", this.props.locale || "en");
     if (formatted.error) {
       this._showReplayError(formatted.error);
       return;
@@ -869,13 +932,14 @@ export class NetworkDetails extends Component {
 
   _sendEditedRequest = async () => {
     if (this._isReplaySubmitting || this.state.isReplaySending) return;
-    const parsed = parseEditedRequest(this.requestEditorInputRef.current?.value || "");
+    const locale = this.props.locale || "en";
+    const parsed = parseEditedRequest(this.requestEditorInputRef.current?.value || "", locale);
     if (parsed.error) {
       this._showReplayError(parsed.error);
       return;
     }
     const entry = this._activeReplayEntry;
-    const replayDisabledReason = getReplayDisabledReason(entry, false);
+    const replayDisabledReason = getReplayDisabledReason(entry, false, locale);
     if (replayDisabledReason) {
       this._showReplayError(replayDisabledReason);
       return;
@@ -893,11 +957,13 @@ export class NetworkDetails extends Component {
         request: parsed.request,
       });
       if (this._isCurrentReplaySubmission(submission)) {
-        this.props.showToast({ message: "Replay accepted; watch the new request entry", type: "info", autoDismiss: 3500 });
+        this.props.showToast({ message: translate(locale, "replay.accepted"), type: "info", autoDismiss: 3500 });
       }
     } catch (error) {
       if (this._isCurrentReplaySubmission(submission)) {
-        const message = error?.message || "Replay request was not accepted.";
+        const message = error?.message
+          ? localizeReplayRuntimeError(error.message, locale)
+          : translate(locale, "replay.notAccepted");
         this._safeSetState({ requestEditorError: message });
         this.props.showToast({ message, type: "error", autoDismiss: 4000 });
       }

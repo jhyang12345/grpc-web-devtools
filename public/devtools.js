@@ -1,1 +1,2 @@
-chrome.devtools.panels.create('gRPC Inspector', '', 'index.html');
+const panelTitle = chrome.i18n?.getMessage('devtoolsPanelTitle') || 'gRPC Inspector';
+chrome.devtools.panels.create(panelTitle, '', 'index.html');

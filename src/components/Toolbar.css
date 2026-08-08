@@ -13,7 +13,7 @@
   position: relative;
   white-space: nowrap;
   height: 26px;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex: none;
   align-items: center;
@@ -68,6 +68,15 @@
 
 :focus {
   outline-width: 0;
+}
+
+.toolbar-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  align-items: center;
+  overflow: hidden;
 }
 
 .toolbar-item:focus-visible,

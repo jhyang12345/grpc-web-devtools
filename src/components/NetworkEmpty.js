@@ -1,46 +1,47 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 import React, { PureComponent } from 'react';
+import { translate } from '../i18n';
 import './NetworkEmpty.css';
 
 export const CLIENT_INTEGRATION_GUIDE_URL =
   'https://github.com/jhyang12345/grpc-web-devtools/blob/master/docs/client-integration.md';
 
-export function getEmptyStateContent(mode, filterValue) {
+export function getEmptyStateContent(mode, filterValue, locale = 'en') {
   const modifier = navigator.platform.indexOf('Mac') === 0 ? 'Cmd' : 'Ctrl';
 
   if (mode === 'filtered-empty') {
     return {
-      title: 'No requests match the current filter.',
+      title: translate(locale, 'network.filteredEmptyTitle'),
       detail: filterValue
-        ? `Update or clear "${filterValue}" to show captured requests again.`
-        : 'Update or clear the current filter to show captured requests again.',
+        ? translate(locale, 'network.filteredEmptyDetailValue', { filterValue })
+        : translate(locale, 'network.filteredEmptyDetail'),
       link: null,
     };
   }
 
   if (mode === 'no-selection') {
     return {
-      title: 'Select a request to inspect, edit, or replay it.',
-      detail: 'Choose a captured request from the list to inspect its details or edit its JSON before replaying it.',
+      title: translate(locale, 'network.noSelectionTitle'),
+      detail: translate(locale, 'network.noSelectionDetail'),
       link: null,
     };
   }
 
   return {
-    title: 'Inspecting gRPC network activity...',
-    detail: `Perform a request or reload with ${modifier} R to capture it, then select it to inspect or replay it.`,
+    title: translate(locale, 'network.emptyTitle'),
+    detail: translate(locale, 'network.emptyDetail', { modifier }),
     link: {
       href: CLIENT_INTEGRATION_GUIDE_URL,
-      label: 'Set up your web application',
+      label: translate(locale, 'network.setupGuide'),
     },
   };
 }
 
 class NetworkEmpty extends PureComponent {
   render() {
-    const { mode = 'empty', filterValue = '' } = this.props;
-    const content = getEmptyStateContent(mode, filterValue);
+    const { mode = 'empty', filterValue = '', locale = 'en' } = this.props;
+    const content = getEmptyStateContent(mode, filterValue, locale);
 
     return (
       <div className="network-empty">

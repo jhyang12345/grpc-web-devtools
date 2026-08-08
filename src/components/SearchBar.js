@@ -1,6 +1,7 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 import React, { Component } from "react";
+import { translate } from "../i18n";
 import "./SearchBar.css";
 
 class SearchBar extends Component {
@@ -18,9 +19,10 @@ class SearchBar extends Component {
   }
 
   render() {
+    const locale = this.props.locale || "en";
     const {
       compact,
-      placeholder = "Search JSON",
+      placeholder = translate(locale, "search.defaultPlaceholder"),
       matchCount,
       currentIndex,
       onChange,
@@ -54,24 +56,24 @@ class SearchBar extends Component {
           className="search-btn"
           onClick={onPrev}
           disabled={matchCount === 0}
-          title="Previous match"
+          title={translate(locale, "search.previousTitle")}
         >
-          Prev
+          {translate(locale, "search.previous")}
         </button>
         <button
           className="search-btn"
           onClick={onNext}
           disabled={matchCount === 0}
-          title="Next match"
+          title={translate(locale, "search.nextTitle")}
         >
-          Next
+          {translate(locale, "search.next")}
         </button>
         <button
           className="search-btn"
           onClick={onClose}
-          title="Close search"
+          title={translate(locale, "search.closeTitle")}
         >
-          Close
+          {translate(locale, "search.close")}
         </button>
       </div>
     );

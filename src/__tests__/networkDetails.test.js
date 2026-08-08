@@ -64,14 +64,14 @@ test('metadata exposes the backend URL and leaves an obvious control when collap
   };
   const expandedMarkup = renderToStaticMarkup(component._renderMetadata(entry));
   expect(expandedMarkup).toContain('aria-expanded="true"');
-  expect(expandedMarkup).toContain('Backend request URL');
+  expect(expandedMarkup).toContain('Backend URL');
   expect(expandedMarkup).toContain('https://api.example.test/demo.Service/GetThing');
 
   component._toggleMetadata();
   const collapsedMarkup = renderToStaticMarkup(component._renderMetadata(entry));
   expect(collapsedMarkup).toContain('aria-expanded="false"');
   expect(collapsedMarkup).toContain('Show details');
-  expect(collapsedMarkup).not.toContain('Backend request URL');
+  expect(collapsedMarkup).not.toContain('Backend URL');
   expect(localStorage.getItem('grpc-devtools-detailsMetadataExpanded')).toBe('false');
 });
 

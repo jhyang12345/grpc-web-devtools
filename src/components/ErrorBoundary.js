@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { clearLogAndCache } from '../state/network';
+import { translate } from '../i18n';
 import './ErrorBoundary.css';
 
 export class ErrorBoundary extends Component {
@@ -25,17 +26,18 @@ export class ErrorBoundary extends Component {
   };
 
   render() {
+    const { locale = 'en' } = this.props;
     if (this.state.hasError) {
       return (
         <div className="vbox flex-auto error-boundary">
-          <h2 className="error-boundary-title">Something went wrong.</h2>
-          <p>The application crashed while rendering. This might be due to a very large or malformed gRPC packet.</p>
+          <h2 className="error-boundary-title">{translate(locale, 'error.title')}</h2>
+          <p>{translate(locale, 'error.detail')}</p>
           <div className="error-boundary-actions">
             <button
               onClick={this._handleRecover}
               className="error-boundary-recover"
             >
-              Clear Logs & Recover
+              {translate(locale, 'error.recover')}
             </button>
           </div>
           {this.state.error && (

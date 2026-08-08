@@ -5,6 +5,7 @@ import { connect } from 'react-redux';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList as List } from 'react-window';
 import { setFilterValueDebounced } from '../state/toolbar';
+import { translate } from '../i18n';
 import NetworkListRow from './NetworkListRow';
 
 import './NetworkList.css';
@@ -63,7 +64,7 @@ export class NetworkList extends Component {
   }
 
   render() {
-    const { network, filterIsOpen } = this.props;
+    const { network, filterIsOpen, locale = 'en' } = this.props;
     const { localFilterValue } = this.state;
     return (
       <div className="widget vbox network-list">
@@ -71,14 +72,14 @@ export class NetworkList extends Component {
           <div className="network-list-filter">
             <input
               type="text"
-              placeholder="Filter"
+              placeholder={translate(locale, 'network.filterPlaceholder')}
               value={localFilterValue}
               onChange={this._onFilterValueChanged}
             />
           </div>
         )}
         <div className="widget vbox">
-          <div className="data-grid" aria-label="Captured requests">
+          <div className="data-grid" aria-label={translate(locale, 'network.capturedRequests')}>
             <div className="data-container">
               <AutoSizer disableWidth>
                 {({ height }) => (
@@ -88,7 +89,7 @@ export class NetworkList extends Component {
                     itemCount={network.log.length}
                     height={height}
                     itemSize={ROW_HEIGHT}
-                    itemData={network.log}
+                    itemData={{ entries: network.log, locale }}
                     overscanCount={15}
                   >
                     {NetworkListRow}

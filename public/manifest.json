@@ -1,8 +1,9 @@
 {
-  "name": "gRPC Request Inspector",
+  "name": "__MSG_extensionName__",
   "version": "1.5.0",
+  "default_locale": "en",
   "manifest_version": 3,
-  "description": "Inspect, edit, and replay gRPC-Web and Connect-Web requests for debugging.",
+  "description": "__MSG_extensionDescription__",
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",

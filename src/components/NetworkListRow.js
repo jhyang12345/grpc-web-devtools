@@ -4,6 +4,7 @@ import React, { PureComponent } from 'react';
 import { connect } from 'react-redux';
 import { selectLogEntry } from '../state/network';
 import { getNetworkEntry } from '../state/networkCache';
+import { translate } from '../i18n';
 import MethodIcon from './MethodIcon';
 
 function padTimePart(value, size = 2) {
@@ -19,8 +20,8 @@ function formatListTimestamp(timestamp) {
   return `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}:${padTimePart(date.getSeconds())}.${padTimePart(date.getMilliseconds(), 3)}`;
 }
 
-export function formatFrameUrl(location) {
-  if (!location) return 'Frame URL unavailable';
+export function formatFrameUrl(location, locale = 'en') {
+  if (!location) return translate(locale, 'network.frameUrlUnavailable');
   try {
     const url = new URL(location);
     return `${url.host}${url.pathname}${url.search}${url.hash}`;
@@ -35,14 +36,19 @@ export function formatElapsed(duration) {
   return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`;
 }
 
-export function formatReplayProvenance(replayedFrom) {
-  if (!replayedFrom?.transport || !Number.isFinite(replayedFrom.requestId)) return 'Retry of an earlier request';
-  return `Retry of ${replayedFrom.transport} request ${replayedFrom.requestId}`;
+export function formatReplayProvenance(replayedFrom, locale = 'en') {
+  if (!replayedFrom?.transport || !Number.isFinite(replayedFrom.requestId)) {
+    return translate(locale, 'network.replayEarlier');
+  }
+  return translate(locale, 'network.replayFrom', {
+    transport: replayedFrom.transport,
+    requestId: replayedFrom.requestId,
+  });
 }
 
-export function formatReplayTiming(timestampLabel, elapsedLabel, replayedFrom) {
-  const timing = `${timestampLabel || 'Waiting for timing...'} | ${elapsedLabel}`;
-  return replayedFrom ? `Edited replay | ${timing}` : timing;
+export function formatReplayTiming(timestampLabel, elapsedLabel, replayedFrom, locale = 'en') {
+  const timing = `${timestampLabel || translate(locale, 'network.waitingTiming')} | ${elapsedLabel}`;
+  return replayedFrom ? translate(locale, 'network.editedReplayTiming', { timing }) : timing;
 }
 
 export function getNetworkRowClassName(index, selectedIdx, log) {
@@ -58,15 +64,17 @@ export function getNetworkRowClassName(index, selectedIdx, log) {
 export class NetworkListRow extends PureComponent {
   render() {
     const { index, data, style, selectLogEntry, selectedIdx } = this.props;
-    const log = data[index];
+    const entries = Array.isArray(data) ? data : data.entries;
+    const locale = Array.isArray(data) ? (this.props.locale || 'en') : (data.locale || 'en');
+    const log = entries[index];
     const cachedTiming = getNetworkEntry(log.entryId)?.timing;
     const timing = cachedTiming || log.timing;
     const timestampLabel = formatListTimestamp(timing?.requestTimestamp);
     const completed = Number.isFinite(timing?.completionTimestamp);
-    const elapsedLabel = completed ? formatElapsed(timing?.duration) : 'Pending';
-    const frameUrl = formatFrameUrl(log.location);
-    const replayProvenance = log.replayedFrom ? formatReplayProvenance(log.replayedFrom) : null;
-    const timingLabel = formatReplayTiming(timestampLabel, elapsedLabel, log.replayedFrom);
+    const elapsedLabel = completed ? formatElapsed(timing?.duration) : translate(locale, 'network.pending');
+    const frameUrl = formatFrameUrl(log.location, locale);
+    const replayProvenance = log.replayedFrom ? formatReplayProvenance(log.replayedFrom, locale) : null;
+    const timingLabel = formatReplayTiming(timestampLabel, elapsedLabel, log.replayedFrom, locale);
 
     return (
       <div
@@ -79,7 +87,7 @@ export class NetworkListRow extends PureComponent {
           <div className="data-row-heading">
             <span className="data-row-title">{log.endpoint || log.method}</span>
             {replayProvenance && (
-              <span className="data-row-edited-badge" title={replayProvenance}>Edited</span>
+              <span className="data-row-edited-badge" title={replayProvenance}>{translate(locale, 'network.edited')}</span>
             )}
           </div>
           <div className="data-row-meta" title={log.location || undefined}>{frameUrl}</div>
