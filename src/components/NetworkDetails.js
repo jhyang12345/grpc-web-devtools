@@ -8,8 +8,15 @@ import { getNetworkEntry } from "../state/networkCache";
 import { showToast } from "../state/toast";
 import { sendReplayRequest, validateReplayRequest } from "../replayBridge";
 import { getStorageItem, setStorageItem } from "../utils/localStorage";
+import { writeTextToClipboard } from "../utils/clipboard";
+import {
+  buildDebugReport,
+  formatDebugReportJson,
+  formatDebugReportMarkdown,
+} from "../utils/debugReport";
 import { translate } from "../i18n";
 import MethodHeader from "./MethodHeader";
+import DebugReportCopy from "./DebugReportCopy";
 import SearchBar from "./SearchBar";
 import "./NetworkDetails.css";
 
@@ -391,7 +398,6 @@ export class NetworkDetails extends Component {
 
     return (
       <div className="widget vbox details-container">
-        {entry?.method && <MethodHeader method={entry.method} />}
         {this._renderContent(entry)}
       </div>
     );
@@ -420,6 +426,15 @@ export class NetworkDetails extends Component {
 
     return (
       <>
+        <MethodHeader method={entryToRender?.method || entry.method}>
+          <DebugReportCopy
+            locale={locale}
+            onCopy={format => this._copyDebugReport(format, entryToRender, {
+              requestPayloadMissing,
+              responsePayloadMissing,
+            })}
+          />
+        </MethodHeader>
         <div className="details-main">
           <Split
             className="details-pane-split vbox flex-auto"
@@ -830,38 +845,46 @@ export class NetworkDetails extends Component {
     }
   };
 
+  _copyDebugReport = async (format, entry, payloadState) => {
+    const kind = format === "json" ? "jsonReport" : "markdownReport";
+    try {
+      const report = buildDebugReport(entry, payloadState);
+      const text = format === "json"
+        ? formatDebugReportJson(report)
+        : formatDebugReportMarkdown(report);
+      await this._copyText(kind, text);
+    } catch (_) {
+      this._showCopyFailure(kind);
+    }
+  };
+
+  _getCopyLabel = kind => translate(this.props.locale || "en", `copy.${kind}Label`);
+
+  _showCopyFailure = kind => {
+    const locale = this.props.locale || "en";
+    this.props.showToast({
+      message: translate(locale, "copy.failure", { label: this._getCopyLabel(kind) }),
+      type: "error",
+      autoDismiss: 4000,
+    });
+  };
+
   async _copyText(kind, text) {
     if (!text) {
       return;
     }
 
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const tempTextArea = document.createElement("textarea");
-        tempTextArea.value = text;
-        document.body.appendChild(tempTextArea);
-        tempTextArea.select();
-        document.execCommand("copy");
-        document.body.removeChild(tempTextArea);
-      }
+      await writeTextToClipboard(text);
 
       const { locale = "en" } = this.props;
-      const label = translate(locale, `copy.${kind}Label`);
       this.props.showToast({
-        message: translate(locale, "copy.success", { label }),
+        message: translate(locale, "copy.success", { label: this._getCopyLabel(kind) }),
         type: "success",
         autoDismiss: 2000,
       });
     } catch (error) {
-      const { locale = "en" } = this.props;
-      const label = translate(locale, `copy.${kind}Label`);
-      this.props.showToast({
-        message: translate(locale, "copy.failure", { label }),
-        type: "error",
-        autoDismiss: 4000,
-      });
+      this._showCopyFailure(kind);
     }
   }
 

@@ -1,4 +1,9 @@
 .method-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  position: relative;
   background-color: var(--toolbar-bg-color);
   border-bottom: 1px solid var(--divider-color);
   padding: 8px 12px;
@@ -6,11 +11,30 @@
   font-size: 12px;
   color: var(--toolbar-color);
   flex-shrink: 0;
+}
+
+.method-header-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 500;
+  line-height: 1.4;
   word-break: break-all;
   overflow-wrap: break-word;
 }
 
-.method-header-text {
-  font-weight: 500;
-  line-height: 1.4;
+.method-header-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+@media (max-width: 520px) {
+  .method-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .method-header-actions {
+    margin-left: auto;
+  }
 }

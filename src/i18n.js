@@ -8,7 +8,7 @@ export const PROTECTED_ENGLISH_TERMS = [
   'gRPC', 'gRPC-Web', 'Connect-Web', 'RPC', 'DevTools',
   'Request', 'Response', 'Replay', 'Metadata', 'Method', 'Transport',
   'Status', 'Payload', 'Stream', 'Error', 'JSON', 'Markdown', 'HTTP',
-  'URL', 'Frame URL', 'Backend URL', 'TTFM', 'Log', 'Filter',
+  'URL', 'Frame URL', 'Backend URL', 'TTFM', 'Debug Report', 'Log', 'Filter',
   'Content Script', 'Cache', 'Clipboard',
 ];
 
@@ -123,6 +123,14 @@ export const MESSAGES = {
     'copy.responseLabel': 'Response',
     'copy.success': '{label} copied to clipboard',
     'copy.failure': 'Failed to copy {label}',
+    'copy.report': 'Copy report',
+    'copy.reportAria': 'Copy Debug Report',
+    'copy.chooseFormat': 'Choose Debug Report format',
+    'copy.asMarkdown': 'Copy as Markdown',
+    'copy.asJson': 'Copy as JSON',
+    'copy.reportSensitiveWarning': 'Includes captured URLs and Payload without redaction.',
+    'copy.markdownReportLabel': 'Markdown Debug Report',
+    'copy.jsonReportLabel': 'JSON Debug Report',
 
     'replay.requestMissing': 'Full request payload is no longer available.',
     'replay.requestTruncated': 'This request payload was truncated and cannot be replayed.',
@@ -256,6 +264,14 @@ export const MESSAGES = {
     'copy.responseLabel': 'Response',
     'copy.success': '{label}을(를) Clipboard에 복사했습니다',
     'copy.failure': '{label} 복사에 실패했습니다',
+    'copy.report': 'Debug Report 복사',
+    'copy.reportAria': 'Debug Report 복사',
+    'copy.chooseFormat': 'Debug Report 형식 선택',
+    'copy.asMarkdown': 'Markdown으로 복사',
+    'copy.asJson': 'JSON으로 복사',
+    'copy.reportSensitiveWarning': '캡처된 URL과 Payload를 마스킹 없이 포함합니다.',
+    'copy.markdownReportLabel': 'Markdown Debug Report',
+    'copy.jsonReportLabel': 'JSON Debug Report',
 
     'replay.requestMissing': '전체 Request Payload을 더 이상 사용할 수 없습니다.',
     'replay.requestTruncated': '이 Request Payload는 잘려서 Replay할 수 없습니다.',
