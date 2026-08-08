@@ -80,6 +80,30 @@ must distinguish "unset" from "set to empty".
 > page accepted and scheduled the replay; the new request entry records the
 > actual RPC success or failure.
 
+### Language and debug reports
+
+The panel supports English and Korean. It follows the browser UI language by
+default; use the settings gear in the panel toolbar to choose **Auto
+(browser)**, **English**, or **한국어**. Korean copy keeps standard developer
+terms such as `Request`, `Response`, `Replay`, `JSON`, `Metadata`, and URL labels
+in English so they remain consistent with code, logs, and issue trackers.
+
+Select a captured request and use **Copy report** beside its RPC method. The
+main split-button action copies a Markdown report suitable for sharing in an
+issue. Open its caret menu to choose Markdown or JSON explicitly. Both formats
+use the same locale-independent schema and include:
+
+- inspector/browser environment details;
+- RPC identity, transport, exact frame/backend URLs, timing, and status;
+- request, response, stream messages, error, and replay provenance; and
+- explicit `available`, `missing`, `truncated`, or `evicted` payload state.
+
+Reports never include the internal replay capability token. They do preserve
+captured URLs, query values, and payloads exactly and do **not** redact secrets
+or personal data. Review a report before sharing it outside your team. Raw
+request and response copy buttons remain available when only the payload is
+needed.
+
 ### Replay limits and request construction
 
 Replay is available only for a request the extension has already captured. The
