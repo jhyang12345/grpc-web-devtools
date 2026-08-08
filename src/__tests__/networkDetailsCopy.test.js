@@ -41,7 +41,8 @@ test('raw and formatted copies share the clipboard helper and localize only the 
   await component._copyDebugReport('json', entry, {});
 
   expect(writeTextToClipboard.mock.calls[0][0]).toBe('{"id":7}');
-  expect(writeTextToClipboard.mock.calls[1][0]).toContain('"schema": "grpc-web-debug-report/v1"');
+  expect(writeTextToClipboard.mock.calls[1][0]).toContain('"url": "/demo.Service/GetThing"');
+  expect(writeTextToClipboard.mock.calls[1][0]).not.toContain('"schema"');
   expect(showToast.mock.calls[0][0].message).toContain('Request');
   expect(showToast.mock.calls[1][0].message).toContain('JSON Debug Report');
   expect(showToast.mock.calls[1][0].message).toContain('Clipboard');

@@ -91,12 +91,8 @@ in English so they remain consistent with code, logs, and issue trackers.
 Select a captured request and use **Copy report** beside its RPC method. The
 main split-button action copies a Markdown report suitable for sharing in an
 issue. Open its caret menu to choose Markdown or JSON explicitly. Both formats
-use the same locale-independent schema and include:
-
-- inspector/browser environment details;
-- RPC identity, transport, exact frame/backend URLs, timing, and status;
-- request, response, stream messages, error, and replay provenance; and
-- explicit `available`, `missing`, `truncated`, or `evicted` payload state.
+contain only the request URL (including the RPC method), captured request, and
+captured response. Retained stream messages are copied as the response.
 
 Reports never include the internal replay capability token. They do preserve
 captured URLs, query values, and payloads exactly and do **not** redact secrets
