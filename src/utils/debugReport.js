@@ -51,8 +51,20 @@ function getReportUrl(entry, options) {
 
 function getReportResponse(entry, responsePayloadMissing) {
   if (responsePayloadMissing) return null;
-  if (entry?.response !== undefined) return nullable(entry.response);
-  if (Array.isArray(entry?.messages) && entry.messages.length) return entry.messages;
+  const hasResponse = entry?.response !== undefined;
+  const hasMessages = Array.isArray(entry?.messages) && entry.messages.length > 0;
+  const hasError = entry?.error !== undefined;
+
+  if (hasError) {
+    return {
+      ...(hasResponse ? { response: nullable(entry.response) } : {}),
+      ...(hasMessages ? { messages: entry.messages } : {}),
+      error: nullable(entry.error),
+    };
+  }
+
+  if (hasResponse) return nullable(entry.response);
+  if (hasMessages) return entry.messages;
   return null;
 }
 
@@ -78,8 +90,6 @@ function codeFence(value, language) {
 
 export function formatDebugReportMarkdown(report) {
   return [
-    '# gRPC Debug Report',
-    '',
     '## URL',
     '',
     codeFence(report.url, 'text'),

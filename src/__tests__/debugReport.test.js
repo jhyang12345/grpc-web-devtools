@@ -18,7 +18,6 @@ const fullEntry = {
   request: { authorization: 'exact-secret', query: '```' },
   response: { ok: true },
   messages: [{ id: 1 }, { id: 2 }],
-  error: { code: 'INTERNAL' },
   replay: { available: true, token: 'must-not-be-copied' },
   replayedFrom: { token: 'also-secret' },
 };
@@ -64,6 +63,27 @@ test('uses retained stream messages as the Response', () => {
   expect(report.response).toEqual([{ id: 2 }, { id: 3 }]);
 });
 
+test('includes a captured error inside Response', () => {
+  const unaryError = buildDebugReport({
+    method: '/demo.Service/Fail',
+    request: { id: 1 },
+    error: { code: 'INTERNAL', message: 'failed' },
+  });
+  expect(unaryError.response).toEqual({
+    error: { code: 'INTERNAL', message: 'failed' },
+  });
+
+  const streamError = buildDebugReport({
+    method: '/demo.Service/Stream',
+    messages: [{ id: 2 }],
+    error: { code: 'UNAVAILABLE' },
+  });
+  expect(streamError.response).toEqual({
+    messages: [{ id: 2 }],
+    error: { code: 'UNAVAILABLE' },
+  });
+});
+
 test('keeps truncated payload descriptors and represents evicted payloads as null', () => {
   const truncated = buildDebugReport({
     method: '/demo.Service/GetThing',
@@ -89,7 +109,8 @@ test('formats deterministic JSON and minimal Markdown with safe fences', () => {
   expect(json).toBe(formatDebugReportJson(report));
   expect(json).toContain('"url": "https://api.example.test/demo.Service/GetThing?tenant=blue#result"');
   expect(json.endsWith('\n')).toBe(true);
-  expect(markdown).toContain('# gRPC Debug Report');
+  expect(markdown).not.toContain('# gRPC Debug Report');
+  expect(markdown.startsWith('## URL\n')).toBe(true);
   expect(markdown).toContain('## URL');
   expect(markdown).toContain('## Request');
   expect(markdown).toContain('## Response');

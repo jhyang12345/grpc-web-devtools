@@ -30,7 +30,8 @@ test('debug report bytes do not change with the panel locale', async () => {
 
   expect(writeTextToClipboard).toHaveBeenCalledTimes(2);
   expect(writeTextToClipboard.mock.calls[0][0]).toBe(writeTextToClipboard.mock.calls[1][0]);
-  expect(writeTextToClipboard.mock.calls[0][0]).toContain('# gRPC Debug Report');
+  expect(writeTextToClipboard.mock.calls[0][0]).toMatch(/^## URL\n/);
+  expect(writeTextToClipboard.mock.calls[0][0]).not.toContain('# gRPC Debug Report');
 });
 
 test('raw and formatted copies share the clipboard helper and localize only the toast', async () => {
