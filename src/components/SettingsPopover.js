@@ -1,6 +1,9 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
+/* global chrome */
+
 import React, { Component } from 'react';
+import packageInfo from '../../package.json';
 import { translate } from '../i18n';
 import SettingsIcon from '../icons/Settings';
 import './SettingsPopover.css';
@@ -10,6 +13,17 @@ const OPTIONS = [
   { value: 'en', labelKey: 'settings.english' },
   { value: 'ko', labelKey: 'settings.korean' },
 ];
+
+const packageVersion = packageInfo.version;
+
+export function getExtensionVersion() {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.runtime?.getManifest) {
+      return chrome.runtime.getManifest().version || packageVersion;
+    }
+  } catch (_) {}
+  return packageVersion;
+}
 
 export class SettingsPopover extends Component {
   state = { isOpen: false };
@@ -33,6 +47,7 @@ export class SettingsPopover extends Component {
   render() {
     const { locale = 'en', preference = 'auto' } = this.props;
     const { isOpen } = this.state;
+    const version = this.props.version || getExtensionVersion();
 
     return (
       <div className="settings-control" ref={this.rootRef}>
@@ -74,6 +89,10 @@ export class SettingsPopover extends Component {
                   <span>{translate(locale, option.labelKey)}</span>
                 </label>
               ))}
+            </div>
+            <div className="settings-version">
+              <span>{translate(locale, 'settings.version')}</span>
+              <code>{version}</code>
             </div>
           </div>
         )}

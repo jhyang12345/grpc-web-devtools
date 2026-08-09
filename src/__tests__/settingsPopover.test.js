@@ -6,6 +6,7 @@ test('settings popover exposes accessible persisted language choices', () => {
   const component = new SettingsPopover({
     locale: 'ko',
     preference: 'ko',
+    version: '1.6.0',
     onLanguageChange: jest.fn(),
   });
   component.state = { isOpen: true };
@@ -17,6 +18,8 @@ test('settings popover exposes accessible persisted language choices', () => {
   expect(markup).toContain('English');
   expect(markup).toContain('한국어');
   expect(markup).toContain('value="ko" checked=""');
+  expect(markup).toContain('class="settings-version"');
+  expect(markup).toContain('<span>Version</span><code>1.6.0</code>');
 });
 
 test('settings popover reports language changes without rewriting values', () => {

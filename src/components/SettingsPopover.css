@@ -58,6 +58,24 @@
   padding-top: 4px;
 }
 
+.settings-version {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 4px 2px 0;
+  padding: 7px 7px 3px;
+  border-top: 1px solid var(--divider-color);
+  color: var(--text-secondary-color);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.settings-version code {
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
 .settings-option {
   display: flex;
   align-items: center;

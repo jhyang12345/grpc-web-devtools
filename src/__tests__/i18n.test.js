@@ -38,5 +38,5 @@ test('keeps every protected Korean technical term exactly in English', () => {
   expect(MESSAGES.ko['details.metadata']).toBe('Metadata');
   expect(MESSAGES.ko['copy.success']).toContain('Clipboard');
   expect(MESSAGES.ko['toolbar.pendingTitle']).toContain('Content Script');
+  expect(MESSAGES.ko['settings.version']).toBe('Version');
 });
-

@@ -9,7 +9,7 @@ export const PROTECTED_ENGLISH_TERMS = [
   'Request', 'Response', 'Replay', 'Metadata', 'Method', 'Transport',
   'Status', 'Payload', 'Stream', 'Error', 'JSON', 'Markdown', 'HTTP',
   'URL', 'Frame URL', 'Backend URL', 'TTFM', 'Debug Report', 'Log', 'Filter',
-  'Content Script', 'Cache', 'Clipboard',
+  'Content Script', 'Cache', 'Clipboard', 'Version',
 ];
 
 export const KOREAN_TECHNICAL_TERMS = Object.freeze(
@@ -42,6 +42,7 @@ export const MESSAGES = {
     'settings.english': 'English',
     'settings.korean': '한국어',
     'settings.close': 'Close settings',
+    'settings.version': 'Version',
 
     'network.filterPlaceholder': 'Filter',
     'network.capturedRequests': 'Captured requests',
@@ -183,6 +184,7 @@ export const MESSAGES = {
     'settings.english': 'English',
     'settings.korean': '한국어',
     'settings.close': '설정 닫기',
+    'settings.version': 'Version',
 
     'network.filterPlaceholder': 'Filter',
     'network.capturedRequests': '캡처된 Request 목록',
