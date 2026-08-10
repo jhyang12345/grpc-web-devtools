@@ -51,6 +51,7 @@ export class SettingsPopover extends Component {
 
     return (
       <div className="settings-control" ref={this.rootRef}>
+        <span className="settings-version-label">v{version}</span>
         <button
           ref={this.buttonRef}
           type="button"
@@ -89,10 +90,6 @@ export class SettingsPopover extends Component {
                   <span>{translate(locale, option.labelKey)}</span>
                 </label>
               ))}
-            </div>
-            <div className="settings-version">
-              <span>{translate(locale, 'settings.version')}</span>
-              <code>{version}</code>
             </div>
           </div>
         )}
