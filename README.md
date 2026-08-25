@@ -101,6 +101,39 @@ or personal data. Review a report before sharing it outside your team. Raw
 request and response copy buttons remain available when only the payload is
 needed.
 
+#### Downloadable audit reports
+
+After reproducing a problem, choose **Audit report** in the panel toolbar to
+download one paste-ready Markdown file. The report combines recent detected
+issues with recent requests matching the active Filter, so QA can hand off a
+reproduction without copying each Request and Response separately. RPC errors
+are prioritized, and the report also flags slow or incomplete calls, partial
+stream failures, failed replays, dropped stream history, large payloads, and
+capture truncation.
+
+Each file contains a chronological activity timeline, detailed evidence for up
+to 25 requests, repeated-failure and shared-route observations, request timing,
+gRPC status, bounded Request/Response snapshots, and explicit markers when
+evidence was truncated or evicted. Suggested investigation areas are based on
+captured status codes and patterns; they are clues, not root-cause
+determinations. Correlate the timestamps and request IDs with backend and proxy
+logs. The browser capture does not include server logs, response headers,
+trailers, or stack traces.
+
+Audit exports are deliberately bounded: they scan at most 1,000 lightweight
+summaries, include a 50-request metadata timeline, retain at most 6 KiB from
+each exported payload, and never exceed 512 KiB. Exporting does not create a
+second history store. The inspector payload cache is capped at 500 entries and
+32 MiB in aggregate, with a 5 MiB per-request limit and 100 retained stream
+messages. A disconnected frame's forwarding queue is capped at 100 events and
+8 MiB.
+
+Unlike the raw single-request report above, audit reports apply best-effort
+redaction for common credential fields, token-shaped text, URL credentials,
+query values, and fragments. The active Filter text and internal replay token
+are omitted. Structural redaction cannot identify every secret or personal data
+field, so review the downloaded file before sharing it outside your team.
+
 ### Replay limits and request construction
 
 Replay is available only for a request the extension has already captured. The
