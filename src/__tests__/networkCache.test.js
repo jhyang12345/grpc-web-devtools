@@ -1,4 +1,10 @@
-import { addNetworkEntry, clearNetworkCache, getCacheDebugState } from '../state/networkCache';
+import {
+  addNetworkEntry,
+  clearNetworkCache,
+  getCacheDebugState,
+  getNetworkEntry,
+  MAX_CACHE_BYTES,
+} from '../state/networkCache';
 
 afterEach(() => clearNetworkCache());
 
@@ -27,9 +33,29 @@ test('retains bounded ordered stream history and terminal error within aggregate
 test('uses frame-aware cache identities and prunes mappings on eviction', () => {
   addNetworkEntry({ captureId: 'frame-a', transport: 'grpc-web', requestId: 1, phase: 'start' });
   addNetworkEntry({ captureId: 'frame-b', transport: 'grpc-web', requestId: 1, phase: 'start' });
-  expect(getCacheDebugState()).toEqual({ size: 2, mappings: 2 });
+  expect(getCacheDebugState()).toEqual({ size: 2, mappings: 2, payloadBytes: 0 });
   for (let index = 0; index < 500; index += 1) addNetworkEntry({ captureId: 'extra', transport: 'grpc-web', requestId: index + 2, phase: 'start' });
-  expect(getCacheDebugState()).toEqual({ size: 500, mappings: 500 });
+  expect(getCacheDebugState()).toEqual({ size: 500, mappings: 500, payloadBytes: 0 });
+});
+
+test('evicts oldest payloads when the aggregate cache byte budget is reached', () => {
+  const payload = { body: 'x'.repeat(1024 * 1024) };
+  const entriesToExceedBudget = Math.ceil(MAX_CACHE_BYTES / payload.body.length) + 1;
+  let firstEntryId;
+
+  for (let index = 0; index < entriesToExceedBudget; index += 1) {
+    const entry = addNetworkEntry({
+      captureId: 'frame',
+      transport: 'grpc-web',
+      requestId: index + 1,
+      phase: 'start',
+      request: payload,
+    });
+    if (index === 0) firstEntryId = entry.entryId;
+  }
+
+  expect(getCacheDebugState().payloadBytes).toBeLessThanOrEqual(MAX_CACHE_BYTES);
+  expect(getNetworkEntry(firstEntryId)).toBeUndefined();
 });
 
 test('retains only clone-safe replay metadata with the bounded request entry', () => {
