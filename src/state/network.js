@@ -153,25 +153,65 @@ const networkSlice = createSlice({
 const { actions, reducer } = networkSlice;
 export const { networkLog, networkLogBatch, selectLogEntry, clearLog, setPreserveLog } = actions;
 
+function boundedSummaryString(value, maximum) {
+  return typeof value === "string" ? value.slice(0, maximum) : undefined;
+}
+
+function boundedSummaryId(value) {
+  if (Number.isFinite(value)) return value;
+  return boundedSummaryString(value, 128);
+}
+
+function buildSummaryTiming(value) {
+  if (!value || typeof value !== "object") return {};
+  const timing = {};
+  ["requestTimestamp", "completionTimestamp", "duration", "messageCount", "timeToFirstMessage"].forEach(field => {
+    if (Number.isFinite(value[field])) timing[field] = value[field];
+  });
+  return timing;
+}
+
 export function buildSummaryEntry(entry) {
+  const diagnosticCode = value => (
+    typeof value === "string" || typeof value === "number"
+      ? String(value).slice(0, 64)
+      : undefined
+  );
+  const payloadTruncated = [entry.request, entry.response, entry.error, entry.status, ...(entry.messages || [])]
+    .some(value => value && typeof value === "object" && value.__truncated === true);
   return {
     entryId: entry.entryId,
-    captureId: entry.captureId,
-    method: entry.method,
-    methodType: entry.methodType,
-    transport: entry.transport,
-    timing: entry.timing,
-    location: entry.location,
-    backendUrl: entry.backendUrl,
+    captureId: boundedSummaryString(entry.captureId, 256),
+    method: boundedSummaryString(entry.method, 2048),
+    methodType: boundedSummaryString(entry.methodType, 128),
+    transport: boundedSummaryString(entry.transport, 128),
+    timing: buildSummaryTiming(entry.timing),
+    location: boundedSummaryString(entry.location, 4096),
+    backendUrl: boundedSummaryString(entry.backendUrl, 4096),
     request: !!entry.request,
     response: !!entry.response || !!entry.messages?.length,
     error: !!entry.error,
     isNetworkError: !!entry.error?.isNetworkError,
     status: !!entry.status,
     messages: !!entry.messages?.length,
-    requestId: entry.requestId,
-    replay: entry.replay,
-    replayedFrom: entry.replayedFrom,
+    terminalPhase: boundedSummaryString(entry.terminalPhase, 32),
+    statusCode: diagnosticCode(entry.status?.code),
+    errorCode: diagnosticCode(entry.error?.code),
+    payloadBytes: Number.isFinite(entry.payloadBytes) ? entry.payloadBytes : undefined,
+    payloadTruncated,
+    messageCount: Number.isFinite(entry.messageCount) ? entry.messageCount : undefined,
+    droppedMessageCount: Number.isFinite(entry.droppedMessageCount) ? entry.droppedMessageCount : undefined,
+    requestId: boundedSummaryId(entry.requestId),
+    replay: entry.replay && typeof entry.replay === "object" ? {
+      available: entry.replay.available === true,
+      token: boundedSummaryString(entry.replay.token, 512),
+      reason: boundedSummaryString(entry.replay.reason, 512),
+    } : undefined,
+    replayedFrom: entry.replayedFrom && typeof entry.replayedFrom === "object" ? {
+      captureId: boundedSummaryString(entry.replayedFrom.captureId, 256),
+      transport: boundedSummaryString(entry.replayedFrom.transport, 128),
+      requestId: boundedSummaryId(entry.replayedFrom.requestId),
+    } : undefined,
   };
 }
 
@@ -189,6 +229,14 @@ function flushBatch(dispatch) {
 
   dispatch(networkLogBatch(batch));
 }
+
+export const flushPendingNetworkLog = () => dispatch => {
+  if (batchTimeout) {
+    clearTimeout(batchTimeout);
+    batchTimeout = null;
+  }
+  flushBatch(dispatch);
+};
 
 export const logNetworkEntry = (data) => (dispatch) => {
   const fullEntry = addNetworkEntry(data);

@@ -4,25 +4,83 @@ const MAX_CACHE_ENTRIES = 500;
 export const MAX_CACHE_BYTES = 32 * 1024 * 1024;
 export const MAX_ENTRY_BYTES = 5 * 1024 * 1024;
 export const MAX_STREAM_MESSAGES = 100;
+const MAX_PAYLOAD_NODES = 10000;
+const MAX_INSPECTED_CHARACTERS = MAX_ENTRY_BYTES * 2;
 
-function safeStringify(value) {
+function tryStringify(value) {
   try {
     const serialized = JSON.stringify(value);
-    return typeof serialized === "string" ? serialized : '"[unserializable]"';
+    return typeof serialized === "string"
+      ? { serialized, failed: false }
+      : { serialized: '"[unserializable]"', failed: true };
   } catch (_) {
-    return '"[unserializable]"';
+    return { serialized: '"[unserializable]"', failed: true };
   }
 }
+
+function safeStringify(value) { return tryStringify(value).serialized; }
 
 function byteLength(json) {
   if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(json).length;
   return unescape(encodeURIComponent(json)).length;
 }
 
+function boundedString(value, maximum) {
+  return typeof value === "string" ? value.slice(0, maximum) : undefined;
+}
+
+function boundedId(value) {
+  if (Number.isFinite(value)) return value;
+  return boundedString(value, 128);
+}
+
+function boundedTiming(value) {
+  if (!value || typeof value !== "object") return {};
+  const timing = {};
+  ["requestTimestamp", "completionTimestamp", "duration", "messageCount", "timeToFirstMessage"].forEach(field => {
+    if (Number.isFinite(value[field])) timing[field] = value[field];
+  });
+  return timing;
+}
+
+function inspectPayload(value) {
+  const state = { nodes: 0, characters: 0, seen: new WeakSet() };
+  const visit = (current, depth) => {
+    if (current === null) return true;
+    const type = typeof current;
+    if (type === "string") {
+      state.characters += current.length;
+      return state.characters <= MAX_INSPECTED_CHARACTERS;
+    }
+    if (type === "number" || type === "boolean") return true;
+    if (type !== "object" || depth > 50 || state.seen.has(current)) return false;
+    if (!Array.isArray(current) && Object.prototype.toString.call(current) !== "[object Object]") return false;
+    if (Array.isArray(current) && current.length > MAX_PAYLOAD_NODES) return false;
+    state.nodes += 1;
+    if (state.nodes > MAX_PAYLOAD_NODES) return false;
+    state.seen.add(current);
+    let keys = 0;
+    for (const key in current) {
+      if (!Object.prototype.hasOwnProperty.call(current, key)) continue;
+      keys += 1;
+      state.characters += key.length;
+      if (keys > MAX_PAYLOAD_NODES || state.characters > MAX_INSPECTED_CHARACTERS || !visit(current[key], depth + 1)) return false;
+    }
+    return true;
+  };
+  return visit(value, 0);
+}
+
+function unsupportedPayloadDescriptor(preview = "[unsupported, cyclic, or oversized payload omitted]") {
+  return { __truncated: true, __originalSizeBytes: null, preview };
+}
+
 export function payloadDescriptor(value) {
-  const serialized = safeStringify(value);
-  const originalSizeBytes = byteLength(serialized);
-  return payloadDescriptorFromSerialized(serialized, originalSizeBytes);
+  if (!inspectPayload(value)) return unsupportedPayloadDescriptor();
+  const serialization = tryStringify(value);
+  if (serialization.failed) return unsupportedPayloadDescriptor("[unserializable payload omitted]");
+  const originalSizeBytes = byteLength(serialization.serialized);
+  return payloadDescriptorFromSerialized(serialization.serialized, originalSizeBytes);
 }
 
 function payloadDescriptorFromSerialized(serialized, originalSizeBytes) {
@@ -35,7 +93,16 @@ function payloadDescriptorFromSerialized(serialized, originalSizeBytes) {
 
 function limitPayloadWithBytes(value) {
   if (value == null) return { value, bytes: 0 };
-  const serialized = safeStringify(value);
+  if (!inspectPayload(value)) {
+    const descriptor = unsupportedPayloadDescriptor();
+    return { value: descriptor, bytes: byteLength(safeStringify(descriptor)) };
+  }
+  const serialization = tryStringify(value);
+  if (serialization.failed) {
+    const descriptor = unsupportedPayloadDescriptor("[unserializable payload omitted]");
+    return { value: descriptor, bytes: byteLength(safeStringify(descriptor)) };
+  }
+  const { serialized } = serialization;
   const originalSizeBytes = byteLength(serialized);
   if (originalSizeBytes <= MAX_ENTRY_BYTES) {
     return { value, bytes: originalSizeBytes };
@@ -59,7 +126,24 @@ function setPayloadField(entry, accounting, field, value, bytes) {
 }
 
 function applyIndividualLimits(entry) {
-  const limited = { ...entry };
+  const source = entry && typeof entry === "object" ? entry : {};
+  const limited = {
+    phase: boundedString(source.phase, 32),
+    method: boundedString(source.method, 2048),
+    methodType: boundedString(source.methodType, 128),
+    transport: boundedString(source.transport, 128),
+    captureId: boundedString(source.captureId, 256),
+    requestId: boundedId(source.requestId),
+    location: boundedString(source.location, 4096),
+    backendUrl: boundedString(source.backendUrl, 4096),
+    request: source.request,
+    response: source.response,
+    error: source.error,
+    status: source.status,
+    timing: boundedTiming(source.timing),
+    replay: source.replay,
+    replayedFrom: source.replayedFrom,
+  };
   const payloadBytes = {};
   ["request", "response", "error", "status"].forEach(field => {
     if (limited[field] == null) return;

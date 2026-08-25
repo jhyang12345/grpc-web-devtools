@@ -8,7 +8,7 @@ export const PROTECTED_ENGLISH_TERMS = [
   'gRPC', 'gRPC-Web', 'Connect-Web', 'RPC', 'DevTools',
   'Request', 'Response', 'Replay', 'Metadata', 'Method', 'Transport',
   'Status', 'Payload', 'Stream', 'Error', 'JSON', 'Markdown', 'HTTP',
-  'URL', 'Frame URL', 'Backend URL', 'TTFM', 'Debug Report', 'Log', 'Filter',
+  'URL', 'Frame URL', 'Backend URL', 'TTFM', 'Debug Report', 'Audit Report', 'Log', 'Filter',
   'Content Script', 'Cache', 'Clipboard', 'Version',
 ];
 
@@ -42,6 +42,13 @@ export const MESSAGES = {
     'settings.english': 'English',
     'settings.korean': '한국어',
     'settings.close': 'Close settings',
+
+    'audit.download': 'Audit report',
+    'audit.downloadTitle': 'Download recent issues and current Filter matches as a Markdown Audit Report',
+    'audit.emptyTitle': 'Capture requests before creating an Audit Report',
+    'audit.preparing': 'Preparing...',
+    'audit.success': 'Audit Report downloaded ({count} detailed requests)',
+    'audit.failure': 'Failed to download Audit Report',
 
     'network.filterPlaceholder': 'Filter',
     'network.capturedRequests': 'Captured requests',
@@ -184,6 +191,13 @@ export const MESSAGES = {
     'settings.english': 'English',
     'settings.korean': '한국어',
     'settings.close': '설정 닫기',
+
+    'audit.download': 'Audit Report',
+    'audit.downloadTitle': '최근 문제와 현재 Filter 일치 Request를 Markdown Audit Report로 다운로드합니다',
+    'audit.emptyTitle': 'Audit Report를 만들려면 먼저 Request를 캡처하세요',
+    'audit.preparing': 'Audit Report 준비 중...',
+    'audit.success': 'Audit Report 다운로드 완료 ({count}개 항목)',
+    'audit.failure': 'Audit Report 다운로드에 실패했습니다',
 
     'network.filterPlaceholder': 'Filter',
     'network.capturedRequests': '캡처된 Request 목록',

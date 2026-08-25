@@ -69,3 +69,51 @@ test('retains only clone-safe replay metadata with the bounded request entry', (
   expect(entry.replayedFrom).toEqual(replayedFrom);
   expect(JSON.stringify(entry)).not.toContain('function');
 });
+
+test('allowlists and bounds metadata outside payload accounting', () => {
+  const entry = addNetworkEntry({
+    captureId: 'c'.repeat(1000),
+    transport: 't'.repeat(1000),
+    requestId: 1,
+    phase: 'start',
+    method: 'm'.repeat(10000),
+    location: 'l'.repeat(10000),
+    backendUrl: 'b'.repeat(10000),
+    timing: {
+      requestTimestamp: 1,
+      duration: 2,
+      padding: 'never-retain-this'.repeat(100000),
+    },
+    arbitraryMetadata: 'also-never-retain-this'.repeat(100000),
+  });
+
+  expect(entry.captureId).toHaveLength(256);
+  expect(entry.transport).toHaveLength(128);
+  expect(entry.method).toHaveLength(2048);
+  expect(entry.location).toHaveLength(4096);
+  expect(entry.backendUrl).toHaveLength(4096);
+  expect(entry.timing).toEqual({ requestTimestamp: 1, duration: 2 });
+  expect(entry).not.toHaveProperty('arbitraryMetadata');
+  expect(JSON.stringify(entry)).not.toContain('never-retain-this');
+});
+
+test('replaces cyclic, BigInt, and binary payload graphs with bounded descriptors', () => {
+  const cyclic = { body: 'x'.repeat(1024 * 1024) };
+  cyclic.self = cyclic;
+  const payloads = [cyclic, { amount: BigInt(10) }, { bytes: new ArrayBuffer(16 * 1024 * 1024) }];
+
+  const entries = payloads.map((request, index) => addNetworkEntry({
+    captureId: 'frame',
+    transport: 'grpc-web',
+    requestId: index + 1,
+    phase: 'start',
+    request,
+  }));
+
+  entries.forEach(entry => expect(entry.request).toEqual(expect.objectContaining({
+    __truncated: true,
+    __originalSizeBytes: null,
+    preview: expect.stringContaining('omitted'),
+  })));
+  expect(getCacheDebugState().payloadBytes).toBeLessThan(4096);
+});

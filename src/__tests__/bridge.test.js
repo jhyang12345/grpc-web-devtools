@@ -179,11 +179,108 @@ test("content truncates oversized payloads before the extension bridge", () => {
     setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
   });
   ports[0].onMessage.emit({ action: "init_ack" });
-  eventListeners.message({ source: window, data: { type: "__GRPCWEB_DEVTOOLS__", requestId: 7, request: { body: 'x'.repeat(5 * 1024 * 1024 + 1) } } });
+  eventListeners.message({ source: window, data: {
+    type: "__GRPCWEB_DEVTOOLS__",
+    requestId: 7,
+    method: "m".repeat(10000),
+    timing: { duration: 1, padding: "never-retain-this".repeat(10000) },
+    arbitraryMetadata: "also-never-retain-this".repeat(10000),
+    request: { body: 'x'.repeat(5 * 1024 * 1024 + 1) },
+  } });
   const delivered = ports[0].posted.at(-1).data;
   expect(delivered).toEqual(expect.objectContaining({ captureId: expect.any(String), location: "https://example.test/frame" }));
+  expect(delivered.method).toHaveLength(2048);
+  expect(delivered.timing).toEqual({ duration: 1 });
+  expect(delivered).not.toHaveProperty("arbitraryMetadata");
   expect(delivered.request).toEqual(expect.objectContaining({ __truncated: true, __originalSizeBytes: expect.any(Number) }));
   expect(delivered.request.preview).toHaveLength(2000);
+});
+
+test("content bounds the disconnected message queue by aggregate bytes", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../../public/content-script.js"), "utf8");
+  const timers = timerQueue();
+  const ports = [];
+  const eventListeners = {};
+  const chrome = {
+    runtime: {
+      getURL: name => name,
+      connect: () => { const port = makePort("content"); ports.push(port); return port; },
+      onMessage: listenerList(),
+    },
+  };
+  const window = {
+    location: { href: "https://example.test/frame" },
+    crypto: { getRandomValues: values => values.fill(1) },
+    addEventListener: (name, listener) => { eventListeners[name] = listener; },
+  };
+  const document = { createElement: () => ({ remove: jest.fn() }), head: { appendChild: jest.fn() } };
+  vm.runInNewContext(source, {
+    chrome, window, document, Uint32Array, TextEncoder, Date, Math, String, Number,
+    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+  });
+
+  for (let requestId = 1; requestId <= 5; requestId += 1) {
+    eventListeners.message({ source: window, data: {
+      type: "__GRPCWEB_DEVTOOLS__",
+      phase: "start",
+      requestId,
+      request: { requestId, body: "x".repeat(2 * 1024 * 1024) },
+    } });
+  }
+  ports[0].onMessage.emit({ action: "init_ack" });
+  const delivered = ports[0].posted.filter(message => message.action === "gRPCNetworkCall");
+  const deliveredBytes = delivered.reduce((total, message) => total + new TextEncoder().encode(JSON.stringify(message)).length, 0);
+
+  expect(delivered.length).toBeLessThan(5);
+  expect(delivered.map(message => message.data.requestId)).not.toContain(1);
+  expect(delivered.at(-1).data.requestId).toBe(5);
+  expect(deliveredBytes).toBeLessThanOrEqual(8 * 1024 * 1024);
+});
+
+test("content replaces unsupported structured-clone payloads before queueing", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../../public/content-script.js"), "utf8");
+  const timers = timerQueue();
+  const ports = [];
+  const eventListeners = {};
+  const chrome = {
+    runtime: {
+      getURL: name => name,
+      connect: () => { const port = makePort("content"); ports.push(port); return port; },
+      onMessage: listenerList(),
+    },
+  };
+  const window = {
+    location: { href: "https://example.test/frame" },
+    crypto: { getRandomValues: values => values.fill(1) },
+    addEventListener: (name, listener) => { eventListeners[name] = listener; },
+  };
+  const document = { createElement: () => ({ remove: jest.fn() }), head: { appendChild: jest.fn() } };
+  vm.runInNewContext(source, {
+    chrome, window, document, Uint32Array, TextEncoder, Date, Math, String, Number, Object, WeakSet,
+    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+  });
+  const cyclic = { body: "x".repeat(1024 * 1024) };
+  cyclic.self = cyclic;
+  const payloads = [cyclic, { amount: BigInt(10) }, { bytes: new ArrayBuffer(16 * 1024 * 1024) }];
+
+  payloads.forEach((request, index) => eventListeners.message({ source: window, data: {
+    type: "__GRPCWEB_DEVTOOLS__",
+    phase: "start",
+    requestId: index + 1,
+    request,
+  } }));
+  ports[0].onMessage.emit({ action: "init_ack" });
+  const delivered = ports[0].posted.filter(message => message.action === "gRPCNetworkCall");
+
+  expect(delivered).toHaveLength(3);
+  delivered.forEach(message => {
+    expect(message.data.request).toEqual(expect.objectContaining({
+      __truncated: true,
+      __originalSizeBytes: null,
+      preview: expect.stringContaining("omitted"),
+    }));
+    expect(() => JSON.stringify(message)).not.toThrow();
+  });
 });
 
 test("content preserves a message that discovers a stale port and flushes it after reconnect", () => {

@@ -10,6 +10,9 @@
   const RECONNECT_MAX_MS = 30000;
   const ACK_TIMEOUT_MS = 5000;
   const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
+  const MAX_QUEUE_BYTES = 8 * 1024 * 1024;
+  const MAX_PAYLOAD_NODES = 10000;
+  const MAX_INSPECTED_CHARACTERS = MAX_PAYLOAD_BYTES * 2;
   const captureId = (() => {
     const bytes = new Uint32Array(2);
     if (window.crypto && window.crypto.getRandomValues) {
@@ -26,19 +29,72 @@
   let reconnectTimer = null;
   let ackTimer = null;
   const messageQueue = [];
+  let messageQueueBytes = 0;
 
-  const safeStringify = value => {
-    try { return JSON.stringify(value); } catch (_) { return '"[unserializable]"'; }
+  const tryStringify = value => {
+    try {
+      const serialized = JSON.stringify(value);
+      return typeof serialized === "string"
+        ? { serialized, failed: false }
+        : { serialized: '"[unserializable]"', failed: true };
+    } catch (_) {
+      return { serialized: '"[unserializable]"', failed: true };
+    }
   };
   const byteLength = value => new TextEncoder().encode(value).length;
+  const inspectPayload = value => {
+    const state = { nodes: 0, characters: 0, seen: new WeakSet() };
+    const visit = (current, depth) => {
+      if (current === null) return true;
+      const type = typeof current;
+      if (type === "string") {
+        state.characters += current.length;
+        return state.characters <= MAX_INSPECTED_CHARACTERS;
+      }
+      if (type === "number" || type === "boolean") return true;
+      if (type !== "object" || depth > 50 || state.seen.has(current)) return false;
+      if (!Array.isArray(current) && Object.prototype.toString.call(current) !== "[object Object]") return false;
+      if (Array.isArray(current) && current.length > MAX_PAYLOAD_NODES) return false;
+      state.nodes += 1;
+      if (state.nodes > MAX_PAYLOAD_NODES) return false;
+      state.seen.add(current);
+      let keys = 0;
+      for (const key in current) {
+        if (!Object.prototype.hasOwnProperty.call(current, key)) continue;
+        keys += 1;
+        state.characters += key.length;
+        if (keys > MAX_PAYLOAD_NODES || state.characters > MAX_INSPECTED_CHARACTERS || !visit(current[key], depth + 1)) return false;
+      }
+      return true;
+    };
+    return visit(value, 0);
+  };
+  const omittedPayload = (preview, originalSizeBytes = null) => ({
+    __truncated: true,
+    __originalSizeBytes: originalSizeBytes,
+    preview,
+  });
   const limitPayload = value => {
     if (value == null) return value;
-    const serialized = safeStringify(value);
+    if (!inspectPayload(value)) {
+      return omittedPayload("[unsupported, cyclic, or oversized payload omitted]");
+    }
+    const serialization = tryStringify(value);
+    if (serialization.failed) return omittedPayload("[unserializable payload omitted]");
+    const { serialized } = serialization;
     const originalSizeBytes = byteLength(serialized);
     if (originalSizeBytes <= MAX_PAYLOAD_BYTES) return value;
-    return { __truncated: true, __originalSizeBytes: originalSizeBytes, preview: serialized.slice(0, 2000) };
+    return omittedPayload(serialized.slice(0, 2000), originalSizeBytes);
   };
-  const shortString = value => typeof value === "string" ? value.slice(0, 512) : undefined;
+  const shortString = (value, maximum = 512) => typeof value === "string" ? value.slice(0, maximum) : undefined;
+  const normalizeTiming = value => {
+    if (!value || typeof value !== "object") return {};
+    const timing = {};
+    ["requestTimestamp", "completionTimestamp", "duration", "messageCount", "timeToFirstMessage"].forEach(field => {
+      if (Number.isFinite(value[field])) timing[field] = value[field];
+    });
+    return timing;
+  };
   const normalizeReplay = value => value && typeof value === "object" ? {
     available: value.available === true,
     token: shortString(value.token),
@@ -107,13 +163,47 @@
   function flushQueue() {
     while (acknowledged && port && messageQueue.length) {
       const currentPort = port;
+      const queued = messageQueue[0];
       try {
-        currentPort.postMessage(messageQueue[0]);
+        currentPort.postMessage(queued.message);
         messageQueue.shift();
+        messageQueueBytes = Math.max(0, messageQueueBytes - queued.bytes);
       } catch (_) {
         markPortBroken(currentPort);
         break;
       }
+    }
+  }
+
+  function compactQueuedMessage(message) {
+    if (!message || !message.data || typeof message.data !== "object") return message;
+    const data = { ...message.data };
+    ["request", "response", "error", "status"].forEach(field => {
+      if (data[field] == null) return;
+      const serialization = tryStringify(data[field]);
+      data[field] = omittedPayload(
+        "[payload omitted while the disconnected inspector queue was full]",
+        serialization.failed ? null : byteLength(serialization.serialized),
+      );
+    });
+    return { ...message, data };
+  }
+
+  function enqueueMessage(message) {
+    let queuedMessage = message;
+    let serialization = tryStringify(queuedMessage);
+    let queuedBytes = serialization.failed ? Number.POSITIVE_INFINITY : byteLength(serialization.serialized);
+    if (serialization.failed || queuedBytes > MAX_QUEUE_BYTES) {
+      queuedMessage = compactQueuedMessage(queuedMessage);
+      serialization = tryStringify(queuedMessage);
+      if (serialization.failed) return;
+      queuedBytes = byteLength(serialization.serialized);
+    }
+    messageQueue.push({ message: queuedMessage, bytes: queuedBytes });
+    messageQueueBytes += queuedBytes;
+    while (messageQueue.length > MAX_QUEUE_SIZE || messageQueueBytes > MAX_QUEUE_BYTES) {
+      const removed = messageQueue.shift();
+      messageQueueBytes = Math.max(0, messageQueueBytes - (removed ? removed.bytes : 0));
     }
   }
 
@@ -127,8 +217,7 @@
         try { currentPort.postMessage(message); return; } catch (_) { markPortBroken(currentPort); }
       }
     }
-    messageQueue.push(message);
-    if (messageQueue.length > MAX_QUEUE_SIZE) messageQueue.shift();
+    enqueueMessage(message);
   }
 
   function cloneReplayResult(data) {
@@ -201,11 +290,23 @@
   }
 
   function sendNetworkCall(data) {
+    const source = data && typeof data === "object" ? data : {};
     const event = {
-      ...data,
+      phase: shortString(source.phase, 32),
+      method: shortString(source.method, 2048),
+      methodType: shortString(source.methodType, 128),
+      transport: shortString(source.transport, 128),
+      backendUrl: shortString(source.backendUrl, 4096),
+      request: source.request,
+      response: source.response,
+      error: source.error,
+      status: source.status,
+      timing: normalizeTiming(source.timing),
+      replay: source.replay,
+      replayedFrom: source.replayedFrom,
       captureId,
-      requestId: data.requestId == null ? fallbackRequestId++ : data.requestId,
-      location: String(window.location.href),
+      requestId: Number.isFinite(source.requestId) ? source.requestId : fallbackRequestId++,
+      location: shortString(String(window.location.href), 4096),
     };
     ["request", "response", "error", "status"].forEach(field => {
       if (event[field] != null) event[field] = limitPayload(event[field]);

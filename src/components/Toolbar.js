@@ -12,6 +12,7 @@ import { setLanguagePreferenceAndPersist } from '../state/localization';
 import TrashIcon from '../icons/Trash';
 import FilterIcon from '../icons/Filter';
 import SettingsPopover from './SettingsPopover';
+import AuditReportDownload from './AuditReportDownload';
 import './Toolbar.css';
 
 export class Toolbar extends Component {
@@ -89,6 +90,7 @@ export class Toolbar extends Component {
                 )}
               </span>
             </div>
+            <AuditReportDownload locale={locale} />
             <SettingsPopover
               locale={locale}
               preference={languagePreference}
