@@ -183,7 +183,7 @@ function redactTextSecrets(value) {
     matchedUrl => redactReportUrl(matchedUrl),
   );
   return withAbsoluteUrlsRedacted.replace(
-    /(^|[\s([{"'`])((?:\/\/|\/|\.\.?\/|[A-Za-z0-9._~-]+\/|[A-Za-z0-9._~-]+(?=\?)|(?=\?))[^\s<>"'`]*[?#][^\s<>"'`]*)/g,
+    /(^|[\s([{"'`])((?:\/\/|\/|\.\.?\/|[A-Za-z0-9._~-]+\/|[A-Za-z0-9._~-]+(?=\?[^\s<>"'`]*=)|(?=\?[^\s<>"'`]*=))[^\s<>"'`]*[?#][^\s<>"'`]*)/g,
     (_, prefix, matchedUrl) => `${prefix}${redactReportUrl(matchedUrl)}`,
   );
 }

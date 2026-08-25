@@ -238,6 +238,18 @@ test('redacts URL secrets in methods, payload text, errors, status details, and 
   expect(report.text).toContain('filter text omitted');
 });
 
+test('does not rewrite ordinary question-mark prose as a relative URL', () => {
+  const formatted = formatBoundedJson({
+    first: 'Why? retry later',
+    second: 'failed? try again',
+    third: 'question ? retry',
+  });
+
+  expect(formatted).toContain('Why? retry later');
+  expect(formatted).toContain('failed? try again');
+  expect(formatted).toContain('question ? retry');
+});
+
 test('enforces the total UTF-8 byte cap even when metadata-only timeline text is multibyte', () => {
   const entries = Array.from({ length: 50 }, (_, index) => ({
     entryId: index + 1,
