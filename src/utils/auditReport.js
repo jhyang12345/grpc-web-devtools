@@ -12,6 +12,10 @@ export const SLOW_REQUEST_MS = 2000;
 export const PENDING_REQUEST_MS = 30000;
 export const LARGE_PAYLOAD_BYTES = 1024 * 1024;
 
+const MAX_AUDIT_FILENAME_SOURCE_CHARS = 60;
+const MAX_AUDIT_REPORT_ID_CHARS = 64;
+let fallbackReportIdSequence = 0;
+
 const GRPC_CODE_NAMES = [
   'OK',
   'CANCELLED',
@@ -518,6 +522,25 @@ function buildSharedBackendObservations(analyses) {
     .map(([origin, value]) => ({ origin, count: value.count, methodCount: value.methods.size }));
 }
 
+function resolveSourceUrl(options, analyses) {
+  if (typeof options.sourceUrl === 'string' && options.sourceUrl.trim()) {
+    return clipText(options.sourceUrl.trim(), 4000);
+  }
+
+  let sourceUrl = '';
+  let sourceTimestamp = -Infinity;
+  analyses.forEach(analysis => {
+    const candidate = analysis.entry?.location;
+    if (typeof candidate !== 'string' || !candidate.trim()) return;
+    const timestamp = analysis.requestTimestamp ?? analysis.eventTimestamp ?? 0;
+    if (timestamp >= sourceTimestamp) {
+      sourceUrl = clipText(candidate.trim(), 4000);
+      sourceTimestamp = timestamp;
+    }
+  });
+  return sourceUrl;
+}
+
 function buildReportModel(options) {
   const allEntries = Array.isArray(options.allEntries) ? options.allEntries : [];
   const scannedEntries = allEntries.slice(-MAX_AUDIT_SCAN_ENTRIES);
@@ -568,6 +591,7 @@ function buildReportModel(options) {
   return {
     generatedAt: new Date(nowMs).toISOString(),
     version: clipText(options.version || packageInfo.version || 'unknown', 100),
+    sourceUrl: resolveSourceUrl(options, analyses),
     filterValue,
     filterActive,
     analyses,
@@ -643,6 +667,7 @@ function formatReportHeader(model, includedCount, omittedForBytes) {
     '',
     `- Generated (UTC): ${inlineCode(model.generatedAt)}`,
     `- Extension version: ${inlineCode(model.version)}`,
+    `- Source page: ${model.sourceUrl ? inlineCode(redactReportUrl(model.sourceUrl)) : 'not captured'}`,
     `- Selection: ${selection}`,
     `- Retained requests: ${model.capture.retained}; reviewed: ${model.capture.reviewed}; matched: ${model.capture.matching}; included: ${includedCount}; omitted: ${omitted}`,
     `- Capture window: ${inlineCode(formatTimestamp(model.capture.earliest))} to ${inlineCode(formatTimestamp(model.capture.latest))}`,
@@ -786,11 +811,59 @@ function renderAuditReport(model) {
   }
 }
 
-export function getAuditReportFilename(value = new Date()) {
+function getFilenameSourceSlug(sourceUrl) {
+  let context = '';
+  try {
+    const parsed = new URL(String(sourceUrl || '').trim());
+    context = parsed.hostname
+      ? `${parsed.hostname}${parsed.port ? `-${parsed.port}` : ''}`
+      : parsed.protocol.replace(/:$/, '');
+  } catch (_) {
+    return 'unknown-source';
+  }
+
+  const slug = context
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, MAX_AUDIT_FILENAME_SOURCE_CHARS)
+    .replace(/-+$/g, '');
+  return slug || 'unknown-source';
+}
+
+function randomReportId() {
+  try {
+    const cryptoObject = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
+    if (typeof cryptoObject?.randomUUID === 'function') return cryptoObject.randomUUID();
+    if (typeof cryptoObject?.getRandomValues === 'function') {
+      const bytes = cryptoObject.getRandomValues(new Uint8Array(16));
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+  } catch (_) {
+    // The monotonic fallback below still prevents duplicate names in this panel.
+  }
+  fallbackReportIdSequence += 1;
+  return `fallback-${Date.now().toString(36)}-${fallbackReportIdSequence.toString(36)}`;
+}
+
+function normalizeReportId(value) {
+  const candidate = String(value || randomReportId())
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, MAX_AUDIT_REPORT_ID_CHARS)
+    .replace(/-+$/g, '');
+  return candidate || randomReportId();
+}
+
+export function getAuditReportFilename(value = new Date(), sourceUrl = '', reportId) {
   const date = value instanceof Date ? value : new Date(value);
   const safeDate = Number.isFinite(date.getTime()) ? date : new Date();
-  const timestamp = safeDate.toISOString().replace(/\.\d{3}Z$/, 'Z').replace(/:/g, '-');
-  return `grpc-web-audit-${timestamp}.md`;
+  const timestamp = safeDate.toISOString().replace(/[:.]/g, '-');
+  return `grpc-web-audit-${getFilenameSourceSlug(sourceUrl)}-${timestamp}-${normalizeReportId(reportId)}.md`;
 }
 
 export function buildAuditReport(options = {}) {
@@ -798,7 +871,7 @@ export function buildAuditReport(options = {}) {
   const rendered = renderAuditReport(model);
   return {
     text: rendered.text,
-    filename: getAuditReportFilename(model.generatedAt),
+    filename: getAuditReportFilename(model.generatedAt, model.sourceUrl, options.reportId),
     bytes: utf8ByteLength(rendered.text),
     stats: {
       retained: model.capture.retained,

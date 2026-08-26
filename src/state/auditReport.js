@@ -33,6 +33,8 @@ export const downloadAuditReport = (options = {}) => async (dispatch, getState) 
       getEntry: options.getEntry || getNetworkEntry,
       now,
       version: options.version,
+      sourceUrl: options.sourceUrl,
+      reportId: options.reportId,
     });
     const download = options.downloadFile || downloadTextFile;
     await download(report.text, {

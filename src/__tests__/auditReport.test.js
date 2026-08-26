@@ -110,6 +110,7 @@ test('builds a chronological paste-ready audit with filter context and repeated 
   expect(report.text).toMatch(/^# gRPC-Web Audit Report/);
   expect(report.text).toContain('Repeated failure: 2 × `UNAVAILABLE`');
   expect(report.text).toContain('Check backend health');
+  expect(report.text).toContain('Source page: `https://app.example.test/page?session=%5Bredacted%5D`');
   expect(report.text).toContain('/demo.Service/Watched');
   expect(report.text.indexOf('/demo.Service/Watched')).toBeLessThan(report.text.lastIndexOf('/demo.Service/Fail'));
   expect(report.text).toContain('%5Bredacted%5D');
@@ -381,6 +382,24 @@ test('reserves detail capacity for the active filter during a large unrelated er
   expect(detailedRequests).toContain('/demo.Service/WatchedSuccess');
 });
 
-test('uses a filesystem-safe UTC Markdown filename', () => {
-  expect(getAuditReportFilename(new Date(NOW))).toBe('grpc-web-audit-2026-08-25T14-30-00Z.md');
+test('uses a filesystem-safe source URL, millisecond timestamp, and unique ID in the filename', () => {
+  const filename = getAuditReportFilename(
+    new Date(NOW),
+    'https://alice:secret@app.example.test:8443/orders/123?token=private#fragment',
+    '550e8400-e29b-41d4-a716-446655440000',
+  );
+
+  expect(filename).toBe('grpc-web-audit-app-example-test-8443-2026-08-25T14-30-00-000Z-550e8400-e29b-41d4-a716-446655440000.md');
+  expect(filename).not.toMatch(/[<>:"/\\|?*]/);
+  expect(filename).not.toContain('alice');
+  expect(filename).not.toContain('orders');
+  expect(filename).not.toContain('private');
+});
+
+test('falls back safely when source context is unavailable and gives same-millisecond reports distinct names', () => {
+  const first = getAuditReportFilename(new Date(NOW), 'not a URL');
+  const second = getAuditReportFilename(new Date(NOW), 'not a URL');
+
+  expect(first).toMatch(/^grpc-web-audit-unknown-source-2026-08-25T14-30-00-000Z-[a-z0-9-]+\.md$/);
+  expect(second).not.toBe(first);
 });

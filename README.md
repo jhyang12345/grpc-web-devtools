@@ -111,6 +111,12 @@ are prioritized, and the report also flags slow or incomplete calls, partial
 stream failures, failed replays, dropped stream history, large payloads, and
 capture truncation.
 
+The filename carries safe source context without leaking URL paths or query
+values. For example,
+`grpc-web-audit-app-example-test-2026-08-26T09-14-32-184Z-<uuid>.md`
+identifies the inspected host, records UTC time to the millisecond, and includes
+a unique report ID so later downloads cannot overwrite an earlier report.
+
 Each file contains a chronological activity timeline, detailed evidence for up
 to 25 requests, repeated-failure and shared-route observations, request timing,
 gRPC status, bounded Request/Response snapshots, and explicit markers when
