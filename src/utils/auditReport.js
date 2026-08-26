@@ -850,7 +850,7 @@ function getFilenameSourceSlug(sourceUrl) {
 
 function randomReportId() {
   try {
-    const cryptoObject = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
+    const cryptoObject = typeof window !== 'undefined' ? window.crypto : null;
     if (typeof cryptoObject?.randomUUID === 'function') return cryptoObject.randomUUID();
     if (typeof cryptoObject?.getRandomValues === 'function') {
       const bytes = cryptoObject.getRandomValues(new Uint8Array(16));
