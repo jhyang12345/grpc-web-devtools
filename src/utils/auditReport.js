@@ -628,9 +628,14 @@ function buildReportModel(options) {
   analyses.forEach(analysis => analysis.signals.forEach(signal => {
     signalCounts[signal.id] = (signalCounts[signal.id] || 0) + 1;
   }));
-  const captureTimestamps = analyses
-    .map(analysis => analysis.requestTimestamp)
+  const activityStartTimestamps = analyses
+    .map(analysis => analysis.requestTimestamp ?? analysis.completionTimestamp)
     .filter(timestamp => timestamp != null);
+  const activityEndTimestamps = analyses
+    .map(analysis => analysis.completionTimestamp ?? analysis.requestTimestamp)
+    .filter(timestamp => timestamp != null);
+  const earliestActivity = activityStartTimestamps.length ? Math.min(...activityStartTimestamps) : null;
+  const latestActivity = activityEndTimestamps.length ? Math.max(...activityEndTimestamps) : null;
 
   return {
     locale,
@@ -655,8 +660,10 @@ function buildReportModel(options) {
       reviewed: scannedEntries.length,
       matching: matching.size,
       selected: selectedAnalyses.length,
-      earliest: captureTimestamps.length ? Math.min(...captureTimestamps) : null,
-      latest: captureTimestamps.length ? Math.max(...captureTimestamps) : null,
+      earliest: earliestActivity,
+      latest: earliestActivity == null || latestActivity == null
+        ? null
+        : Math.max(earliestActivity, latestActivity),
     },
   };
 }
@@ -716,6 +723,33 @@ function formatSignalClue(signal, locale) {
   return key ? reportText(locale, key) : reportText(locale, 'clue.default');
 }
 
+function formatActivitySpan(value, locale) {
+  const milliseconds = Math.max(0, asFiniteNumber(value) ?? 0);
+  if (milliseconds < 60000) return formatDuration(milliseconds, locale);
+
+  const hours = Math.floor(milliseconds / 3600000);
+  const minutes = Math.floor((milliseconds % 3600000) / 60000);
+  const seconds = ((milliseconds % 60000) / 1000).toFixed(2);
+  return hours > 0
+    ? reportText(locale, 'duration.hoursMinutesSeconds', { hours, minutes, seconds })
+    : reportText(locale, 'duration.minutesSeconds', { minutes, seconds });
+}
+
+function formatReviewedActivityWindow(model) {
+  const { earliest, latest } = model.capture;
+  const { locale } = model;
+  if (earliest == null || latest == null) return reportText(locale, 'value.notCaptured');
+
+  const start = inlineCode(formatTimestamp(earliest, locale));
+  if (earliest === latest) return start;
+
+  const end = inlineCode(formatTimestamp(latest, locale));
+  const span = reportText(locale, 'scope.windowSpan', {
+    duration: formatActivitySpan(latest - earliest, locale),
+  });
+  return `${start} → ${end} (${span})`;
+}
+
 function formatReportHeader(model, includedCount, omittedForBytes) {
   const { locale } = model;
   const selection = model.filterActive
@@ -742,7 +776,7 @@ function formatReportHeader(model, includedCount, omittedForBytes) {
       included: includedCount,
       omitted,
     })}`,
-    `- ${reportText(locale, 'scope.captureWindow')}: ${inlineCode(formatTimestamp(model.capture.earliest, locale))} → ${inlineCode(formatTimestamp(model.capture.latest, locale))}`,
+    `- ${reportText(locale, 'scope.reviewedActivityWindow')}: ${formatReviewedActivityWindow(model)}`,
     `- ${reportText(locale, 'scope.limits', {
       requests: MAX_AUDIT_REQUESTS,
       timeline: MAX_AUDIT_TIMELINE_ENTRIES,

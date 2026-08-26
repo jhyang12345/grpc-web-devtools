@@ -113,6 +113,7 @@ test('builds a chronological paste-ready audit with filter context and repeated 
   expect(report.text).toContain('Repeated failure: 2 × `UNAVAILABLE`');
   expect(report.text).toContain('Check backend health');
   expect(report.text).toContain('Source page: `https://app.example.test/page?session=%5Bredacted%5D`');
+  expect(report.text).toContain('Reviewed activity window (UTC): `2026-08-25T14:29:51.000Z` → `2026-08-25T14:29:57.000Z` (span: 6.00 s)');
   expect(report.text).toContain('/demo.Service/Watched');
   expect(report.text.indexOf('/demo.Service/Watched')).toBeLessThan(report.text.lastIndexOf('/demo.Service/Fail'));
   expect(report.text).toContain('%5Bredacted%5D');
@@ -421,9 +422,38 @@ test('renders generated report prose in the selected Korean extension language',
   expect(report.text).toContain('**조사할 신호와 영역**');
   expect(report.text).toContain('백엔드 상태');
   expect(report.text).toContain('Request Payload');
+  expect(report.text).toContain('검토한 활동 범위 (UTC): `2026-08-25T14:29:58.000Z` → `2026-08-25T14:29:59.000Z` (범위: 1.00초)');
   expect(report.text).not.toContain('## Scope');
   expect(report.text).not.toContain('## Observed clues');
   expect(getDiagnosticClue('UNAUTHENTICATED', '', 'ko')).toContain('인증 정보');
+});
+
+test('uses a single reviewed activity instant or one localized missing marker when appropriate', () => {
+  const instant = {
+    entryId: 1,
+    method: '/demo.Service/Instant',
+    response: { ok: true },
+    terminalPhase: 'complete',
+    timing: { requestTimestamp: NOW, completionTimestamp: NOW, duration: 0 },
+  };
+  const singleReport = build([instant]);
+  const minuteReport = build([{
+    ...instant,
+    entryId: 3,
+    timing: { requestTimestamp: NOW - 65250, completionTimestamp: NOW, duration: 65250 },
+  }]);
+  const missingReport = build([{
+    entryId: 2,
+    method: '/demo.Service/Untimed',
+    response: { ok: true },
+    terminalPhase: 'complete',
+  }], { locale: 'ko' });
+
+  expect(singleReport.text).toContain('Reviewed activity window (UTC): `2026-08-25T14:30:00.000Z`');
+  expect(singleReport.text).not.toContain('`2026-08-25T14:30:00.000Z` → `2026-08-25T14:30:00.000Z`');
+  expect(minuteReport.text).toContain('(span: 1m 5.25s)');
+  expect(missingReport.text).toContain('검토한 활동 범위 (UTC): 캡처되지 않음');
+  expect(missingReport.text).not.toContain('캡처되지 않음 → 캡처되지 않음');
 });
 
 test('localizes bounded JSON audit notices without changing structural marker keys', () => {

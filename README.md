@@ -117,6 +117,13 @@ values. For example,
 identifies the inspected host, records UTC time to the millisecond, and includes
 a unique report ID so later downloads cannot overwrite an earlier report.
 
+Report prose follows the extension's selected language. Captured evidence such
+as URLs, RPC methods and codes, backend messages, JSON, and the filename stays
+unchanged. The scope uses an ISO-8601 **Reviewed activity window (UTC)** from
+the earliest reviewed Request start to the latest reviewed completion, plus its
+duration. A single instant or missing timing is shown once instead of as a
+duplicated range.
+
 Each file contains a chronological activity timeline, detailed evidence for up
 to 25 requests, repeated-failure and shared-route observations, request timing,
 network-failure classification, gRPC status, bounded Request/Response snapshots,
