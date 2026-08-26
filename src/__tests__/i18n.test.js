@@ -52,4 +52,5 @@ test('keeps English and Korean Audit Report catalogs in sync', () => {
   expect(MESSAGES.ko['audit.report.detail.frameUrl']).toBe('Frame URL');
   expect(MESSAGES.ko['audit.report.section.requestPayload']).toContain('Request Payload');
   expect(MESSAGES.ko['audit.report.notice.requestEvicted']).toContain('Cache');
+  expect(MESSAGES.ko['audit.report.timeline.state.error']).toBe('Error');
 });

@@ -354,7 +354,7 @@ export const MESSAGES = {
     'audit.report.section.recentActivity.one': '최근 활동 (보존된 Request {count}개)',
     'audit.report.section.recentActivity.other': '최근 활동 (보존된 Request {count}개)',
     'audit.report.timeline.none': '보존된 Request가 없습니다.',
-    'audit.report.timeline.state.error': '오류',
+    'audit.report.timeline.state.error': 'Error',
     'audit.report.timeline.state.pending': '대기 중',
     'audit.report.timeline.state.flagged': '확인 필요',
     'audit.report.timeline.state.complete': '완료',
