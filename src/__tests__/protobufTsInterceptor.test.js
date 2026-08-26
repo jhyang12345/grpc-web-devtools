@@ -397,6 +397,29 @@ test("observes a unary rejection without replacing the original error", async ()
   expect(() => JSON.stringify(errorEvent)).not.toThrow();
 });
 
+test("tags a CORS-style fetch failure as a network error, not a real RPC status", async () => {
+  const messages = capturePostedMessages();
+  const runtime = loadRuntime();
+  const method = makeMethod();
+  const unary = makeUnaryCall(method, { value: "original" });
+
+  const returned = runtime.interceptUnary({
+    baseUrl: "https://api.example.test",
+    next: jest.fn(() => unary.call),
+    method,
+    input: { value: "original" },
+    options: { debug: true },
+  });
+  const originalOutcome = Promise.resolve(returned);
+  unary.reject(new TypeError("Failed to fetch"));
+
+  await expect(originalOutcome).rejects.toThrow("Failed to fetch");
+  await flushPromises();
+  const errorEvent = messages.find(message => message.phase === "error");
+  expect(errorEvent.error).toMatchObject({ isNetworkError: true });
+  expect(errorEvent.error.code).toBeUndefined();
+});
+
 test("truncates oversized requests before posting and disables replay", () => {
   const messages = capturePostedMessages();
   const runtime = loadRuntime();

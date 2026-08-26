@@ -90,6 +90,22 @@ test("gRPC callback and PromiseClient unary calls capture success and failure on
   expect(events.filter(event => event.phase === "complete")).toHaveLength(1);
 });
 
+test("gRPC-Web tags a CORS-style fetch failure as a network error, not a real gRPC status", () => {
+  const events = capturedEvents();
+  const client = { client_: {} };
+  const originalRpcCall = jest.fn((method, request, metadata, info, callback) => callback(new TypeError("Failed to fetch")));
+  client.client_.rpcCall = originalRpcCall;
+  client.client_.serverStreaming = jest.fn();
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  client.client_.rpcCall("Demo/Blocked", { toObject: () => ({}) }, {}, {}, jest.fn());
+  originalRpcCall.mockImplementationOnce((method, request, metadata, info, callback) => callback(Object.assign(new Error("internal"), { code: 13 })));
+  client.client_.rpcCall("Demo/ServerError", { toObject: () => ({}) }, {}, {}, jest.fn());
+  const errors = events.filter(event => event.phase === "error");
+  expect(errors[0].error).toEqual(expect.objectContaining({ isNetworkError: true }));
+  expect(errors[1].error.isNetworkError).toBeUndefined();
+});
+
 test("gRPC streams retain lifecycle timing for completion and status failure", () => {
   const events = capturedEvents();
   const streams = [];
@@ -140,6 +156,19 @@ test("Connect unary success and failure report terminal lifecycle events", async
   const failure = window.__CONNECT_WEB_DEVTOOLS__(async () => { throw Object.assign(new Error("unavailable"), { code: 14 }); });
   await expect(failure(request)).rejects.toThrow("unavailable");
   expect(events.map(event => event.phase)).toEqual(["start", "complete", "start", "error"]);
+});
+
+test("Connect-Web tags a CORS-style fetch failure as a network error, not a real gRPC status", async () => {
+  const events = capturedEvents();
+  loadInterceptor("connect-web-interceptor.js");
+  const request = { stream: false, method: { name: "Demo/Unary" }, message: { toJson: () => ({ input: 1 }) } };
+  const blocked = window.__CONNECT_WEB_DEVTOOLS__(async () => { throw new TypeError("Failed to fetch"); });
+  await expect(blocked(request)).rejects.toThrow("Failed to fetch");
+  const serverFailure = window.__CONNECT_WEB_DEVTOOLS__(async () => { throw Object.assign(new Error("unavailable"), { code: 14 }); });
+  await expect(serverFailure(request)).rejects.toThrow("unavailable");
+  const errors = events.filter(event => event.phase === "error");
+  expect(errors[0].error).toEqual(expect.objectContaining({ isNetworkError: true }));
+  expect(errors[1].error.isNetworkError).toBeUndefined();
 });
 
 test("captures backend request URLs exposed by gRPC-Web and Connect-Web", async () => {

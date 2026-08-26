@@ -39,6 +39,26 @@ test('gives edited replay rows an explicit presentation class in every row state
     .toBe('data-row selected error edited-request');
 });
 
+test('renders a Network Error badge only when the entry has no gRPC status at all', () => {
+  const blockedTree = new NetworkListRow({
+    index: 0,
+    data: [{ entryId: 9, method: 'Demo/Blocked', isNetworkError: true }],
+    style: {},
+    selectLogEntry: jest.fn(),
+    selectedIdx: null,
+  }).render();
+  expect(findByClassName(blockedTree, 'data-row-network-error-badge').props.children).toBe('Network Error');
+
+  const serverErrorTree = new NetworkListRow({
+    index: 0,
+    data: [{ entryId: 10, method: 'Demo/ServerError', error: true, isNetworkError: false }],
+    style: {},
+    selectLogEntry: jest.fn(),
+    selectedIdx: null,
+  }).render();
+  expect(findByClassName(serverErrorTree, 'data-row-network-error-badge')).toBeNull();
+});
+
 test('renders a visible Edited badge with replay provenance', () => {
   const replayedFrom = { transport: 'connect-web', requestId: 8 };
   const tree = new NetworkListRow({

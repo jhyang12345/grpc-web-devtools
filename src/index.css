@@ -114,6 +114,8 @@ code {
   --edited-request-accent: #a85d00;
   --edited-request-badge-bg: #8d4e00;
   --edited-request-badge-text: #fff;
+  --network-error-badge-bg: #c5221f;
+  --network-error-badge-text: #fff;
   --z-resizer: 10;
   --z-toolbar: 20;
   --z-toast: 100;
@@ -179,6 +181,8 @@ code {
     --edited-request-accent: #f0b44b;
     --edited-request-badge-bg: #5d3a0e;
     --edited-request-badge-text: #ffe0a3;
+    --network-error-badge-bg: #4a1613;
+    --network-error-badge-text: #ff8585;
   }
 
   a {

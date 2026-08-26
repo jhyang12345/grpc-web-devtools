@@ -18,8 +18,7 @@ test('settings popover exposes accessible persisted language choices', () => {
   expect(markup).toContain('English');
   expect(markup).toContain('한국어');
   expect(markup).toContain('value="ko" checked=""');
-  expect(markup).toContain('class="settings-version"');
-  expect(markup).toContain('<span>Version</span><code>1.6.0</code>');
+  expect(markup).toContain('class="settings-version-label">v1.6.0</span>');
 });
 
 test('settings popover reports language changes without rewriting values', () => {

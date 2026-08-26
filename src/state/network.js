@@ -153,7 +153,7 @@ const networkSlice = createSlice({
 const { actions, reducer } = networkSlice;
 export const { networkLog, networkLogBatch, selectLogEntry, clearLog, setPreserveLog } = actions;
 
-function buildSummaryEntry(entry) {
+export function buildSummaryEntry(entry) {
   return {
     entryId: entry.entryId,
     captureId: entry.captureId,
@@ -166,6 +166,7 @@ function buildSummaryEntry(entry) {
     request: !!entry.request,
     response: !!entry.response || !!entry.messages?.length,
     error: !!entry.error,
+    isNetworkError: !!entry.error?.isNetworkError,
     status: !!entry.status,
     messages: !!entry.messages?.length,
     requestId: entry.requestId,

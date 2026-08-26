@@ -109,13 +109,13 @@
   }
 
   function serializeError(error) {
+    const hasCode = error && (typeof error.code === "string" || typeof error.code === "number");
     const details = {
       name: error && error.name ? String(error.name) : "Error",
       message: errorMessage(error),
     };
-    if (error && (typeof error.code === "string" || typeof error.code === "number")) {
-      details.code = error.code;
-    }
+    if (hasCode) details.code = error.code;
+    if (!hasCode && error instanceof TypeError) details.isNetworkError = true;
     return limitPayload(details).payload;
   }
 

@@ -1,4 +1,4 @@
-import reducer, { clearLog, clearLogAndCache, networkLog, selectLogEntry, setPreserveLog, logNetworkEntry } from '../state/network';
+import reducer, { buildSummaryEntry, clearLog, clearLogAndCache, networkLog, selectLogEntry, setPreserveLog, logNetworkEntry } from '../state/network';
 import { setFilterValue } from '../state/toolbar';
 
 test('manual clear ignores Preserve Log', () => {
@@ -29,6 +29,16 @@ test('a real clear cancels queued log batches', () => {
   expect(dispatch).toHaveBeenCalledTimes(1);
   expect(dispatch).toHaveBeenCalledWith(clearLog({ force: true }));
   jest.useRealTimers();
+});
+
+test('flags a CORS-style network failure distinctly from a real gRPC status error', () => {
+  const blocked = buildSummaryEntry({ entryId: 1, method: 'Demo/Blocked', error: { message: 'Failed to fetch', isNetworkError: true } });
+  const serverError = buildSummaryEntry({ entryId: 2, method: 'Demo/ServerError', error: { code: 13, message: 'internal' } });
+  expect(blocked.isNetworkError).toBe(true);
+  expect(serverError.isNetworkError).toBe(false);
+
+  const state = reducer(undefined, networkLog(blocked));
+  expect(state.log[0].isNetworkError).toBe(true);
 });
 
 test('filter matches the full frame URL', () => {

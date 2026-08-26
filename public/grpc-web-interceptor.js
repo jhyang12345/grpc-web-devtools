@@ -61,7 +61,13 @@
   }
 
   function serializeError(error) {
-    return { code: error && error.code, message: error && error.message ? String(error.message) : String(error || "Unknown RPC error") };
+    const hasCode = error && (typeof error.code === "string" || typeof error.code === "number");
+    const isNetworkError = !hasCode && error instanceof TypeError;
+    return {
+      code: error && error.code,
+      message: error && error.message ? String(error.message) : String(error || "Unknown RPC error"),
+      ...(isNetworkError ? { isNetworkError: true } : {}),
+    };
   }
 
   function backendUrlFromMethod(method) {

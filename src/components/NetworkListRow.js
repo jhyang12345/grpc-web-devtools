@@ -86,6 +86,9 @@ export class NetworkListRow extends PureComponent {
         <div className="data-row-content">
           <div className="data-row-heading">
             <span className="data-row-title">{log.endpoint || log.method}</span>
+            {log.isNetworkError && (
+              <span className="data-row-network-error-badge">{translate(locale, 'network.networkError')}</span>
+            )}
             {replayProvenance && (
               <span className="data-row-edited-badge" title={replayProvenance}>{translate(locale, 'network.edited')}</span>
             )}

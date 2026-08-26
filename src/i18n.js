@@ -42,7 +42,6 @@ export const MESSAGES = {
     'settings.english': 'English',
     'settings.korean': '한국어',
     'settings.close': 'Close settings',
-    'settings.version': 'Version',
 
     'network.filterPlaceholder': 'Filter',
     'network.capturedRequests': 'Captured requests',
@@ -53,6 +52,7 @@ export const MESSAGES = {
     'network.editedReplayTiming': 'Edited replay | {timing}',
     'network.pending': 'Pending',
     'network.edited': 'Edited',
+    'network.networkError': 'Network Error',
     'network.filteredEmptyTitle': 'No requests match the current filter.',
     'network.filteredEmptyDetailValue': 'Update or clear "{filterValue}" to show captured requests again.',
     'network.filteredEmptyDetail': 'Update or clear the current filter to show captured requests again.',
@@ -184,7 +184,6 @@ export const MESSAGES = {
     'settings.english': 'English',
     'settings.korean': '한국어',
     'settings.close': '설정 닫기',
-    'settings.version': 'Version',
 
     'network.filterPlaceholder': 'Filter',
     'network.capturedRequests': '캡처된 Request 목록',
@@ -195,6 +194,7 @@ export const MESSAGES = {
     'network.editedReplayTiming': '편집된 Replay | {timing}',
     'network.pending': '대기 중',
     'network.edited': '편집됨',
+    'network.networkError': '네트워크 오류',
     'network.filteredEmptyTitle': '현재 Filter와 일치하는 Request가 없습니다.',
     'network.filteredEmptyDetailValue': '"{filterValue}"을(를) 수정하거나 지워 캡처된 Request를 다시 표시하세요.',
     'network.filteredEmptyDetail': '현재 Filter를 수정하거나 지워 캡처된 Request를 다시 표시하세요.',
