@@ -493,11 +493,11 @@ export class NetworkDetails extends Component {
         </button>
         {isMetadataExpanded && (
           <div className="payload-metadata-content" id="request-metadata-content">
-            <div className="payload-metadata-row">
+            <div className="payload-metadata-row payload-metadata-row--url">
               <span>{translate(locale, "details.frameUrl")}</span>
               <span title={requestLocation}>{requestLocation || translate(locale, "details.frameUrlMissing")}</span>
             </div>
-            <div className="payload-metadata-row">
+            <div className="payload-metadata-row payload-metadata-row--url">
               <span>{translate(locale, "details.backendUrl")}</span>
               <span title={backendUrl}>{backendUrl || translate(locale, "details.backendUrlMissing")}</span>
             </div>

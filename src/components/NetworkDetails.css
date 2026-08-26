@@ -319,6 +319,11 @@
   overflow-wrap: anywhere;
 }
 
+.payload-metadata-row--url span:last-child {
+  text-align: left;
+  word-break: break-all;
+}
+
 .json-action-button {
   display: inline-flex;
   align-items: center;
