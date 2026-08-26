@@ -1,6 +1,7 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 import packageInfo from '../../package.json';
+import { translate } from '../i18n';
 import { buildDebugReport } from './debugReport';
 
 export const MAX_AUDIT_SCAN_ENTRIES = 1000;
@@ -36,37 +37,61 @@ const GRPC_CODE_NAMES = [
   'UNAUTHENTICATED',
 ];
 
-const CODE_CLUES = {
-  NETWORK_ERROR: 'Check browser CORS policy, DNS, TLS, proxy or ingress reachability, and whether the request reached the backend; no gRPC status was captured.',
-  CANCELLED: 'Check client cancellation, page navigation, or a request that was superseded before completion.',
-  UNKNOWN: 'Check server and proxy logs for the original error that could not be mapped to a more specific gRPC code.',
-  INVALID_ARGUMENT: 'Compare the captured request with the current protobuf schema and server-side validation rules.',
-  DEADLINE_EXCEEDED: 'Compare the client deadline with backend latency and downstream dependency timing.',
-  NOT_FOUND: 'Check the resource identifier, environment, and route used by the request.',
-  ALREADY_EXISTS: 'Check whether a create or registration operation was retried with an existing identifier.',
-  PERMISSION_DENIED: 'Check authorization policy, roles, and resource ownership for the authenticated caller.',
-  RESOURCE_EXHAUSTED: 'Check service quotas, rate limits, concurrency, and request or response size limits.',
-  FAILED_PRECONDITION: 'Check required resource state and operation ordering before this RPC runs.',
-  ABORTED: 'Check concurrency conflicts, optimistic locking, and whether retry guidance is available from the backend.',
-  OUT_OF_RANGE: 'Check numeric ranges, pagination bounds, offsets, and server-side limits.',
-  UNIMPLEMENTED: 'Check deployed service versions, RPC routing, and whether this method is enabled in the target environment.',
-  INTERNAL: 'Check server logs and downstream failures around this timestamp; the client only captured a generic internal failure.',
-  UNAVAILABLE: 'Check backend health, ingress or proxy routing, DNS/network reachability, and retry behavior.',
-  DATA_LOSS: 'Check serialization, storage integrity, and server logs before retrying or mutating more data.',
-  UNAUTHENTICATED: 'Check credential presence, expiry, audience, and the authentication handoff to the backend.',
+const CODE_CLUE_KEYS = {
+  NETWORK_ERROR: 'clue.code.NETWORK_ERROR',
+  CANCELLED: 'clue.code.CANCELLED',
+  UNKNOWN: 'clue.code.UNKNOWN',
+  INVALID_ARGUMENT: 'clue.code.INVALID_ARGUMENT',
+  DEADLINE_EXCEEDED: 'clue.code.DEADLINE_EXCEEDED',
+  NOT_FOUND: 'clue.code.NOT_FOUND',
+  ALREADY_EXISTS: 'clue.code.ALREADY_EXISTS',
+  PERMISSION_DENIED: 'clue.code.PERMISSION_DENIED',
+  RESOURCE_EXHAUSTED: 'clue.code.RESOURCE_EXHAUSTED',
+  FAILED_PRECONDITION: 'clue.code.FAILED_PRECONDITION',
+  ABORTED: 'clue.code.ABORTED',
+  OUT_OF_RANGE: 'clue.code.OUT_OF_RANGE',
+  UNIMPLEMENTED: 'clue.code.UNIMPLEMENTED',
+  INTERNAL: 'clue.code.INTERNAL',
+  UNAVAILABLE: 'clue.code.UNAVAILABLE',
+  DATA_LOSS: 'clue.code.DATA_LOSS',
+  UNAUTHENTICATED: 'clue.code.UNAUTHENTICATED',
 };
 
-const SIGNAL_LABELS = {
-  network_error: 'network-level failures',
-  rpc_error: 'RPC errors',
-  partial_stream: 'partial stream failures',
-  replay_failure: 'failed replays',
-  slow: 'slow requests',
-  pending: 'long-running or incomplete requests',
-  messages_dropped: 'streams with dropped inspector history',
-  payload_truncated: 'truncated payloads',
-  large_payload: 'large retained payloads',
-  payload_evicted: 'requests with evicted payload details',
+const SIGNAL_COUNT_KEYS = {
+  network_error: 'signalCount.networkError',
+  rpc_error: 'signalCount.rpcError',
+  partial_stream: 'signalCount.partialStream',
+  replay_failure: 'signalCount.replayFailure',
+  slow: 'signalCount.slow',
+  pending: 'signalCount.pending',
+  messages_dropped: 'signalCount.messagesDropped',
+  payload_truncated: 'signalCount.payloadTruncated',
+  large_payload: 'signalCount.largePayload',
+  payload_evicted: 'signalCount.payloadEvicted',
+};
+
+const SIGNAL_LABEL_KEYS = {
+  network_error: 'signal.networkError.label',
+  rpc_error: 'signal.rpcError.label',
+  partial_stream: 'signal.partialStream.label',
+  replay_failure: 'signal.replayFailure.label',
+  slow: 'signal.slow.label',
+  pending: 'signal.pending.label',
+  messages_dropped: 'signal.messagesDropped.label',
+  payload_truncated: 'signal.payloadTruncated.label',
+  large_payload: 'signal.largePayload.label',
+  payload_evicted: 'signal.payloadEvicted.label',
+};
+
+const SIGNAL_CLUE_KEYS = {
+  partial_stream: 'signal.partialStream.clue',
+  replay_failure: 'signal.replayFailure.clue',
+  slow: 'signal.slow.clue',
+  pending: 'signal.pending.clue',
+  messages_dropped: 'signal.messagesDropped.clue',
+  payload_truncated: 'signal.payloadTruncated.clue',
+  large_payload: 'signal.largePayload.clue',
+  payload_evicted: 'signal.payloadEvicted.clue',
 };
 
 const SENSITIVE_KEYS = new Set([
@@ -100,8 +125,15 @@ const SENSITIVE_KEYS = new Set([
   'sessionid',
 ]);
 
-const REPORT_TRUNCATED = '[truncated for audit report]';
 const REPORT_REDACTED = '[redacted]';
+
+function normalizeReportLocale(locale) {
+  return locale === 'ko' ? 'ko' : 'en';
+}
+
+function reportText(locale, key, values = {}) {
+  return translate(normalizeReportLocale(locale), `audit.report.${key}`, values);
+}
 
 export function utf8ByteLength(value) {
   const text = String(value ?? '');
@@ -194,8 +226,8 @@ function redactTextSecrets(value) {
   );
 }
 
-function redactMethod(value, maximum = 500) {
-  const raw = redactTextSecrets(value || '(unknown method)');
+function redactMethod(value, maximum = 500, locale = 'en') {
+  const raw = redactTextSecrets(value || reportText(locale, 'value.unknownMethod'));
   const redacted = /[?#]/.test(raw) ? redactReportUrl(raw) : raw;
   return clipText(redacted, maximum);
 }
@@ -204,7 +236,8 @@ function isTruncatedDescriptor(value) {
   return !!value && typeof value === 'object' && value.__truncated === true;
 }
 
-function createBoundedSnapshot(value, maximumBytes) {
+function createBoundedSnapshot(value, maximumBytes, locale) {
+  const reportTruncated = reportText(locale, 'snapshot.truncated');
   const state = {
     remainingCharacters: Math.max(256, Math.floor(maximumBytes / 2)),
     nodes: 0,
@@ -213,7 +246,7 @@ function createBoundedSnapshot(value, maximumBytes) {
 
   const visit = (current, key, depth) => {
     if (isSensitiveKey(key)) return REPORT_REDACTED;
-    if (state.remainingCharacters <= 0) return REPORT_TRUNCATED;
+    if (state.remainingCharacters <= 0) return reportTruncated;
     if (current === null) return null;
 
     const type = typeof current;
@@ -223,7 +256,7 @@ function createBoundedSnapshot(value, maximumBytes) {
       const retainedLength = Math.min(redacted.length, state.remainingCharacters, 2000);
       state.remainingCharacters -= retainedLength;
       const retained = redacted.slice(0, retainedLength);
-      return current.length > retainedLength ? `${retained}… ${REPORT_TRUNCATED}` : retained;
+      return current.length > retainedLength ? `${retained}… ${reportTruncated}` : retained;
     }
     if (type === 'number') return Number.isFinite(current) ? current : String(current);
     if (type === 'boolean') return current;
@@ -234,12 +267,12 @@ function createBoundedSnapshot(value, maximumBytes) {
       return {
         __truncated: true,
         __originalSizeBytes: asFiniteNumber(current.__originalSizeBytes),
-        preview: '[omitted from redacted audit report]',
+        preview: reportText(locale, 'snapshot.omitted'),
       };
     }
-    if (state.seen.has(current)) return '[circular reference]';
-    if (depth >= 8) return '[maximum depth omitted]';
-    if (state.nodes >= 400) return '[node limit reached]';
+    if (state.seen.has(current)) return reportText(locale, 'snapshot.circular');
+    if (depth >= 8) return reportText(locale, 'snapshot.maxDepth');
+    if (state.nodes >= 400) return reportText(locale, 'snapshot.nodeLimit');
 
     state.seen.add(current);
     state.nodes += 1;
@@ -250,7 +283,9 @@ function createBoundedSnapshot(value, maximumBytes) {
       for (let index = 0; index < retainedItems && state.remainingCharacters > 0; index += 1) {
         result.push(visit(current[index], String(index), depth + 1));
       }
-      if (current.length > result.length) result.push(`[${current.length - result.length} more items omitted]`);
+      if (current.length > result.length) {
+        result.push(reportText(locale, 'snapshot.moreItems', { count: current.length - result.length }));
+      }
       return result;
     }
 
@@ -269,14 +304,14 @@ function createBoundedSnapshot(value, maximumBytes) {
         try {
           result[safeKey] = visit(current[rawKey], rawKey, depth + 1);
         } catch (_) {
-          result[safeKey] = '[property could not be read]';
+          result[safeKey] = reportText(locale, 'snapshot.propertyUnreadable');
         }
         retainedKeys += 1;
       }
     } catch (_) {
-      return '[object could not be inspected]';
+      return reportText(locale, 'snapshot.objectUnreadable');
     }
-    if (omittedKeys) result.__auditReportNotice = 'Additional keys omitted';
+    if (omittedKeys) result.__auditReportNotice = reportText(locale, 'snapshot.additionalKeys');
     return result;
   };
 
@@ -305,12 +340,14 @@ function fitJsonPreview(serialized, maximumBytes) {
   return best;
 }
 
-export function formatBoundedJson(value, maximumBytes = MAX_AUDIT_PAYLOAD_BYTES) {
+export function formatBoundedJson(value, maximumBytes = MAX_AUDIT_PAYLOAD_BYTES, locale = 'en') {
   let serialized;
   try {
-    serialized = JSON.stringify(createBoundedSnapshot(value, maximumBytes), null, 2);
+    serialized = JSON.stringify(createBoundedSnapshot(value, maximumBytes, locale), null, 2);
   } catch (_) {
-    serialized = JSON.stringify({ __auditReportError: 'Value could not be serialized' }, null, 2);
+    serialized = JSON.stringify({
+      __auditReportError: reportText(locale, 'snapshot.serializationFailed'),
+    }, null, 2);
   }
   if (typeof serialized !== 'string') serialized = 'null';
   return utf8ByteLength(serialized) <= maximumBytes
@@ -333,16 +370,18 @@ export function normalizeGrpcCode(value) {
   return normalized.replace(/[^A-Z0-9_./]+/g, '_') || null;
 }
 
-export function getDiagnosticClue(code, errorMessage = '') {
+export function getDiagnosticClue(code, errorMessage = '', locale = 'en') {
   const normalizedCode = normalizeGrpcCode(code);
-  if (normalizedCode && CODE_CLUES[normalizedCode]) return CODE_CLUES[normalizedCode];
+  if (normalizedCode && CODE_CLUE_KEYS[normalizedCode]) {
+    return reportText(locale, CODE_CLUE_KEYS[normalizedCode]);
+  }
 
   const normalizedMessage = clipText(errorMessage || '', 2000).toLowerCase();
-  if (/deadline|timed?\s*out|timeout/.test(normalizedMessage)) return CODE_CLUES.DEADLINE_EXCEEDED;
-  if (/unauthenticated|expired token|invalid token|credential/.test(normalizedMessage)) return CODE_CLUES.UNAUTHENTICATED;
-  if (/permission|forbidden|not authorized/.test(normalizedMessage)) return CODE_CLUES.PERMISSION_DENIED;
-  if (/unavailable|failed to fetch|network|cors|connection/.test(normalizedMessage)) return CODE_CLUES.UNAVAILABLE;
-  return 'Correlate this timestamp, method, and request ID with backend and proxy logs for the original failure.';
+  if (/deadline|timed?\s*out|timeout/.test(normalizedMessage)) return reportText(locale, CODE_CLUE_KEYS.DEADLINE_EXCEEDED);
+  if (/unauthenticated|expired token|invalid token|credential/.test(normalizedMessage)) return reportText(locale, CODE_CLUE_KEYS.UNAUTHENTICATED);
+  if (/permission|forbidden|not authorized/.test(normalizedMessage)) return reportText(locale, CODE_CLUE_KEYS.PERMISSION_DENIED);
+  if (/unavailable|failed to fetch|network|cors|connection/.test(normalizedMessage)) return reportText(locale, CODE_CLUE_KEYS.UNAVAILABLE);
+  return reportText(locale, 'clue.default');
 }
 
 function getErrorCode(entry, summary) {
@@ -418,49 +457,39 @@ export function analyzeAuditEntry(summary = {}, options = {}) {
       signals.push({
         id: 'network_error',
         severity: 'error',
-        label: 'Network failure (no gRPC status captured)',
-        clue: CODE_CLUES.NETWORK_ERROR,
       });
     } else {
       signals.push({
         id: 'rpc_error',
         severity: 'error',
-        label: `RPC error${code ? ` (${code})` : ''}`,
-        clue: getDiagnosticClue(code, errorMessage),
+        code,
+        errorMessage,
       });
     }
   }
   if (isPartialStreamFailure) signals.push({
-    id: 'partial_stream', severity: 'warning', label: 'Stream failed after delivering data',
-    clue: 'The failure happened mid-stream; compare the last retained message and server stream logs around the terminal timestamp.',
+    id: 'partial_stream', severity: 'warning',
   });
   if (isReplayFailure) signals.push({
-    id: 'replay_failure', severity: 'warning', label: 'Replayed request also failed',
-    clue: 'Compare this replay with its source request to separate request-data problems from a persistent backend or route failure.',
+    id: 'replay_failure', severity: 'warning',
   });
   if (duration != null && duration >= SLOW_REQUEST_MS) signals.push({
-    id: 'slow', severity: 'warning', label: `Slow request (${formatDuration(duration)})`,
-    clue: 'Compare backend processing, network/proxy latency, serialization cost, and downstream dependency timing.',
+    id: 'slow', severity: 'warning', duration,
   });
   if (isPending) signals.push({
-    id: 'pending', severity: 'warning', label: 'No terminal event captured',
-    clue: 'Check whether the RPC is still streaming, was cancelled during navigation, or lost its completion event during a connection change.',
+    id: 'pending', severity: 'warning',
   });
   if (droppedMessageCount > 0) signals.push({
-    id: 'messages_dropped', severity: 'warning', label: `${droppedMessageCount} older stream messages dropped`,
-    clue: 'The inspector bounded its stream history; use server logs or a shorter reproduction for the omitted messages.',
+    id: 'messages_dropped', severity: 'warning', count: droppedMessageCount,
   });
   if (payloadWasTruncated) signals.push({
-    id: 'payload_truncated', severity: 'warning', label: 'Captured payload was truncated',
-    clue: 'The payload exceeded a capture limit; reproduce with narrower data or use server-side logging for the missing portion.',
+    id: 'payload_truncated', severity: 'warning',
   });
   if (payloadBytes >= LARGE_PAYLOAD_BYTES) signals.push({
-    id: 'large_payload', severity: 'warning', label: `Large retained payload (${formatBytes(payloadBytes)})`,
-    clue: 'Large payloads can increase transfer, serialization, rendering, and DevTools memory costs.',
+    id: 'large_payload', severity: 'warning', bytes: payloadBytes,
   });
   if (payloadWasEvicted) signals.push({
-    id: 'payload_evicted', severity: 'info', label: 'Full payload no longer retained',
-    clue: 'The inspector cache is bounded; reproduce and export sooner if full request or outcome bodies are required.',
+    id: 'payload_evicted', severity: 'info',
   });
 
   return {
@@ -497,10 +526,10 @@ function compareIssuePriority(left, right) {
   return compareNewestFirst(left, right);
 }
 
-function buildFailureClusters(analyses) {
+function buildFailureClusters(analyses, locale) {
   const clusters = new Map();
   analyses.filter(analysis => analysis.isError).forEach(analysis => {
-    const method = redactMethod(analysis.entry?.method, 300);
+    const method = redactMethod(analysis.entry?.method, 300, locale);
     const code = analysis.isNetworkError ? 'NETWORK_ERROR' : (analysis.code || 'UNMAPPED_ERROR');
     const key = `${method}\u0000${code}`;
     const existing = clusters.get(key) || { method, code, count: 0 };
@@ -519,14 +548,14 @@ function getBackendOrigin(analysis) {
   try { return new URL(value).origin; } catch (_) { return ''; }
 }
 
-function buildSharedBackendObservations(analyses) {
+function buildSharedBackendObservations(analyses, locale) {
   const backends = new Map();
   analyses.filter(analysis => analysis.isError).forEach(analysis => {
     const origin = getBackendOrigin(analysis);
     if (!origin) return;
     const existing = backends.get(origin) || { count: 0, methods: new Set() };
     existing.count += 1;
-    existing.methods.add(redactMethod(analysis.entry?.method, 300));
+    existing.methods.add(redactMethod(analysis.entry?.method, 300, locale));
     backends.set(origin, existing);
   });
   return Array.from(backends.entries())
@@ -556,6 +585,7 @@ function resolveSourceUrl(options, analyses) {
 }
 
 function buildReportModel(options) {
+  const locale = normalizeReportLocale(options.locale);
   const allEntries = Array.isArray(options.allEntries) ? options.allEntries : [];
   const scannedEntries = allEntries.slice(-MAX_AUDIT_SCAN_ENTRIES);
   const nowDate = options.now instanceof Date ? new Date(options.now.getTime()) : new Date(options.now ?? Date.now());
@@ -603,6 +633,7 @@ function buildReportModel(options) {
     .filter(timestamp => timestamp != null);
 
   return {
+    locale,
     generatedAt: new Date(nowMs).toISOString(),
     version: clipText(options.version || packageInfo.version || 'unknown', 100),
     sourceUrl: resolveSourceUrl(options, analyses),
@@ -616,8 +647,8 @@ function buildReportModel(options) {
         (left.requestTimestamp ?? left.eventTimestamp) - (right.requestTimestamp ?? right.eventTimestamp)
       ))
       .slice(-MAX_AUDIT_TIMELINE_ENTRIES),
-    failureClusters: buildFailureClusters(issueCandidates),
-    sharedBackends: buildSharedBackendObservations(issueCandidates),
+    failureClusters: buildFailureClusters(issueCandidates, locale),
+    sharedBackends: buildSharedBackendObservations(issueCandidates, locale),
     signalCounts,
     capture: {
       retained: allEntries.length,
@@ -644,102 +675,152 @@ function codeFence(content, language = 'json') {
   return `${fence}${language}\n${text}\n${fence}`;
 }
 
-function formatTimestamp(value) {
+function formatTimestamp(value, locale = 'en') {
   const number = asFiniteNumber(value);
-  if (number == null) return 'not captured';
-  try { return new Date(number).toISOString(); } catch (_) { return 'invalid timestamp'; }
+  if (number == null) return reportText(locale, 'value.notCaptured');
+  try { return new Date(number).toISOString(); } catch (_) { return reportText(locale, 'value.invalidTimestamp'); }
 }
 
-function formatDuration(value) {
+function formatDuration(value, locale = 'en') {
   const number = asFiniteNumber(value);
-  if (number == null) return 'not captured';
-  if (number < 1000) return `${Math.max(0, Math.round(number))} ms`;
-  return `${(Math.max(0, number) / 1000).toFixed(2)} s`;
+  if (number == null) return reportText(locale, 'value.notCaptured');
+  if (number < 1000) {
+    return reportText(locale, 'duration.milliseconds', { value: Math.max(0, Math.round(number)) });
+  }
+  return reportText(locale, 'duration.seconds', { value: (Math.max(0, number) / 1000).toFixed(2) });
 }
 
-function formatBytes(value) {
+function formatBytes(value, locale = 'en') {
   const number = asFiniteNumber(value);
-  if (number == null) return 'not captured';
+  if (number == null) return reportText(locale, 'value.notCaptured');
   if (number < 1024) return `${number} B`;
   if (number < 1024 * 1024) return `${(number / 1024).toFixed(1)} KiB`;
   return `${(number / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
+function formatSignalLabel(signal, locale) {
+  const key = SIGNAL_LABEL_KEYS[signal.id];
+  if (!key) return signal.id;
+  return reportText(locale, key, {
+    code: signal.code ? ` (${signal.code})` : '',
+    duration: formatDuration(signal.duration, locale),
+    count: signal.count,
+    bytes: formatBytes(signal.bytes, locale),
+  });
+}
+
+function formatSignalClue(signal, locale) {
+  if (signal.id === 'network_error') return getDiagnosticClue('NETWORK_ERROR', '', locale);
+  if (signal.id === 'rpc_error') return getDiagnosticClue(signal.code, signal.errorMessage, locale);
+  const key = SIGNAL_CLUE_KEYS[signal.id];
+  return key ? reportText(locale, key) : reportText(locale, 'clue.default');
+}
+
 function formatReportHeader(model, includedCount, omittedForBytes) {
+  const { locale } = model;
   const selection = model.filterActive
-    ? 'Detected issues plus recent requests matching the active filter (filter text omitted from this shareable file)'
-    : 'Detected issues (errors, slow or incomplete calls, and capture limits)';
+    ? reportText(locale, 'scope.selectionFiltered')
+    : reportText(locale, 'scope.selectionIssues');
   const omitted = Math.max(0, model.capture.matching - includedCount);
   return [
-    '# gRPC-Web Audit Report',
+    `# ${reportText(locale, 'title')}`,
     '',
-    '> Investigation aid, not a root-cause determination. Correlate timestamps and request IDs with backend and proxy logs.',
+    `> ${reportText(locale, 'notice.investigation')}`,
     '>',
-    '> Common credential fields, URL query values, fragments, and token-shaped text are redacted. Other sensitive or personal data may remain; review before sharing.',
+    `> ${reportText(locale, 'notice.privacy')}`,
     '',
-    '## Scope',
+    `## ${reportText(locale, 'section.scope')}`,
     '',
-    `- Generated (UTC): ${inlineCode(model.generatedAt)}`,
-    `- Extension version: ${inlineCode(model.version)}`,
-    `- Source page: ${model.sourceUrl ? inlineCode(redactReportUrl(model.sourceUrl)) : 'not captured'}`,
-    `- Selection: ${selection}`,
-    `- Retained requests: ${model.capture.retained}; reviewed: ${model.capture.reviewed}; matched: ${model.capture.matching}; included: ${includedCount}; omitted: ${omitted}`,
-    `- Capture window: ${inlineCode(formatTimestamp(model.capture.earliest))} to ${inlineCode(formatTimestamp(model.capture.latest))}`,
-    `- Limits: newest ${MAX_AUDIT_REQUESTS} detailed matches, ${MAX_AUDIT_TIMELINE_ENTRIES}-request timeline, ${formatBytes(MAX_AUDIT_PAYLOAD_BYTES)} per payload snapshot, ${formatBytes(MAX_AUDIT_REPORT_BYTES)} total file`,
-    ...(omittedForBytes > 0 ? [`- ${omittedForBytes} otherwise-selected request(s) were omitted to keep the file within its byte budget.`] : []),
+    `- ${reportText(locale, 'scope.generatedUtc')}: ${inlineCode(model.generatedAt)}`,
+    `- ${reportText(locale, 'scope.extensionVersion')}: ${inlineCode(model.version)}`,
+    `- ${reportText(locale, 'scope.sourcePage')}: ${model.sourceUrl ? inlineCode(redactReportUrl(model.sourceUrl)) : reportText(locale, 'value.notCaptured')}`,
+    `- ${reportText(locale, 'scope.selection')}: ${selection}`,
+    `- ${reportText(locale, 'scope.counts', {
+      retained: model.capture.retained,
+      reviewed: model.capture.reviewed,
+      matched: model.capture.matching,
+      included: includedCount,
+      omitted,
+    })}`,
+    `- ${reportText(locale, 'scope.captureWindow')}: ${inlineCode(formatTimestamp(model.capture.earliest, locale))} → ${inlineCode(formatTimestamp(model.capture.latest, locale))}`,
+    `- ${reportText(locale, 'scope.limits', {
+      requests: MAX_AUDIT_REQUESTS,
+      timeline: MAX_AUDIT_TIMELINE_ENTRIES,
+      payload: formatBytes(MAX_AUDIT_PAYLOAD_BYTES, locale),
+      report: formatBytes(MAX_AUDIT_REPORT_BYTES, locale),
+    })}`,
+    ...(omittedForBytes > 0 ? [`- ${reportText(locale, 'scope.omittedForBytes', { count: omittedForBytes })}`] : []),
     '',
   ].join('\n');
 }
 
 function formatObservations(model) {
-  const lines = ['## Observed clues', ''];
+  const { locale } = model;
+  const lines = [`## ${reportText(locale, 'section.observedClues')}`, ''];
   const signalEntries = Object.entries(model.signalCounts)
     .filter(([, count]) => count > 0)
     .sort((left, right) => right[1] - left[1]);
   if (!signalEntries.length) {
-    lines.push('- No noteworthy signals were detected in the retained capture.');
+    lines.push(`- ${reportText(locale, 'clues.none')}`);
   } else {
-    signalEntries.forEach(([id, count]) => lines.push(`- ${count} ${SIGNAL_LABELS[id] || id}.`));
+    signalEntries.forEach(([id, count]) => {
+      const key = SIGNAL_COUNT_KEYS[id];
+      lines.push(`- ${key ? reportText(locale, key, { count }) : `${count} ${id}.`}`);
+    });
   }
   model.failureClusters.forEach(cluster => {
-    lines.push(`- Repeated failure: ${cluster.count} × ${inlineCode(cluster.code)} on ${inlineCode(cluster.method)}. ${getDiagnosticClue(cluster.code)}`);
+    lines.push(`- ${reportText(locale, 'clues.repeatedFailure', {
+      count: cluster.count,
+      code: inlineCode(cluster.code),
+      method: inlineCode(cluster.method),
+      clue: getDiagnosticClue(cluster.code, '', locale),
+    })}`);
   });
   model.sharedBackends.forEach(observation => {
-    lines.push(`- Shared route clue: ${observation.count} failures across ${observation.methodCount} methods used ${inlineCode(observation.origin)}. Check common backend health and ingress/proxy routing.`);
+    lines.push(`- ${reportText(locale, 'clues.sharedRoute', {
+      count: observation.count,
+      methodCount: observation.methodCount,
+      origin: inlineCode(observation.origin),
+    })}`);
   });
   lines.push('');
   return lines.join('\n');
 }
 
-function timelineState(analysis) {
-  if (analysis.isError) return 'ERROR';
-  if (analysis.isPending) return 'PENDING';
-  if (analysis.signals.some(signal => signal.severity === 'warning')) return 'FLAGGED';
-  if (analysis.entry?.terminalPhase === 'complete' || analysis.completionTimestamp != null) return 'COMPLETE';
-  return 'ACTIVE';
+function timelineState(analysis, locale) {
+  let state = 'active';
+  if (analysis.isError) state = 'error';
+  else if (analysis.isPending) state = 'pending';
+  else if (analysis.signals.some(signal => signal.severity === 'warning')) state = 'flagged';
+  else if (analysis.entry?.terminalPhase === 'complete' || analysis.completionTimestamp != null) state = 'complete';
+  return reportText(locale, `timeline.state.${state}`);
 }
 
 function formatTimeline(model) {
+  const { locale } = model;
+  const countKey = model.timeline.length === 1
+    ? 'section.recentActivity.one'
+    : 'section.recentActivity.other';
   const lines = [
-    `## Recent activity (${model.timeline.length} retained request${model.timeline.length === 1 ? '' : 's'})`,
+    `## ${reportText(locale, countKey, { count: model.timeline.length })}`,
     '',
   ];
   if (!model.timeline.length) {
-    lines.push('_No requests were retained._', '');
+    lines.push(`_${reportText(locale, 'timeline.none')}_`, '');
     return lines.join('\n');
   }
   model.timeline.forEach(analysis => {
     const entry = analysis.entry || {};
-    lines.push(`- ${inlineCode(formatTimestamp(analysis.requestTimestamp))} — **${timelineState(analysis)}** · ${formatDuration(analysis.duration)} · ${inlineCode(entry.transport || 'unknown transport')} · ${inlineCode(redactMethod(entry.method, 500))}`);
+    lines.push(`- ${inlineCode(formatTimestamp(analysis.requestTimestamp, locale))} — **${timelineState(analysis, locale)}** · ${formatDuration(analysis.duration, locale)} · ${inlineCode(entry.transport || reportText(locale, 'value.unknownTransport'))} · ${inlineCode(redactMethod(entry.method, 500, locale))}`);
   });
   lines.push('');
   return lines.join('\n');
 }
 
-function formatRequestSection(analysis) {
+function formatRequestSection(analysis, locale) {
   const entry = analysis.fullEntry || analysis.summary || {};
   const reportEntry = {
-    method: redactMethod(entry.method, 1000),
+    method: redactMethod(entry.method, 1000, locale),
     backendUrl: entry.backendUrl,
     request: analysis.fullEntry?.request,
     response: analysis.fullEntry?.response,
@@ -752,54 +833,63 @@ function formatRequestSection(analysis) {
       analysis.summary?.response || analysis.summary?.error || analysis.summary?.messages
     ),
   });
-  const headingState = timelineState(analysis);
+  const headingState = timelineState(analysis, locale);
   const status = analysis.fullEntry?.status;
   const statusDetails = status?.details || status?.detail || '';
   const statusLabel = analysis.isNetworkError
-    ? 'NETWORK_ERROR (no gRPC status captured)'
-    : (analysis.code || status?.code || 'not captured');
+    ? reportText(locale, 'detail.networkStatus')
+    : (analysis.code || status?.code || reportText(locale, 'value.notCaptured'));
   const backendUrl = redactReportUrl(debugReport.url || entry.backendUrl || entry.method || '');
   const frameUrl = redactReportUrl(entry.location || '');
   const lines = [
-    `### ${formatTimestamp(analysis.eventTimestamp)} · ${headingState} · ${inlineCode(redactMethod(entry.method, 500))}`,
+    `### ${formatTimestamp(analysis.eventTimestamp, locale)} · ${headingState} · ${inlineCode(redactMethod(entry.method, 500, locale))}`,
     '',
-    `- Request ID: ${inlineCode(entry.requestId ?? 'not captured')}`,
-    `- Transport / type: ${inlineCode(entry.transport || 'not captured')} / ${inlineCode(entry.methodType || 'not captured')}`,
-    `- Started / completed: ${inlineCode(formatTimestamp(analysis.requestTimestamp))} / ${inlineCode(formatTimestamp(analysis.completionTimestamp))}`,
-    `- Duration: ${formatDuration(analysis.duration)}`,
-    `- Backend URL: ${backendUrl ? inlineCode(backendUrl) : 'not captured'}`,
-    `- Frame URL: ${frameUrl ? inlineCode(frameUrl) : 'not captured'}`,
-    `- Status: ${inlineCode(statusLabel)}${statusDetails ? ` — ${inlineCode(clipText(redactTextSecrets(clipText(statusDetails, 2000)), 1000))}` : ''}`,
-    `- Stream messages: ${analysis.observedMessageCount} observed; ${analysis.retainedMessageCount} retained; ${analysis.droppedMessageCount} dropped from inspector history`,
-    `- Retained payload size: ${formatBytes(analysis.payloadBytes)}`,
+    `- ${reportText(locale, 'detail.requestId')}: ${inlineCode(entry.requestId ?? reportText(locale, 'value.notCaptured'))}`,
+    `- ${reportText(locale, 'detail.transportType')}: ${inlineCode(entry.transport || reportText(locale, 'value.notCaptured'))} / ${inlineCode(entry.methodType || reportText(locale, 'value.notCaptured'))}`,
+    `- ${reportText(locale, 'detail.startedCompleted')}: ${inlineCode(formatTimestamp(analysis.requestTimestamp, locale))} / ${inlineCode(formatTimestamp(analysis.completionTimestamp, locale))}`,
+    `- ${reportText(locale, 'detail.duration')}: ${formatDuration(analysis.duration, locale)}`,
+    `- ${reportText(locale, 'detail.backendUrl')}: ${backendUrl ? inlineCode(backendUrl) : reportText(locale, 'value.notCaptured')}`,
+    `- ${reportText(locale, 'detail.frameUrl')}: ${frameUrl ? inlineCode(frameUrl) : reportText(locale, 'value.notCaptured')}`,
+    `- ${reportText(locale, 'detail.status')}: ${inlineCode(statusLabel)}${statusDetails ? ` — ${inlineCode(clipText(redactTextSecrets(clipText(statusDetails, 2000)), 1000))}` : ''}`,
+    `- ${reportText(locale, 'detail.streamMessages', {
+      observed: analysis.observedMessageCount,
+      retained: analysis.retainedMessageCount,
+      dropped: analysis.droppedMessageCount,
+    })}`,
+    `- ${reportText(locale, 'detail.retainedPayloadSize')}: ${formatBytes(analysis.payloadBytes, locale)}`,
   ];
   if (entry.replayedFrom) {
-    lines.push(`- Replay source: ${inlineCode(entry.replayedFrom.transport || 'unknown transport')} request ${inlineCode(entry.replayedFrom.requestId ?? 'unknown')}`);
+    lines.push(`- ${reportText(locale, 'detail.replaySource', {
+      transport: inlineCode(entry.replayedFrom.transport || reportText(locale, 'value.unknownTransport')),
+      requestId: inlineCode(entry.replayedFrom.requestId ?? reportText(locale, 'value.unknown')),
+    })}`);
   }
-  lines.push('', '**Signals and areas to investigate**', '');
+  lines.push('', `**${reportText(locale, 'section.signals')}**`, '');
   if (!analysis.signals.length) {
-    lines.push('- No automatic issue signal; included because it matched the active filter.');
+    lines.push(`- ${reportText(locale, 'signals.noneFiltered')}`);
   } else {
-    analysis.signals.forEach(signal => lines.push(`- **${signal.label}.** ${signal.clue}`));
+    analysis.signals.forEach(signal => {
+      lines.push(`- **${formatSignalLabel(signal, locale)}.** ${formatSignalClue(signal, locale)}`);
+    });
   }
-  lines.push('', '**Request payload**', '');
+  lines.push('', `**${reportText(locale, 'section.requestPayload')}**`, '');
   if (analysis.payloadWasEvicted && analysis.summary?.request === true) {
-    lines.push('_Full request payload was evicted from the bounded inspector cache._');
+    lines.push(`_${reportText(locale, 'notice.requestEvicted')}_`);
   } else {
-    lines.push(codeFence(formatBoundedJson(debugReport.request)));
+    lines.push(codeFence(formatBoundedJson(debugReport.request, MAX_AUDIT_PAYLOAD_BYTES, locale)));
   }
-  lines.push('', '**Outcome**', '');
+  lines.push('', `**${reportText(locale, 'section.outcome')}**`, '');
   if (analysis.payloadWasEvicted && (analysis.summary?.response || analysis.summary?.error || analysis.summary?.messages)) {
-    lines.push('_Full response, stream, or error payload was evicted from the bounded inspector cache._');
+    lines.push(`_${reportText(locale, 'notice.outcomeEvicted')}_`);
   } else {
-    lines.push(codeFence(formatBoundedJson(debugReport.response)));
+    lines.push(codeFence(formatBoundedJson(debugReport.response, MAX_AUDIT_PAYLOAD_BYTES, locale)));
   }
   lines.push('');
   return lines.join('\n');
 }
 
 function renderAuditReport(model) {
-  const requestSections = model.selectedAnalyses.map(formatRequestSection);
+  const requestSections = model.selectedAnalyses.map(analysis => formatRequestSection(analysis, model.locale));
   const observations = formatObservations(model);
   const timeline = formatTimeline(model);
   let retainedSections = requestSections.slice();
@@ -808,14 +898,14 @@ function renderAuditReport(model) {
   while (true) {
     const header = formatReportHeader(model, retainedSections.length, omittedForBytes);
     const details = retainedSections.length
-      ? `## Detailed requests (chronological)\n\n${retainedSections.join('\n')}`
-      : '## Detailed requests\n\n_No matching request details were selected._\n';
+      ? `## ${reportText(model.locale, 'section.detailedChronological')}\n\n${retainedSections.join('\n')}`
+      : `## ${reportText(model.locale, 'section.detailed')}\n\n_${reportText(model.locale, 'details.none')}_\n`;
     const text = `${header}${observations}${timeline}${details}`;
     if (utf8ByteLength(text) <= MAX_AUDIT_REPORT_BYTES) {
       return { text, includedCount: retainedSections.length, omittedForBytes };
     }
     if (retainedSections.length === 0) {
-      const suffix = '\n\n> Report body truncated to the advertised UTF-8 byte limit.\n';
+      const suffix = `\n\n> ${reportText(model.locale, 'notice.bodyTruncated')}\n`;
       return {
         text: fitUtf8Text(text, MAX_AUDIT_REPORT_BYTES, suffix),
         includedCount: 0,

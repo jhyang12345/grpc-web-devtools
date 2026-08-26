@@ -1,5 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit';
-import localizationReducer from '../state/localization';
+import localizationReducer, { setLanguagePreference } from '../state/localization';
 import networkReducer, { clearLogAndCache, logNetworkEntry } from '../state/network';
 import { downloadAuditReport } from '../state/auditReport';
 import toastReducer from '../state/toast';
@@ -26,6 +26,7 @@ test('flushes a just-captured error before taking the downloadable snapshot', as
     error: { code: 14, message: 'unavailable' },
     timing: { requestTimestamp: Date.parse('2026-08-25T14:29:59Z'), completionTimestamp: Date.parse('2026-08-25T14:30:00Z'), duration: 1000 },
   }));
+  store.dispatch(setLanguagePreference('ko'));
   expect(store.getState().network._allLog).toHaveLength(0);
   const downloadFile = jest.fn();
 
@@ -39,11 +40,13 @@ test('flushes a just-captured error before taking the downloadable snapshot', as
 
   expect(store.getState().network._allLog).toHaveLength(1);
   expect(downloadFile).toHaveBeenCalledWith(
-    expect.stringContaining('/demo.Service/ImmediateFailure'),
+    expect.stringContaining('## 범위'),
     expect.objectContaining({
       filename: 'grpc-web-audit-app-example-test-2026-08-25T14-30-01-000Z-550e8400-e29b-41d4-a716-446655440000.md',
     }),
   );
+  expect(downloadFile.mock.calls[0][0]).toContain('/demo.Service/ImmediateFailure');
+  expect(downloadFile.mock.calls[0][0]).not.toContain('## Scope');
   expect(report.stats.included).toBe(1);
   expect(store.getState().toast).toEqual(expect.objectContaining({ visible: true, type: 'success' }));
   store.dispatch(clearLogAndCache({ force: true }));

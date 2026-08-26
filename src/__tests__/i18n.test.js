@@ -41,3 +41,15 @@ test('keeps every protected Korean technical term exactly in English', () => {
   expect(MESSAGES.ko['audit.download']).toContain('Audit Report');
   expect(MESSAGES.ko['audit.downloadTitle']).toContain('Markdown');
 });
+
+test('keeps English and Korean Audit Report catalogs in sync', () => {
+  const reportKeys = locale => Object.keys(MESSAGES[locale])
+    .filter(key => key.startsWith('audit.report.'))
+    .sort();
+
+  expect(reportKeys('ko')).toEqual(reportKeys('en'));
+  expect(MESSAGES.ko['audit.report.detail.backendUrl']).toBe('Backend URL');
+  expect(MESSAGES.ko['audit.report.detail.frameUrl']).toBe('Frame URL');
+  expect(MESSAGES.ko['audit.report.section.requestPayload']).toContain('Request Payload');
+  expect(MESSAGES.ko['audit.report.notice.requestEvicted']).toContain('Cache');
+});

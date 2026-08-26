@@ -47,6 +47,7 @@ function build(entries, options = {}) {
     getEntry: entryId => cache.get(entryId),
     now: new Date(NOW),
     version: '1.6.0-test',
+    locale: options.locale,
   });
 }
 
@@ -395,6 +396,43 @@ test('uses a filesystem-safe source URL, millisecond timestamp, and unique ID in
   expect(filename).not.toContain('alice');
   expect(filename).not.toContain('orders');
   expect(filename).not.toContain('private');
+});
+
+test('renders generated report prose in the selected Korean extension language', () => {
+  const entry = {
+    entryId: 1,
+    requestId: 7,
+    method: '/demo.Service/Fail',
+    methodType: 'unary',
+    transport: 'grpc-web',
+    location: 'https://app.example.test/page',
+    request: { id: 7 },
+    error: { code: 14, message: 'unavailable' },
+    terminalPhase: 'error',
+    timing: { requestTimestamp: NOW - 2000, completionTimestamp: NOW - 1000, duration: 1000 },
+  };
+  const report = build([entry], { locale: 'ko' });
+
+  expect(report.text).toMatch(/^# gRPC-Web Audit Report/);
+  expect(report.text).toContain('## 범위');
+  expect(report.text).toContain('## 관찰된 단서');
+  expect(report.text).toContain('## 최근 활동');
+  expect(report.text).toContain('## 상세 Request (시간순)');
+  expect(report.text).toContain('**조사할 신호와 영역**');
+  expect(report.text).toContain('백엔드 상태');
+  expect(report.text).toContain('Request Payload');
+  expect(report.text).not.toContain('## Scope');
+  expect(report.text).not.toContain('## Observed clues');
+  expect(getDiagnosticClue('UNAUTHENTICATED', '', 'ko')).toContain('인증 정보');
+});
+
+test('localizes bounded JSON audit notices without changing structural marker keys', () => {
+  const cyclic = {};
+  cyclic.self = cyclic;
+  const formatted = formatBoundedJson(cyclic, 2048, 'ko');
+
+  expect(formatted).toContain('[순환 참조]');
+  expect(formatted).toContain('self');
 });
 
 test('distinguishes retained and evicted network failures from coded RPC errors', () => {
