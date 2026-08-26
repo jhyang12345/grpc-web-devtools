@@ -37,6 +37,7 @@ const GRPC_CODE_NAMES = [
 ];
 
 const CODE_CLUES = {
+  NETWORK_ERROR: 'Check browser CORS policy, DNS, TLS, proxy or ingress reachability, and whether the request reached the backend; no gRPC status was captured.',
   CANCELLED: 'Check client cancellation, page navigation, or a request that was superseded before completion.',
   UNKNOWN: 'Check server and proxy logs for the original error that could not be mapped to a more specific gRPC code.',
   INVALID_ARGUMENT: 'Compare the captured request with the current protobuf schema and server-side validation rules.',
@@ -56,6 +57,7 @@ const CODE_CLUES = {
 };
 
 const SIGNAL_LABELS = {
+  network_error: 'network-level failures',
   rpc_error: 'RPC errors',
   partial_stream: 'partial stream failures',
   replay_failure: 'failed replays',
@@ -378,11 +380,13 @@ export function analyzeAuditEntry(summary = {}, options = {}) {
   const entry = fullEntry || summary;
   const rawCode = getErrorCode(fullEntry, summary);
   const code = normalizeGrpcCode(rawCode);
+  const taggedNetworkError = fullEntry?.error?.isNetworkError === true || summary.isNetworkError === true;
+  const isNetworkError = taggedNetworkError && (rawCode == null || rawCode === '');
   const errorMessage = clipText(getErrorMessage(fullEntry), 2000);
   const terminalPhase = fullEntry?.terminalPhase || summary.terminalPhase;
   const hasErrorPayload = fullEntry ? fullEntry.error != null : summary.error === true;
   const nonOkStatus = code != null && code !== 'OK';
-  const isError = terminalPhase === 'error' || hasErrorPayload || nonOkStatus;
+  const isError = terminalPhase === 'error' || hasErrorPayload || nonOkStatus || isNetworkError;
   const duration = asFiniteNumber(entry?.timing?.duration);
   const requestTimestamp = asFiniteNumber(entry?.timing?.requestTimestamp);
   const completionTimestamp = asFiniteNumber(entry?.timing?.completionTimestamp);
@@ -410,12 +414,21 @@ export function analyzeAuditEntry(summary = {}, options = {}) {
   const signals = [];
 
   if (isError) {
-    signals.push({
-      id: 'rpc_error',
-      severity: 'error',
-      label: `RPC error${code ? ` (${code})` : ''}`,
-      clue: getDiagnosticClue(code, errorMessage),
-    });
+    if (isNetworkError) {
+      signals.push({
+        id: 'network_error',
+        severity: 'error',
+        label: 'Network failure (no gRPC status captured)',
+        clue: CODE_CLUES.NETWORK_ERROR,
+      });
+    } else {
+      signals.push({
+        id: 'rpc_error',
+        severity: 'error',
+        label: `RPC error${code ? ` (${code})` : ''}`,
+        clue: getDiagnosticClue(code, errorMessage),
+      });
+    }
   }
   if (isPartialStreamFailure) signals.push({
     id: 'partial_stream', severity: 'warning', label: 'Stream failed after delivering data',
@@ -458,6 +471,7 @@ export function analyzeAuditEntry(summary = {}, options = {}) {
     code,
     errorMessage,
     isError,
+    isNetworkError,
     isPending,
     isNoteworthy: signals.some(signal => signal.id !== 'payload_evicted'),
     signals,
@@ -487,7 +501,7 @@ function buildFailureClusters(analyses) {
   const clusters = new Map();
   analyses.filter(analysis => analysis.isError).forEach(analysis => {
     const method = redactMethod(analysis.entry?.method, 300);
-    const code = analysis.code || 'UNMAPPED_ERROR';
+    const code = analysis.isNetworkError ? 'NETWORK_ERROR' : (analysis.code || 'UNMAPPED_ERROR');
     const key = `${method}\u0000${code}`;
     const existing = clusters.get(key) || { method, code, count: 0 };
     existing.count += 1;
@@ -741,6 +755,9 @@ function formatRequestSection(analysis) {
   const headingState = timelineState(analysis);
   const status = analysis.fullEntry?.status;
   const statusDetails = status?.details || status?.detail || '';
+  const statusLabel = analysis.isNetworkError
+    ? 'NETWORK_ERROR (no gRPC status captured)'
+    : (analysis.code || status?.code || 'not captured');
   const backendUrl = redactReportUrl(debugReport.url || entry.backendUrl || entry.method || '');
   const frameUrl = redactReportUrl(entry.location || '');
   const lines = [
@@ -752,7 +769,7 @@ function formatRequestSection(analysis) {
     `- Duration: ${formatDuration(analysis.duration)}`,
     `- Backend URL: ${backendUrl ? inlineCode(backendUrl) : 'not captured'}`,
     `- Frame URL: ${frameUrl ? inlineCode(frameUrl) : 'not captured'}`,
-    `- Status: ${inlineCode(analysis.code || status?.code || 'not captured')}${statusDetails ? ` — ${inlineCode(clipText(redactTextSecrets(clipText(statusDetails, 2000)), 1000))}` : ''}`,
+    `- Status: ${inlineCode(statusLabel)}${statusDetails ? ` — ${inlineCode(clipText(redactTextSecrets(clipText(statusDetails, 2000)), 1000))}` : ''}`,
     `- Stream messages: ${analysis.observedMessageCount} observed; ${analysis.retainedMessageCount} retained; ${analysis.droppedMessageCount} dropped from inspector history`,
     `- Retained payload size: ${formatBytes(analysis.payloadBytes)}`,
   ];

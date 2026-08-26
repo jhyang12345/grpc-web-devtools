@@ -24,6 +24,7 @@ function summary(entry) {
     request: entry.request != null,
     response: entry.response != null,
     error: entry.error != null,
+    isNetworkError: entry.error?.isNetworkError === true || entry.isNetworkError === true,
     status: entry.status != null,
     messages: !!entry.messages?.length,
     terminalPhase: entry.terminalPhase,
@@ -394,6 +395,39 @@ test('uses a filesystem-safe source URL, millisecond timestamp, and unique ID in
   expect(filename).not.toContain('alice');
   expect(filename).not.toContain('orders');
   expect(filename).not.toContain('private');
+});
+
+test('distinguishes retained and evicted network failures from coded RPC errors', () => {
+  const networkEntry = {
+    entryId: 10,
+    method: '/demo.Service/Blocked',
+    error: { message: 'Failed to fetch', isNetworkError: true },
+    terminalPhase: 'error',
+    timing: { requestTimestamp: NOW - 2000, completionTimestamp: NOW - 1000, duration: 1000 },
+  };
+  const retained = analyzeAuditEntry(summary(networkEntry), { now: NOW, fullEntry: networkEntry });
+  const evicted = analyzeAuditEntry(summary(networkEntry), { now: NOW, fullEntry: null });
+  const codedEntry = {
+    ...networkEntry,
+    entryId: 11,
+    error: { code: 14, message: 'unavailable', isNetworkError: true },
+  };
+  const coded = analyzeAuditEntry(summary(codedEntry), { now: NOW, fullEntry: codedEntry });
+
+  [retained, evicted].forEach(analysis => {
+    expect(analysis.isNetworkError).toBe(true);
+    expect(analysis.signals.map(signal => signal.id)).toContain('network_error');
+    expect(analysis.signals.map(signal => signal.id)).not.toContain('rpc_error');
+  });
+  expect(coded.isNetworkError).toBe(false);
+  expect(coded.code).toBe('UNAVAILABLE');
+  expect(coded.signals.map(signal => signal.id)).toContain('rpc_error');
+
+  const report = build([networkEntry]);
+  expect(report.text).toContain('Network failure (no gRPC status captured)');
+  expect(report.text).toContain('NETWORK_ERROR (no gRPC status captured)');
+  expect(report.text).not.toContain('RPC error');
+  expect(report.text).not.toContain('UNMAPPED_ERROR');
 });
 
 test('falls back safely when source context is unavailable and gives same-millisecond reports distinct names', () => {

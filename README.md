@@ -106,10 +106,10 @@ needed.
 After reproducing a problem, choose **Audit report** in the panel toolbar to
 download one paste-ready Markdown file. The report combines recent detected
 issues with recent requests matching the active Filter, so QA can hand off a
-reproduction without copying each Request and Response separately. RPC errors
-are prioritized, and the report also flags slow or incomplete calls, partial
-stream failures, failed replays, dropped stream history, large payloads, and
-capture truncation.
+reproduction without copying each Request and Response separately. Network and
+RPC errors are prioritized, and the report also flags slow or incomplete calls,
+partial stream failures, failed replays, dropped stream history, large payloads,
+and capture truncation.
 
 The filename carries safe source context without leaking URL paths or query
 values. For example,
@@ -119,12 +119,12 @@ a unique report ID so later downloads cannot overwrite an earlier report.
 
 Each file contains a chronological activity timeline, detailed evidence for up
 to 25 requests, repeated-failure and shared-route observations, request timing,
-gRPC status, bounded Request/Response snapshots, and explicit markers when
-evidence was truncated or evicted. Suggested investigation areas are based on
-captured status codes and patterns; they are clues, not root-cause
-determinations. Correlate the timestamps and request IDs with backend and proxy
-logs. The browser capture does not include server logs, response headers,
-trailers, or stack traces.
+network-failure classification, gRPC status, bounded Request/Response snapshots,
+and explicit markers when evidence was truncated or evicted. Suggested
+investigation areas are based on captured status codes and patterns; they are
+clues, not root-cause determinations. Correlate the timestamps and request IDs
+with backend and proxy logs. The browser capture does not include server logs,
+response headers, trailers, or stack traces.
 
 Audit exports are deliberately bounded: they scan at most 1,000 lightweight
 summaries, include a 50-request metadata timeline, retain at most 6 KiB from
