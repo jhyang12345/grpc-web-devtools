@@ -13,6 +13,7 @@ import TrashIcon from '../icons/Trash';
 import FilterIcon from '../icons/Filter';
 import SettingsPopover from './SettingsPopover';
 import AuditReportDownload from './AuditReportDownload';
+import AuditReportPageLookback from './AuditReportPageLookback';
 import './Toolbar.css';
 
 export class Toolbar extends Component {
@@ -90,7 +91,11 @@ export class Toolbar extends Component {
                 )}
               </span>
             </div>
+            <ToolbarDivider />
+            <AuditReportPageLookback locale={locale} />
+            <ToolbarDivider />
             <AuditReportDownload locale={locale} />
+            <ToolbarDivider />
             <SettingsPopover
               locale={locale}
               preference={languagePreference}

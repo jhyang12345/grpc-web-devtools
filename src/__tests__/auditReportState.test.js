@@ -1,12 +1,36 @@
 import { configureStore } from '@reduxjs/toolkit';
 import localizationReducer, { setLanguagePreference } from '../state/localization';
 import networkReducer, { clearLogAndCache, logNetworkEntry } from '../state/network';
-import { downloadAuditReport } from '../state/auditReport';
+import auditReportReducer, { downloadAuditReport, setAuditReportPageLookbackAndPersist } from '../state/auditReport';
 import toastReducer from '../state/toast';
 import toolbarReducer from '../state/toolbar';
 
 afterEach(() => {
   jest.useRealTimers();
+  localStorage.clear();
+});
+
+test('defaults the page lookback to 2 and clamps and persists updates', () => {
+  const store = configureStore({ reducer: { auditReport: auditReportReducer } });
+  expect(store.getState().auditReport.pageLookback).toBe(2);
+
+  store.dispatch(setAuditReportPageLookbackAndPersist(5));
+  expect(store.getState().auditReport.pageLookback).toBe(5);
+  expect(JSON.parse(localStorage.getItem('grpc-devtools-auditReportPageLookback'))).toBe(5);
+
+  store.dispatch(setAuditReportPageLookbackAndPersist(99));
+  expect(store.getState().auditReport.pageLookback).toBe(5);
+
+  store.dispatch(setAuditReportPageLookbackAndPersist(0));
+  expect(store.getState().auditReport.pageLookback).toBe(1);
+});
+
+test('a fresh store reloads the persisted page lookback', () => {
+  localStorage.setItem('grpc-devtools-auditReportPageLookback', '4');
+  jest.resetModules();
+  const { default: freshAuditReportReducer } = require('../state/auditReport');
+  const store = configureStore({ reducer: { auditReport: freshAuditReportReducer } });
+  expect(store.getState().auditReport.pageLookback).toBe(4);
 });
 
 test('flushes a just-captured error before taking the downloadable snapshot', async () => {
@@ -33,7 +57,6 @@ test('flushes a just-captured error before taking the downloadable snapshot', as
   const report = await store.dispatch(downloadAuditReport({
     now: new Date('2026-08-25T14:30:01Z'),
     version: 'test',
-    reportId: '550e8400-e29b-41d4-a716-446655440000',
     scheduleTask: callback => callback(),
     downloadFile,
   }));
@@ -42,7 +65,7 @@ test('flushes a just-captured error before taking the downloadable snapshot', as
   expect(downloadFile).toHaveBeenCalledWith(
     expect.stringContaining('## 범위'),
     expect.objectContaining({
-      filename: 'grpc-web-audit-app-example-test-2026-08-25T14-30-01-000Z-550e8400-e29b-41d4-a716-446655440000.md',
+      filename: expect.stringMatching(/^grpc-audit-app-example-test-orders-123-session-2026-08-25T14-30-01-000Z-\d+\.md$/),
     }),
   );
   expect(downloadFile.mock.calls[0][0]).toContain('/demo.Service/ImmediateFailure');

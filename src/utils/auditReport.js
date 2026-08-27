@@ -12,10 +12,18 @@ export const MAX_AUDIT_PAYLOAD_BYTES = 6 * 1024;
 export const SLOW_REQUEST_MS = 2000;
 export const PENDING_REQUEST_MS = 30000;
 export const LARGE_PAYLOAD_BYTES = 1024 * 1024;
+export const MIN_AUDIT_PAGE_LOOKBACK = 1;
+export const MAX_AUDIT_PAGE_LOOKBACK = 5;
+export const DEFAULT_AUDIT_PAGE_LOOKBACK = 2;
 
-const MAX_AUDIT_FILENAME_SOURCE_CHARS = 60;
-const MAX_AUDIT_REPORT_ID_CHARS = 64;
-let fallbackReportIdSequence = 0;
+export function clampAuditPageLookback(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return DEFAULT_AUDIT_PAGE_LOOKBACK;
+  return Math.min(MAX_AUDIT_PAGE_LOOKBACK, Math.max(MIN_AUDIT_PAGE_LOOKBACK, Math.round(number)));
+}
+
+const MAX_AUDIT_FILENAME_SOURCE_CHARS = 100;
+let auditFilenameSequence = 0;
 
 const GRPC_CODE_NAMES = [
   'OK',
@@ -584,10 +592,36 @@ function resolveSourceUrl(options, analyses) {
   return sourceUrl;
 }
 
+function normalizePageKey(location) {
+  return typeof location === 'string' && location ? location : '';
+}
+
+function computePageScope(entries, pageLookback) {
+  const lastSeenByPage = new Map();
+  entries.forEach(entry => {
+    const key = normalizePageKey(entry.location);
+    const timestamp = asFiniteNumber(entry.timing?.completionTimestamp) ?? asFiniteNumber(entry.timing?.requestTimestamp) ?? 0;
+    if (!lastSeenByPage.has(key) || timestamp > lastSeenByPage.get(key)) lastSeenByPage.set(key, timestamp);
+  });
+  const orderedPages = Array.from(lastSeenByPage.entries()).sort((left, right) => right[1] - left[1]);
+  const totalPages = orderedPages.length;
+  if (totalPages <= pageLookback) {
+    return { entries, totalPages, includedPages: totalPages };
+  }
+  const includedKeys = new Set(orderedPages.slice(0, pageLookback).map(([key]) => key));
+  return {
+    entries: entries.filter(entry => includedKeys.has(normalizePageKey(entry.location))),
+    totalPages,
+    includedPages: includedKeys.size,
+  };
+}
+
 function buildReportModel(options) {
   const locale = normalizeReportLocale(options.locale);
+  const pageLookback = clampAuditPageLookback(options.pageLookback);
   const allEntries = Array.isArray(options.allEntries) ? options.allEntries : [];
-  const scannedEntries = allEntries.slice(-MAX_AUDIT_SCAN_ENTRIES);
+  const pageScope = computePageScope(allEntries.slice(-MAX_AUDIT_SCAN_ENTRIES), pageLookback);
+  const scannedEntries = pageScope.entries;
   const nowDate = options.now instanceof Date ? new Date(options.now.getTime()) : new Date(options.now ?? Date.now());
   const nowMs = Number.isFinite(nowDate.getTime()) ? nowDate.getTime() : Date.now();
   const analyses = scannedEntries.map((summary, index) => analyzeAuditEntry(summary, {
@@ -604,9 +638,15 @@ function buildReportModel(options) {
   const filterCandidates = filterActive
     ? analyses.filter(analysis => filteredIds.has(analysis.summary?.entryId)).sort(compareNewestFirst)
     : [];
+  // Issues and filter matches are always prioritized, but the report's whole
+  // purpose is to show real request/response evidence — so once those are
+  // accounted for, backfill remaining capacity with the most recent traffic
+  // rather than leaving an ordinary, healthy session with an empty report.
+  const recentCandidates = analyses.slice().sort(compareNewestFirst).slice(0, MAX_AUDIT_REQUESTS);
   const matching = new Map();
   issueCandidates.forEach(analysis => matching.set(analysis.key, analysis));
   filterCandidates.forEach(analysis => matching.set(analysis.key, analysis));
+  recentCandidates.forEach(analysis => matching.set(analysis.key, analysis));
 
   const selected = new Map();
   const reservedFilterSlots = filterActive ? Math.min(5, filterCandidates.length) : 0;
@@ -618,6 +658,10 @@ function buildReportModel(options) {
     selected.set(analysis.key, analysis);
   }
   for (const analysis of filterCandidates) {
+    if (selected.size >= MAX_AUDIT_REQUESTS) break;
+    selected.set(analysis.key, analysis);
+  }
+  for (const analysis of recentCandidates) {
     if (selected.size >= MAX_AUDIT_REQUESTS) break;
     selected.set(analysis.key, analysis);
   }
@@ -644,6 +688,10 @@ function buildReportModel(options) {
     sourceUrl: resolveSourceUrl(options, analyses),
     filterValue,
     filterActive,
+    pageLookback,
+    pagesObserved: pageScope.totalPages,
+    pagesIncluded: pageScope.includedPages,
+    matchedFilterKeys: new Set(filterCandidates.map(analysis => analysis.key)),
     analyses,
     issueCandidates,
     selectedAnalyses,
@@ -769,6 +817,11 @@ function formatReportHeader(model, includedCount, omittedForBytes) {
     `- ${reportText(locale, 'scope.extensionVersion')}: ${inlineCode(model.version)}`,
     `- ${reportText(locale, 'scope.sourcePage')}: ${model.sourceUrl ? inlineCode(redactReportUrl(model.sourceUrl)) : reportText(locale, 'value.notCaptured')}`,
     `- ${reportText(locale, 'scope.selection')}: ${selection}`,
+    `- ${reportText(locale, 'scope.pages', {
+      included: model.pagesIncluded,
+      observed: model.pagesObserved,
+      lookback: model.pageLookback,
+    })}`,
     `- ${reportText(locale, 'scope.counts', {
       retained: model.capture.retained,
       reviewed: model.capture.reviewed,
@@ -851,7 +904,7 @@ function formatTimeline(model) {
   return lines.join('\n');
 }
 
-function formatRequestSection(analysis, locale) {
+function formatRequestSection(analysis, locale, matchedFilterKeys) {
   const entry = analysis.fullEntry || analysis.summary || {};
   const reportEntry = {
     method: redactMethod(entry.method, 1000, locale),
@@ -900,7 +953,8 @@ function formatRequestSection(analysis, locale) {
   }
   lines.push('', `**${reportText(locale, 'section.signals')}**`, '');
   if (!analysis.signals.length) {
-    lines.push(`- ${reportText(locale, 'signals.noneFiltered')}`);
+    const noneKey = matchedFilterKeys?.has(analysis.key) ? 'signals.noneFiltered' : 'signals.noneRecent';
+    lines.push(`- ${reportText(locale, noneKey)}`);
   } else {
     analysis.signals.forEach(signal => {
       lines.push(`- **${formatSignalLabel(signal, locale)}.** ${formatSignalClue(signal, locale)}`);
@@ -923,7 +977,7 @@ function formatRequestSection(analysis, locale) {
 }
 
 function renderAuditReport(model) {
-  const requestSections = model.selectedAnalyses.map(analysis => formatRequestSection(analysis, model.locale));
+  const requestSections = model.selectedAnalyses.map(analysis => formatRequestSection(analysis, model.locale, model.matchedFilterKeys));
   const observations = formatObservations(model);
   const timeline = formatTimeline(model);
   let retainedSections = requestSections.slice();
@@ -953,15 +1007,24 @@ function renderAuditReport(model) {
 }
 
 function getFilenameSourceSlug(sourceUrl) {
-  let context = '';
+  const raw = clipText(redactTokenSecrets(sourceUrl), 4000).trim();
+  if (!raw) return 'unknown-source';
+
+  let parsed;
   try {
-    const parsed = new URL(String(sourceUrl || '').trim());
-    context = parsed.hostname
-      ? `${parsed.hostname}${parsed.port ? `-${parsed.port}` : ''}`
-      : parsed.protocol.replace(/:$/, '');
+    // Deliberately parsed without a base: only genuine absolute URLs should
+    // produce a descriptive slug, everything else falls back to unknown-source.
+    parsed = new URL(raw);
   } catch (_) {
     return 'unknown-source';
   }
+
+  const host = parsed.hostname ? `${parsed.hostname}${parsed.port ? `-${parsed.port}` : ''}` : '';
+  // Query parameter names are kept for context (they show *where* the request
+  // came from), but their values are dropped — those are exactly the kind of
+  // session IDs and tokens that shouldn't end up baked into a persistent filename.
+  const queryKeys = Array.from(parsed.searchParams.keys());
+  const context = `${host}${parsed.pathname}${queryKeys.length ? `-${queryKeys.join('-')}` : ''}`;
 
   const slug = context
     .toLowerCase()
@@ -972,39 +1035,16 @@ function getFilenameSourceSlug(sourceUrl) {
   return slug || 'unknown-source';
 }
 
-function randomReportId() {
-  try {
-    const cryptoObject = typeof window !== 'undefined' ? window.crypto : null;
-    if (typeof cryptoObject?.randomUUID === 'function') return cryptoObject.randomUUID();
-    if (typeof cryptoObject?.getRandomValues === 'function') {
-      const bytes = cryptoObject.getRandomValues(new Uint8Array(16));
-      bytes[6] = (bytes[6] & 0x0f) | 0x40;
-      bytes[8] = (bytes[8] & 0x3f) | 0x80;
-      const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-    }
-  } catch (_) {
-    // The monotonic fallback below still prevents duplicate names in this panel.
-  }
-  fallbackReportIdSequence += 1;
-  return `fallback-${Date.now().toString(36)}-${fallbackReportIdSequence.toString(36)}`;
+function nextAuditFilenameSequence() {
+  auditFilenameSequence += 1;
+  return auditFilenameSequence;
 }
 
-function normalizeReportId(value) {
-  const candidate = String(value || randomReportId())
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, MAX_AUDIT_REPORT_ID_CHARS)
-    .replace(/-+$/g, '');
-  return candidate || randomReportId();
-}
-
-export function getAuditReportFilename(value = new Date(), sourceUrl = '', reportId) {
+export function getAuditReportFilename(value = new Date(), sourceUrl = '') {
   const date = value instanceof Date ? value : new Date(value);
   const safeDate = Number.isFinite(date.getTime()) ? date : new Date();
   const timestamp = safeDate.toISOString().replace(/[:.]/g, '-');
-  return `grpc-web-audit-${getFilenameSourceSlug(sourceUrl)}-${timestamp}-${normalizeReportId(reportId)}.md`;
+  return `grpc-audit-${getFilenameSourceSlug(sourceUrl)}-${timestamp}-${nextAuditFilenameSequence()}.md`;
 }
 
 export function buildAuditReport(options = {}) {
@@ -1012,7 +1052,7 @@ export function buildAuditReport(options = {}) {
   const rendered = renderAuditReport(model);
   return {
     text: rendered.text,
-    filename: getAuditReportFilename(model.generatedAt, model.sourceUrl, options.reportId),
+    filename: getAuditReportFilename(model.generatedAt, model.sourceUrl),
     bytes: utf8ByteLength(rendered.text),
     stats: {
       retained: model.capture.retained,
@@ -1021,6 +1061,9 @@ export function buildAuditReport(options = {}) {
       included: rendered.includedCount,
       omitted: Math.max(0, model.capture.matching - rendered.includedCount),
       omittedForBytes: rendered.omittedForBytes,
+      pageLookback: model.pageLookback,
+      pagesObserved: model.pagesObserved,
+      pagesIncluded: model.pagesIncluded,
     },
   };
 }

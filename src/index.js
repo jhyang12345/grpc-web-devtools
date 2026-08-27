@@ -11,6 +11,7 @@ import toolbarReducer, { setConnectionStatus } from './state/toolbar';
 import clipboardReducer from './state/clipboard';
 import toastReducer from './state/toast';
 import localizationReducer from './state/localization';
+import auditReportReducer from './state/auditReport';
 import { configureReplayBridge, disconnectReplayBridge, handleReplayBridgeMessage } from './replayBridge';
 import { createPanelConnection } from './panelConnection';
 
@@ -54,6 +55,7 @@ const store = configureStore({
     clipboard: clipboardReducer,
     toast: toastReducer,
     localization: localizationReducer,
+    auditReport: auditReportReducer,
   }
 });
 

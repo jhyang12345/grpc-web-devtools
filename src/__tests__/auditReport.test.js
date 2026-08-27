@@ -1,8 +1,12 @@
 import {
+  DEFAULT_AUDIT_PAGE_LOOKBACK,
+  MAX_AUDIT_PAGE_LOOKBACK,
   MAX_AUDIT_REPORT_BYTES,
   MAX_AUDIT_REQUESTS,
+  MIN_AUDIT_PAGE_LOOKBACK,
   analyzeAuditEntry,
   buildAuditReport,
+  clampAuditPageLookback,
   formatBoundedJson,
   getAuditReportFilename,
   getDiagnosticClue,
@@ -48,6 +52,7 @@ function build(entries, options = {}) {
     now: new Date(NOW),
     version: '1.6.0-test',
     locale: options.locale,
+    pageLookback: options.pageLookback,
   });
 }
 
@@ -121,6 +126,96 @@ test('builds a chronological paste-ready audit with filter context and repeated 
   expect(report.text).not.toContain('exact-secret');
   expect(report.text).not.toContain('must-not-leak');
   expect(report.stats).toEqual(expect.objectContaining({ matched: 3, included: 3 }));
+});
+
+test('clamps the page lookback to 1-5 and defaults to 2 for invalid input', () => {
+  expect(clampAuditPageLookback(undefined)).toBe(DEFAULT_AUDIT_PAGE_LOOKBACK);
+  expect(clampAuditPageLookback('not a number')).toBe(DEFAULT_AUDIT_PAGE_LOOKBACK);
+  expect(clampAuditPageLookback(0)).toBe(MIN_AUDIT_PAGE_LOOKBACK);
+  expect(clampAuditPageLookback(-3)).toBe(MIN_AUDIT_PAGE_LOOKBACK);
+  expect(clampAuditPageLookback(99)).toBe(MAX_AUDIT_PAGE_LOOKBACK);
+  expect(clampAuditPageLookback(3.6)).toBe(4);
+});
+
+function pageEntry(entryId, page, requestTimestamp) {
+  return {
+    entryId, requestId: entryId, method: `/demo.Service/Page${page}Call${entryId}`, transport: 'connect-web',
+    location: `https://app.example.test/page-${page}`,
+    request: { page }, response: { ok: true }, terminalPhase: 'complete',
+    timing: { requestTimestamp, completionTimestamp: requestTimestamp + 100, duration: 100 },
+    payloadBytes: 40,
+  };
+}
+
+test('scopes the report to only the most recently visited pages, defaulting to the last 2', () => {
+  const entries = [
+    pageEntry(1, 1, NOW - 30000),
+    pageEntry(2, 2, NOW - 20000),
+    pageEntry(3, 3, NOW - 10000),
+  ];
+  const report = build(entries);
+  const detailedRequests = report.text.slice(report.text.indexOf('## Detailed requests'));
+
+  expect(report.stats.pageLookback).toBe(DEFAULT_AUDIT_PAGE_LOOKBACK);
+  expect(report.stats.pagesObserved).toBe(3);
+  expect(report.stats.pagesIncluded).toBe(2);
+  expect(detailedRequests).not.toContain('/demo.Service/Page1Call1');
+  expect(detailedRequests).toContain('/demo.Service/Page2Call2');
+  expect(detailedRequests).toContain('/demo.Service/Page3Call3');
+});
+
+test('honors an explicit page lookback of up to 5 pages', () => {
+  const entries = [1, 2, 3, 4, 5, 6].map(page => pageEntry(page, page, NOW - (7 - page) * 10000));
+  const report = build(entries, { pageLookback: 5 });
+  const detailedRequests = report.text.slice(report.text.indexOf('## Detailed requests'));
+
+  expect(report.stats.pageLookback).toBe(5);
+  expect(report.stats.pagesObserved).toBe(6);
+  expect(report.stats.pagesIncluded).toBe(5);
+  expect(detailedRequests).not.toContain('Page1Call1');
+  [2, 3, 4, 5, 6].forEach(page => {
+    expect(detailedRequests).toContain(`Page${page}Call${page}`);
+  });
+});
+
+test('includes request and response payloads for ordinary healthy traffic, not just flagged issues', () => {
+  const entries = [
+    {
+      entryId: 1, requestId: 1, method: '/demo.Service/Healthy', methodType: 'unary', transport: 'connect-web',
+      backendUrl: 'https://api.example.test', location: 'https://app.example.test/page',
+      request: { query: 'safe' }, response: { ok: true, items: [1, 2, 3] }, terminalPhase: 'complete',
+      timing: { requestTimestamp: NOW - 2000, completionTimestamp: NOW - 1000, duration: 200 },
+      payloadBytes: 40,
+    },
+  ];
+  const report = build(entries);
+  const detailedRequests = report.text.slice(report.text.indexOf('## Detailed requests'));
+
+  expect(report.stats.included).toBe(1);
+  expect(detailedRequests).toContain('"query": "safe"');
+  expect(detailedRequests).toContain('"ok": true');
+  expect(detailedRequests).toContain('included as recent activity for context');
+  expect(detailedRequests).not.toContain('No matching request details were selected');
+});
+
+test('still prioritizes detected issues over healthy backfill when both compete for the request cap', () => {
+  const healthyEntries = Array.from({ length: MAX_AUDIT_REQUESTS }, (_, index) => ({
+    entryId: index + 1, requestId: index + 1, method: `/demo.Service/Healthy${index + 1}`, transport: 'connect-web',
+    request: { ok: true }, response: { ok: true }, terminalPhase: 'complete',
+    timing: { requestTimestamp: NOW - 100000 + index * 1000, completionTimestamp: NOW - 99000 + index * 1000, duration: 100 },
+    payloadBytes: 40,
+  }));
+  const failingEntry = {
+    entryId: 999, requestId: 999, method: '/demo.Service/Failing', transport: 'connect-web',
+    request: { ok: false }, error: { code: 13, message: 'internal' }, terminalPhase: 'error',
+    timing: { requestTimestamp: NOW - 500, completionTimestamp: NOW, duration: 100 },
+    payloadBytes: 40,
+  };
+  const report = build([...healthyEntries, failingEntry]);
+  const detailedRequests = report.text.slice(report.text.indexOf('## Detailed requests'));
+
+  expect(report.stats.included).toBe(MAX_AUDIT_REQUESTS);
+  expect(detailedRequests).toContain('/demo.Service/Failing');
 });
 
 test('selects only the newest bounded set of failures and keeps the total file bounded', () => {
@@ -385,18 +480,18 @@ test('reserves detail capacity for the active filter during a large unrelated er
   expect(detailedRequests).toContain('/demo.Service/WatchedSuccess');
 });
 
-test('uses a filesystem-safe source URL, millisecond timestamp, and unique ID in the filename', () => {
+test('uses a filesystem-safe, full source URL and a plain sequence number in the filename', () => {
   const filename = getAuditReportFilename(
     new Date(NOW),
     'https://alice:secret@app.example.test:8443/orders/123?token=private#fragment',
-    '550e8400-e29b-41d4-a716-446655440000',
   );
 
-  expect(filename).toBe('grpc-web-audit-app-example-test-8443-2026-08-25T14-30-00-000Z-550e8400-e29b-41d4-a716-446655440000.md');
+  expect(filename).toMatch(/^grpc-audit-app-example-test-8443-orders-123-token-2026-08-25T14-30-00-000Z-\d+\.md$/);
   expect(filename).not.toMatch(/[<>:"/\\|?*]/);
   expect(filename).not.toContain('alice');
-  expect(filename).not.toContain('orders');
+  expect(filename).not.toContain('secret');
   expect(filename).not.toContain('private');
+  expect(filename).not.toContain('fragment');
 });
 
 test('renders generated report prose in the selected Korean extension language', () => {
@@ -502,6 +597,6 @@ test('falls back safely when source context is unavailable and gives same-millis
   const first = getAuditReportFilename(new Date(NOW), 'not a URL');
   const second = getAuditReportFilename(new Date(NOW), 'not a URL');
 
-  expect(first).toMatch(/^grpc-web-audit-unknown-source-2026-08-25T14-30-00-000Z-[a-z0-9-]+\.md$/);
+  expect(first).toMatch(/^grpc-audit-unknown-source-2026-08-25T14-30-00-000Z-\d+\.md$/);
   expect(second).not.toBe(first);
 });

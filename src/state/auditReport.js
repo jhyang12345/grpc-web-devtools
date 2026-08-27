@@ -1,12 +1,37 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
+import { createSlice } from '@reduxjs/toolkit';
 import { translate } from '../i18n';
-import { buildAuditReport } from '../utils/auditReport';
+import { buildAuditReport, clampAuditPageLookback, DEFAULT_AUDIT_PAGE_LOOKBACK } from '../utils/auditReport';
 import { downloadTextFile } from '../utils/download';
+import { getStorageItem, setStorageItem } from '../utils/localStorage';
 import { selectLocale } from './localization';
 import { flushPendingNetworkLog } from './network';
 import { getNetworkEntry } from './networkCache';
 import { showToast } from './toast';
+
+const auditReportSlice = createSlice({
+  name: 'auditReport',
+  initialState: {
+    // How many of the most recently visited pages (Frame URLs) to include when
+    // generating the Audit Report; persisted so the choice survives reloads.
+    pageLookback: clampAuditPageLookback(getStorageItem('auditReportPageLookback', DEFAULT_AUDIT_PAGE_LOOKBACK)),
+  },
+  reducers: {
+    setAuditReportPageLookback(state, action) {
+      state.pageLookback = clampAuditPageLookback(action.payload);
+    },
+  },
+});
+
+const { actions, reducer } = auditReportSlice;
+export const { setAuditReportPageLookback } = actions;
+
+export const setAuditReportPageLookbackAndPersist = value => dispatch => {
+  const clamped = clampAuditPageLookback(value);
+  setStorageItem('auditReportPageLookback', clamped);
+  dispatch(setAuditReportPageLookback(clamped));
+};
 
 const scheduleNextTask = callback => setTimeout(callback, 0);
 
@@ -35,7 +60,7 @@ export const downloadAuditReport = (options = {}) => async (dispatch, getState) 
       version: options.version,
       locale,
       sourceUrl: options.sourceUrl,
-      reportId: options.reportId,
+      pageLookback: options.pageLookback ?? state.auditReport?.pageLookback,
     });
     const download = options.downloadFile || downloadTextFile;
     await download(report.text, {
@@ -60,3 +85,4 @@ export const downloadAuditReport = (options = {}) => async (dispatch, getState) 
   }
 };
 
+export default reducer;
