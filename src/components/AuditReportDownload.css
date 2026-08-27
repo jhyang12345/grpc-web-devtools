@@ -1,9 +1,7 @@
-.audit-report-button {
-  gap: 5px;
+.toolbar-item.audit-report-button {
+  gap: 6px;
   min-width: auto;
-  margin-right: 3px;
   padding: 0 8px;
-  border-left: 1px solid var(--divider-color);
   color: var(--toolbar-color);
   font: inherit;
   font-size: 11px;

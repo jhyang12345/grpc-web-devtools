@@ -3,7 +3,8 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  padding: 0 8px;
 }
 
 .settings-version-label {
@@ -12,6 +13,10 @@
   font-variant-numeric: tabular-nums;
   user-select: none;
   white-space: nowrap;
+}
+
+.settings-button {
+  cursor: pointer;
 }
 
 .settings-button.open svg,
