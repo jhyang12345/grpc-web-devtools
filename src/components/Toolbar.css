@@ -37,6 +37,11 @@
   padding: 0 5px 0 2px;
 }
 
+.toolbar-item.checkbox label,
+.toolbar-item.checkbox input {
+  cursor: pointer;
+}
+
 .toolbar-item.checkbox:hover {
   color: var(--toolbar-color-hover);
 }
@@ -91,6 +96,7 @@
   min-width: 28px;
   background: transparent;
   border-radius: 0;
+  cursor: pointer;
 }
 
 .toolbar-divider {
