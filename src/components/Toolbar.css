@@ -77,11 +77,16 @@
 
 .toolbar-main {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   height: 26px;
   align-items: center;
   overflow: hidden;
+}
+
+.toolbar-spacer {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .toolbar-item:focus-visible,

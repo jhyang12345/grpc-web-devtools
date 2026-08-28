@@ -91,7 +91,7 @@ export class Toolbar extends Component {
                 )}
               </span>
             </div>
-            <ToolbarDivider />
+            <div className="toolbar-spacer" />
             <AuditReportPageLookback locale={locale} />
             <ToolbarDivider />
             <AuditReportDownload locale={locale} />
