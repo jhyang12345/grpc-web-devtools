@@ -667,7 +667,7 @@ function buildReportModel(options) {
   }
 
   const selectedAnalyses = Array.from(selected.values())
-    .sort((left, right) => left.eventTimestamp - right.eventTimestamp);
+    .sort((left, right) => right.eventTimestamp - left.eventTimestamp);
   const signalCounts = {};
   analyses.forEach(analysis => analysis.signals.forEach(signal => {
     signalCounts[signal.id] = (signalCounts[signal.id] || 0) + 1;
@@ -697,9 +697,9 @@ function buildReportModel(options) {
     selectedAnalyses,
     timeline: analyses.slice()
       .sort((left, right) => (
-        (left.requestTimestamp ?? left.eventTimestamp) - (right.requestTimestamp ?? right.eventTimestamp)
+        (right.requestTimestamp ?? right.eventTimestamp) - (left.requestTimestamp ?? left.eventTimestamp)
       ))
-      .slice(-MAX_AUDIT_TIMELINE_ENTRIES),
+      .slice(0, MAX_AUDIT_TIMELINE_ENTRIES),
     failureClusters: buildFailureClusters(issueCandidates, locale),
     sharedBackends: buildSharedBackendObservations(issueCandidates, locale),
     signalCounts,

@@ -128,6 +128,24 @@ test('builds a chronological paste-ready audit with filter context and repeated 
   expect(report.stats).toEqual(expect.objectContaining({ matched: 3, included: 3 }));
 });
 
+test('lists both the timeline and detailed requests newest-first (LIFO)', () => {
+  const entries = ['Oldest', 'Middle', 'Newest'].map((label, index) => ({
+    entryId: index + 1, requestId: index + 1, method: `/demo.Service/${label}`, transport: 'connect-web',
+    request: { ok: true }, response: { ok: true }, terminalPhase: 'complete',
+    timing: { requestTimestamp: NOW - (30000 - index * 10000), completionTimestamp: NOW - (29000 - index * 10000), duration: 100 },
+    payloadBytes: 40,
+  }));
+  const report = build(entries);
+
+  const timelineSection = report.text.slice(report.text.indexOf('## Recent activity'), report.text.indexOf('## Detailed requests'));
+  expect(timelineSection.indexOf('Newest')).toBeLessThan(timelineSection.indexOf('Middle'));
+  expect(timelineSection.indexOf('Middle')).toBeLessThan(timelineSection.indexOf('Oldest'));
+
+  const detailedSection = report.text.slice(report.text.indexOf('## Detailed requests'));
+  expect(detailedSection.indexOf('Newest')).toBeLessThan(detailedSection.indexOf('Middle'));
+  expect(detailedSection.indexOf('Middle')).toBeLessThan(detailedSection.indexOf('Oldest'));
+});
+
 test('clamps the page lookback to 1-5 and defaults to 2 for invalid input', () => {
   expect(clampAuditPageLookback(undefined)).toBe(DEFAULT_AUDIT_PAGE_LOOKBACK);
   expect(clampAuditPageLookback('not a number')).toBe(DEFAULT_AUDIT_PAGE_LOOKBACK);
@@ -513,7 +531,7 @@ test('renders generated report prose in the selected Korean extension language',
   expect(report.text).toContain('## 범위');
   expect(report.text).toContain('## 관찰된 단서');
   expect(report.text).toContain('## 최근 활동');
-  expect(report.text).toContain('## 상세 Request (시간순)');
+  expect(report.text).toContain('## 상세 Request (최신순)');
   expect(report.text).toContain('**조사할 신호와 영역**');
   expect(report.text).toContain('백엔드 상태');
   expect(report.text).toContain('Request Payload');
