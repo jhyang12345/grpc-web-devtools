@@ -65,6 +65,7 @@ test('toolbar spacing and reconnect typography are explicit', () => {
   expect(checkboxInputRule).toMatch(/margin:\s*0/);
   expect(statusRule).toMatch(/gap:\s*4px/);
   expect(statusRule).toMatch(/padding:\s*0 6px/);
+  expect(reconnectRule).toMatch(/margin-left:\s*2px/);
   expect(reconnectRule).toMatch(/font:\s*inherit/);
   expect(reconnectRule).toMatch(/font-size:\s*11px/);
   expect(reconnectRule).toMatch(/line-height:\s*1/);
