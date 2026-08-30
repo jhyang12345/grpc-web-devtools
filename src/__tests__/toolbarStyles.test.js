@@ -19,10 +19,10 @@ test('toolbar uses responsive rows instead of clipping live controls', () => {
   expect(ruleBody(toolbarCss, '.toolbar-main')).toMatch(/overflow:\s*visible/);
   expect(ruleBody(toolbarCss, '.toolbar-actions')).toMatch(/margin-left:\s*auto/);
   expect(toolbarCss).toMatch(
-    /@media \(max-width: 520px\)[\s\S]*?\.toolbar-shadow\s*\{[^}]*height:\s*auto[^}]*flex-wrap:\s*wrap/
+    /@media \(max-width: 560px\)[\s\S]*?\.toolbar-shadow\s*\{[^}]*height:\s*auto[^}]*flex-wrap:\s*wrap/
   );
   expect(toolbarCss).toMatch(
-    /@media \(max-width: 380px\)[\s\S]*?\.toolbar-connection\s*\{[^}]*flex:\s*1 0 100%[^}]*border-top:\s*1px solid var\(--divider-color\)/
+    /@media \(max-width: 440px\)[\s\S]*?\.toolbar-connection\s*\{[^}]*flex:\s*1 0 100%[^}]*border-top:\s*1px solid var\(--divider-color\)/
   );
 });
 
