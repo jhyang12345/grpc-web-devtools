@@ -38,12 +38,12 @@
   padding: 0 6px;
 }
 
-.toolbar-item.checkbox label,
-.toolbar-item.checkbox input {
+.toolbar-item.checkbox label {
   cursor: pointer;
 }
 
 .toolbar-item.checkbox input {
+  cursor: pointer;
   flex: none;
   width: 13px;
   height: 13px;
@@ -88,8 +88,7 @@
   overflow: visible;
 }
 
-.toolbar-connection,
-.toolbar-actions {
+.toolbar-connection {
   display: flex;
   flex: none;
   height: 26px;
@@ -97,17 +96,21 @@
 }
 
 .toolbar-actions {
+  display: flex;
+  flex: none;
+  height: 26px;
+  align-items: center;
   margin-left: auto;
 }
 
 .toolbar-item:focus-visible,
-.reconnect-button:focus-visible,
-.toolbar-item.checkbox input:focus-visible {
+.reconnect-button:focus-visible {
   outline: 2px solid var(--focus-outline-color);
   outline-offset: -2px;
 }
 
 .toolbar-item.checkbox input:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
   outline-offset: 1px;
 }
 
