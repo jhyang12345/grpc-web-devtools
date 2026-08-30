@@ -4,7 +4,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 8px;
+  padding: 0 0 0 8px;
 }
 
 .settings-version-label {
@@ -98,4 +98,15 @@
 .settings-option input:focus-visible {
   outline: 2px solid var(--focus-outline-color);
   outline-offset: 1px;
+}
+
+@media (max-width: 700px) {
+  .settings-control {
+    gap: 0;
+    padding-left: 0;
+  }
+
+  .settings-version-label {
+    display: none;
+  }
 }

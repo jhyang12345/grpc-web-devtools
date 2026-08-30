@@ -1,7 +1,7 @@
 
 .toolbar {
   background-color: var(--toolbar-bg-color);
-  border-bottom: var(--divider-border);
+  border-bottom: 1px solid var(--divider-color);
   flex: none;
   padding: 0 2px;
   position: relative;
@@ -81,12 +81,19 @@
   min-width: 0;
   height: 26px;
   align-items: center;
-  overflow: hidden;
+  overflow: visible;
 }
 
-.toolbar-spacer {
-  flex: 1 1 0;
-  min-width: 0;
+.toolbar-connection,
+.toolbar-actions {
+  display: flex;
+  flex: none;
+  height: 26px;
+  align-items: center;
+}
+
+.toolbar-actions {
+  margin-left: auto;
 }
 
 .toolbar-item:focus-visible,
@@ -105,8 +112,8 @@
 }
 
 .toolbar-divider {
-  background-color: var(--divider-color);
-  width: 1px;
+  width: 0;
+  border-left: 1px solid var(--divider-color);
   margin: 5px 4px;
   height: 16px;
 }
@@ -165,4 +172,42 @@
   border-radius: 50%;
   background-color: currentColor;
   flex: none;
+}
+
+@media (max-width: 520px) {
+  .toolbar-shadow {
+    height: auto;
+    flex-wrap: wrap;
+  }
+
+  .toolbar-main,
+  .toolbar-actions {
+    flex: 1 0 100%;
+  }
+
+  .toolbar-actions {
+    margin-left: 0;
+    border-top: 1px solid var(--divider-color);
+    justify-content: flex-end;
+  }
+
+  .toolbar-actions > .toolbar-divider:first-child {
+    display: none;
+  }
+}
+
+@media (max-width: 380px) {
+  .toolbar-main {
+    height: auto;
+    flex-wrap: wrap;
+  }
+
+  .toolbar-connection {
+    flex: 1 0 100%;
+    border-top: 1px solid var(--divider-color);
+  }
+
+  .toolbar-connection > .toolbar-divider {
+    display: none;
+  }
 }

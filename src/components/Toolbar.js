@@ -69,38 +69,42 @@ export class Toolbar extends Component {
                 />
                 <label htmlFor="ui-checkbox-default-collapsed">{translate(locale, 'toolbar.collapsed')}</label>
               </span>
-              <ToolbarDivider />
-              <span
-                className={`toolbar-item connection-status connection-status--${connectionStatus}`}
-                title={statusTitle}
-              >
-                <span className="connection-status-dot" />
-                {connectionStatus === 'connected' ? translate(locale, 'toolbar.connected') : (
-                  <>
-                    {connectionStatus === 'pending'
-                      ? translate(locale, 'toolbar.connecting')
-                      : translate(locale, 'toolbar.disconnected')}
-                    <button
-                      onClick={this._onReconnect}
-                      className="reconnect-button"
-                      title={translate(locale, 'toolbar.reconnectTitle')}
-                    >
-                      {translate(locale, 'toolbar.reconnect')}
-                    </button>
-                  </>
-                )}
-              </span>
+              <div className="toolbar-connection">
+                <ToolbarDivider />
+                <span
+                  className={`toolbar-item connection-status connection-status--${connectionStatus}`}
+                  title={statusTitle}
+                >
+                  <span className="connection-status-dot" />
+                  {connectionStatus === 'connected' ? translate(locale, 'toolbar.connected') : (
+                    <>
+                      {connectionStatus === 'pending'
+                        ? translate(locale, 'toolbar.connecting')
+                        : translate(locale, 'toolbar.disconnected')}
+                      <button
+                        onClick={this._onReconnect}
+                        className="reconnect-button"
+                        title={translate(locale, 'toolbar.reconnectTitle')}
+                      >
+                        {translate(locale, 'toolbar.reconnect')}
+                      </button>
+                    </>
+                  )}
+                </span>
+              </div>
             </div>
-            <div className="toolbar-spacer" />
-            <AuditReportPageLookback locale={locale} />
-            <ToolbarDivider />
-            <AuditReportDownload locale={locale} />
-            <ToolbarDivider />
-            <SettingsPopover
-              locale={locale}
-              preference={languagePreference}
-              onLanguageChange={this.props.setLanguagePreferenceAndPersist}
-            />
+            <div className="toolbar-actions">
+              <ToolbarDivider />
+              <AuditReportPageLookback locale={locale} />
+              <ToolbarDivider />
+              <AuditReportDownload locale={locale} />
+              <ToolbarDivider />
+              <SettingsPopover
+                locale={locale}
+                preference={languagePreference}
+                onLanguageChange={this.props.setLanguagePreferenceAndPersist}
+              />
+            </div>
           </div>
         </div>
       </>
@@ -143,7 +147,7 @@ export class Toolbar extends Component {
 class ToolbarDivider extends Component {
   render() {
     return (
-      <div className="toolbar-item toolbar-divider" />
+      <div className="toolbar-item toolbar-divider" aria-hidden="true" />
     );
   }
 }
