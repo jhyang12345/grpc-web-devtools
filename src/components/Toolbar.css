@@ -34,12 +34,20 @@
 }
 
 .toolbar-item.checkbox {
-  padding: 0 5px 0 2px;
+  gap: 4px;
+  padding: 0 6px;
 }
 
 .toolbar-item.checkbox label,
 .toolbar-item.checkbox input {
   cursor: pointer;
+}
+
+.toolbar-item.checkbox input {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin: 0;
 }
 
 .toolbar-item.checkbox:hover {
@@ -71,10 +79,6 @@
   box-shadow: var(--focus-ring-active-shadow);
 }
 
-:focus {
-  outline-width: 0;
-}
-
 .toolbar-main {
   display: flex;
   flex: 0 1 auto;
@@ -97,9 +101,14 @@
 }
 
 .toolbar-item:focus-visible,
-.reconnect-button:focus-visible {
+.reconnect-button:focus-visible,
+.toolbar-item.checkbox input:focus-visible {
   outline: 2px solid var(--focus-outline-color);
   outline-offset: -2px;
+}
+
+.toolbar-item.checkbox input:focus-visible {
+  outline-offset: 1px;
 }
 
 .toolbar-button {
@@ -122,22 +131,27 @@
   fill: var(--toolbar-color);
 }
 
-.toolbar-button:hover:not(:active) svg {
+.toolbar-button:hover:not(:active):not(:disabled):not(.open):not(.enabled) svg {
   fill: var(--toolbar-color-hover);
 }
 
 .toolbar-button.open svg {
-  fill: var(--accent-color) !important;
+  fill: var(--accent-color);
 }
 
 .toolbar-button.enabled svg {
-  fill: var(--enabled-color) !important;
+  fill: var(--enabled-color);
 }
 
 .reconnect-button {
-  margin-left: 8px;
-  padding: 2px 6px;
-  fontSize: 11px;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  margin-left: 0;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
   cursor: pointer;
   background-color: var(--button-bg);
   color: var(--button-text);
@@ -154,6 +168,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  padding: 0 6px;
   font-size: 12px;
   color: var(--connection-status-color);
 }

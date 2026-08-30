@@ -19,7 +19,6 @@
   cursor: pointer;
 }
 
-.settings-button.open svg,
 .settings-button:hover svg {
   fill: var(--toolbar-color-hover);
 }

@@ -82,6 +82,7 @@ export class Toolbar extends Component {
                         ? translate(locale, 'toolbar.connecting')
                         : translate(locale, 'toolbar.disconnected')}
                       <button
+                        type="button"
                         onClick={this._onReconnect}
                         className="reconnect-button"
                         title={translate(locale, 'toolbar.reconnectTitle')}
@@ -156,7 +157,7 @@ class ToolbarButton extends Component {
   render() {
     const { children, className = "", ...other } = this.props;
     return (
-      <button className={"toolbar-button toolbar-item " + className} {...other}>
+      <button type="button" className={"toolbar-button toolbar-item " + className} {...other}>
         {children}
       </button>
     );
