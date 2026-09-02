@@ -1,0 +1,11 @@
+{
+  "extensionName": {
+    "message": "gRPC Request Inspector"
+  },
+  "extensionDescription": {
+    "message": "Inspect, edit, and replay gRPC-Web and Connect-Web requests for debugging."
+  },
+  "devtoolsPanelTitle": {
+    "message": "gRPC Inspector"
+  }
+}

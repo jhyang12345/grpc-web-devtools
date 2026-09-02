@@ -1,6 +1,7 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 import { createSlice } from "@reduxjs/toolkit";
+import { getStorageItem } from '../utils/localStorage';
 
 const toolbarSlice = createSlice({
   name: 'toolbar',
@@ -8,6 +9,8 @@ const toolbarSlice = createSlice({
     filterIsOpen: true,
     filterIsEnabled: false,
     filterValue: "",
+    connectionStatus: 'pending', // 'connected' | 'disconnected' | 'pending'
+    defaultCollapsed: getStorageItem('defaultCollapsed', false), // Default collapsed state for JSON details (persisted in localStorage)
   },
   reducers: {
     toggleFilter(state) {
@@ -17,12 +20,43 @@ const toolbarSlice = createSlice({
       const { payload } = action;
       state.filterValue = payload;
       state.filterIsEnabled = !!(state.filterValue && state.filterValue.length > 0);
+    },
+    setConnectionStatus(state, action) {
+      const { payload } = action;
+      state.connectionStatus = payload;
+    },
+    setDefaultCollapsed(state, action) {
+      const { payload } = action;
+      state.defaultCollapsed = payload;
     }
   },
 
 });
 
 const { actions, reducer } = toolbarSlice;
-export const { toggleFilter, setFilterValue } = actions;
+export const { toggleFilter, setFilterValue, setConnectionStatus, setDefaultCollapsed } = actions;
+
+// Debouncing for filter search
+let filterDebounceTimeout = null;
+const FILTER_DEBOUNCE_MS = 150;
+
+export const setFilterValueDebounced = (value) => (dispatch) => {
+  // Clear any pending debounce
+  if (filterDebounceTimeout) {
+    clearTimeout(filterDebounceTimeout);
+  }
+
+  // For empty values (clearing filter), dispatch immediately
+  if (!value || value.length === 0) {
+    dispatch(setFilterValue(value));
+    return;
+  }
+
+  // Debounce non-empty values
+  filterDebounceTimeout = setTimeout(() => {
+    dispatch(setFilterValue(value));
+    filterDebounceTimeout = null;
+  }, FILTER_DEBOUNCE_MS);
+};
 
 export default reducer

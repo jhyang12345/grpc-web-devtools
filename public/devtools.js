@@ -1,3 +1,2 @@
-// Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
-
-chrome.devtools.panels.create('gRPC-Web', '', 'index.html');
+const panelTitle = chrome.i18n?.getMessage('devtoolsPanelTitle') || 'gRPC Inspector';
+chrome.devtools.panels.create(panelTitle, '', 'index.html');

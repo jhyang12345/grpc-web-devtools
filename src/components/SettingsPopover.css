@@ -1,0 +1,111 @@
+.settings-control {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 0 8px;
+}
+
+.settings-version-label {
+  color: var(--text-secondary-color);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.settings-button {
+  cursor: pointer;
+}
+
+.settings-button:hover svg {
+  fill: var(--toolbar-color-hover);
+}
+
+.settings-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 2px;
+  z-index: calc(var(--z-toolbar) + 1);
+  width: 190px;
+  padding: 6px;
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+  background: var(--toolbar-bg-color);
+  color: var(--text-color);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.22);
+}
+
+.settings-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  padding: 0 4px 4px 6px;
+  border-bottom: 1px solid var(--divider-color);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.settings-close {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--toolbar-color);
+  font: inherit;
+  font-size: 16px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.settings-close:hover {
+  background: var(--button-hover-bg);
+  color: var(--text-color);
+}
+
+.settings-options {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+
+
+.settings-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.settings-option:hover {
+  background: var(--button-hover-bg);
+}
+
+.settings-option input {
+  margin: 0;
+}
+
+.settings-button:focus-visible,
+.settings-close:focus-visible,
+.settings-option input:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 1px;
+}
+
+@media (max-width: 700px) {
+  .settings-control {
+    gap: 0;
+    padding-left: 0;
+  }
+
+  .settings-version-label {
+    display: none;
+  }
+}

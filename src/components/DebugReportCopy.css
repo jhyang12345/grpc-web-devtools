@@ -1,0 +1,89 @@
+.debug-report-copy {
+  position: relative;
+  flex: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.debug-report-split {
+  display: inline-flex;
+}
+
+.debug-report-main,
+.debug-report-menu-button {
+  height: 24px;
+  border: 1px solid var(--button-border);
+  background: var(--button-bg);
+  color: var(--button-text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.debug-report-main {
+  padding: 0 8px;
+  border-radius: 4px 0 0 4px;
+}
+
+.debug-report-menu-button {
+  width: 23px;
+  padding: 0;
+  border-left: 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.debug-report-main:hover,
+.debug-report-menu-button:hover,
+.debug-report-menu-button.is-open {
+  background: var(--button-hover-bg);
+}
+
+.debug-report-main:focus-visible,
+.debug-report-menu-button:focus-visible,
+.debug-report-menu button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 1px;
+}
+
+.debug-report-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: calc(var(--z-toolbar) + 1);
+  width: 230px;
+  padding: 5px;
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+  background: var(--toolbar-bg-color);
+  color: var(--text-color);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.22);
+}
+
+.debug-report-menu button {
+  display: block;
+  width: 100%;
+  min-height: 27px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.debug-report-menu button:hover {
+  background: var(--button-hover-bg);
+}
+
+.debug-report-warning {
+  margin: 5px 2px 0;
+  padding: 6px;
+  border-top: 1px solid var(--divider-color);
+  color: var(--text-secondary-color);
+  font-size: 10px;
+  line-height: 1.35;
+}

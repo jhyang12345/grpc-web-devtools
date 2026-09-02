@@ -1,30 +1,31 @@
 {
-  "name": "gRPC-Web Developer Tools",
-  "version": "1.4.1",
-  "manifest_version": 2,
-  "description": "gRPC-Web Developer Tools for debugging application's gRPC-Web network requests.",
+  "name": "__MSG_extensionName__",
+  "version": "1.7.1",
+  "default_locale": "en",
+  "manifest_version": 3,
+  "description": "__MSG_extensionDescription__",
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
     "128": "icon128.png"
   },
   "devtools_page": "devtools.html",
-  "content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",
-  "background": {
-    "scripts": [
-      "background.js"
-    ],
-    "persistent": false
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
   },
-  "web_accessible_resources": ["connect-web-interceptor.js"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["connect-web-interceptor.js", "grpc-web-interceptor.js", "protobuf-ts-interceptor.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content-script.js"
-      ],
+      "matches": ["<all_urls>"],
+      "js": ["content-script.js"],
       "run_at": "document_start",
       "all_frames": true
     }

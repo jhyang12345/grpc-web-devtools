@@ -1,0 +1,11 @@
+{
+  "extensionName": {
+    "message": "gRPC Request Inspector"
+  },
+  "extensionDescription": {
+    "message": "디버깅을 위해 gRPC-Web 및 Connect-Web Request를 확인, 편집하고 Replay합니다."
+  },
+  "devtoolsPanelTitle": {
+    "message": "gRPC Inspector"
+  }
+}
