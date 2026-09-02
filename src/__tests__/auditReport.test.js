@@ -1,13 +1,12 @@
 import {
   DEFAULT_AUDIT_PAGE_LOOKBACK,
   MAX_AUDIT_PAGE_LOOKBACK,
-  MAX_AUDIT_REPORT_BYTES,
   MAX_AUDIT_REQUESTS,
   MIN_AUDIT_PAGE_LOOKBACK,
   analyzeAuditEntry,
   buildAuditReport,
   clampAuditPageLookback,
-  formatBoundedJson,
+  formatReportJson,
   getAuditReportFilename,
   getDiagnosticClue,
   normalizeGrpcCode,
@@ -196,6 +195,25 @@ test('honors an explicit page lookback of up to 5 pages', () => {
   });
 });
 
+test('treats a location differing only by URL fragment as the same page', () => {
+  const entries = [
+    { ...pageEntry(1, 'update', NOW - 30000), location: 'https://app.example.test/zone/update/4' },
+    { ...pageEntry(2, 'detail', NOW - 20000), location: 'https://app.example.test/zone/detail/4' },
+    { ...pageEntry(3, 'detail-hash', NOW - 10000), location: 'https://app.example.test/zone/detail/4#12.163,126.93248500,36.95273504' },
+  ];
+  const report = build(entries, { pageLookback: 2 });
+  const detailedRequests = report.text.slice(report.text.indexOf('## Detailed requests'));
+
+  // Once the fragment is stripped, "detail/4" and "detail/4#hash" collapse into one page,
+  // leaving only 2 distinct pages total ("update/4" and "detail/4") — so with a lookback
+  // of 2, nothing gets dropped, including the request whose location was oldest.
+  expect(report.stats.pagesObserved).toBe(2);
+  expect(report.stats.pagesIncluded).toBe(2);
+  expect(detailedRequests).toContain('PageupdateCall1');
+  expect(detailedRequests).toContain('PagedetailCall2');
+  expect(detailedRequests).toContain('Pagedetail-hashCall3');
+});
+
 test('includes request and response payloads for ordinary healthy traffic, not just flagged issues', () => {
   const entries = [
     {
@@ -236,7 +254,7 @@ test('still prioritizes detected issues over healthy backfill when both compete 
   expect(detailedRequests).toContain('/demo.Service/Failing');
 });
 
-test('selects only the newest bounded set of failures and keeps the total file bounded', () => {
+test('selects only the newest bounded set of failures', () => {
   const entries = Array.from({ length: MAX_AUDIT_REQUESTS + 5 }, (_, index) => ({
     entryId: index + 1,
     requestId: index + 1,
@@ -255,7 +273,7 @@ test('selects only the newest bounded set of failures and keeps the total file b
   expect(report.stats.included).toBe(MAX_AUDIT_REQUESTS);
   expect(detailedRequests).not.toContain('· /demo.Service/Fail1\n');
   expect(detailedRequests).toContain(`/demo.Service/Fail${MAX_AUDIT_REQUESTS + 5}`);
-  expect(report.bytes).toBeLessThanOrEqual(MAX_AUDIT_REPORT_BYTES);
+  expect(detailedRequests).toContain('x'.repeat(50000));
   expect(utf8ByteLength(report.text)).toBe(report.bytes);
 });
 
@@ -275,7 +293,7 @@ test('marks evicted evidence explicitly and never serializes summary booleans as
   expect(report.text).not.toContain('```json\ntrue\n```');
 });
 
-test('bounded JSON handles cycles, deep values, UTF-8, truncation previews, and source immutability', () => {
+test('formats JSON handling cycles, deep values, UTF-8, truncation previews, and source immutability without clipping content', () => {
   const source = {
     authorization: 'Bearer private-token',
     authToken: 'opaque-auth-secret',
@@ -288,9 +306,9 @@ test('bounded JSON handles cycles, deep values, UTF-8, truncation previews, and 
   };
   source.self = source;
   source.nested = { emoji: '🐈'.repeat(5000) };
-  const formatted = formatBoundedJson(source, 2048);
+  const formatted = formatReportJson(source);
 
-  expect(utf8ByteLength(formatted)).toBeLessThanOrEqual(2048);
+  expect(formatted).toContain('🐈'.repeat(5000));
   expect(formatted).toContain('[redacted]');
   expect(formatted).toContain('circular');
   expect(formatted).not.toContain('private-token');
@@ -356,7 +374,7 @@ test('redacts URL secrets in methods, payload text, errors, status details, and 
 });
 
 test('does not rewrite ordinary question-mark prose as a relative URL', () => {
-  const formatted = formatBoundedJson({
+  const formatted = formatReportJson({
     first: 'Why? retry later',
     second: 'failed? try again',
     third: 'question ? retry',
@@ -367,7 +385,7 @@ test('does not rewrite ordinary question-mark prose as a relative URL', () => {
   expect(formatted).toContain('question ? retry');
 });
 
-test('enforces the total UTF-8 byte cap even when metadata-only timeline text is multibyte', () => {
+test('does not shrink or truncate the report even when multibyte metadata pushes it past the old byte budget', () => {
   const entries = Array.from({ length: 50 }, (_, index) => ({
     entryId: index + 1,
     requestId: index + 1,
@@ -382,10 +400,12 @@ test('enforces the total UTF-8 byte cap even when metadata-only timeline text is
     },
   }));
   const report = build(entries);
+  const OLD_REPORT_BYTE_CAP = 512 * 1024;
 
-  expect(report.stats.included).toBe(0);
-  expect(report.bytes).toBeLessThanOrEqual(MAX_AUDIT_REPORT_BYTES);
-  expect(report.text).toContain('Report body truncated');
+  expect(report.text).not.toContain('Report body truncated');
+  expect(report.stats.included).toBeGreaterThan(0);
+  expect(report.bytes).toBeGreaterThan(OLD_REPORT_BYTE_CAP);
+  expect(utf8ByteLength(report.text)).toBe(report.bytes);
 });
 
 test('bounds oversized error codes before analysis without dropping the request evidence', () => {
@@ -401,7 +421,6 @@ test('bounds oversized error codes before analysis without dropping the request 
   const report = build([entry]);
 
   expect(report.stats.included).toBe(1);
-  expect(report.bytes).toBeLessThanOrEqual(MAX_AUDIT_REPORT_BYTES);
 });
 
 test('contains untrusted method and status text inside Markdown-safe inline code', () => {
@@ -572,7 +591,7 @@ test('uses a single reviewed activity instant or one localized missing marker wh
 test('localizes bounded JSON audit notices without changing structural marker keys', () => {
   const cyclic = {};
   cyclic.self = cyclic;
-  const formatted = formatBoundedJson(cyclic, 2048, 'ko');
+  const formatted = formatReportJson(cyclic, 'ko');
 
   expect(formatted).toContain('[순환 참조]');
   expect(formatted).toContain('self');

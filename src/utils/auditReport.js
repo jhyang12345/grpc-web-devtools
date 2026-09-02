@@ -7,8 +7,6 @@ import { buildDebugReport } from './debugReport';
 export const MAX_AUDIT_SCAN_ENTRIES = 1000;
 export const MAX_AUDIT_REQUESTS = 25;
 export const MAX_AUDIT_TIMELINE_ENTRIES = 50;
-export const MAX_AUDIT_REPORT_BYTES = 512 * 1024;
-export const MAX_AUDIT_PAYLOAD_BYTES = 6 * 1024;
 export const SLOW_REQUEST_MS = 2000;
 export const PENDING_REQUEST_MS = 30000;
 export const LARGE_PAYLOAD_BYTES = 1024 * 1024;
@@ -149,35 +147,6 @@ export function utf8ByteLength(value) {
   return unescape(encodeURIComponent(text)).length;
 }
 
-function fitUtf8Text(value, maximumBytes, suffix = '') {
-  const text = String(value ?? '');
-  if (utf8ByteLength(text) <= maximumBytes) return text;
-
-  const ending = utf8ByteLength(suffix) <= maximumBytes ? suffix : '';
-  const contentBudget = maximumBytes - utf8ByteLength(ending);
-  let low = 0;
-  let high = text.length;
-  let bestEnd = 0;
-
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    let safeEnd = middle;
-    if (safeEnd > 0 && safeEnd < text.length) {
-      const previous = text.charCodeAt(safeEnd - 1);
-      const next = text.charCodeAt(safeEnd);
-      if (previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) safeEnd -= 1;
-    }
-    if (utf8ByteLength(text.slice(0, safeEnd)) <= contentBudget) {
-      bestEnd = safeEnd;
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
-  }
-
-  return `${text.slice(0, bestEnd)}${ending}`;
-}
-
 function asFiniteNumber(value) {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
@@ -244,28 +213,20 @@ function isTruncatedDescriptor(value) {
   return !!value && typeof value === 'object' && value.__truncated === true;
 }
 
-function createBoundedSnapshot(value, maximumBytes, locale) {
-  const reportTruncated = reportText(locale, 'snapshot.truncated');
-  const state = {
-    remainingCharacters: Math.max(256, Math.floor(maximumBytes / 2)),
-    nodes: 0,
-    seen: new WeakSet(),
-  };
+// Recursion depth is bounded purely as a stack-safety valve against pathological
+// (e.g. adversarial) input — not a content limit. Real gRPC/JSON payloads never
+// come close to it, so it should never be visible in an ordinary report.
+const MAX_SNAPSHOT_DEPTH = 2000;
+
+function createReportSnapshot(value, locale) {
+  const seen = new WeakSet();
 
   const visit = (current, key, depth) => {
     if (isSensitiveKey(key)) return REPORT_REDACTED;
-    if (state.remainingCharacters <= 0) return reportTruncated;
     if (current === null) return null;
 
     const type = typeof current;
-    if (type === 'string') {
-      const sourceLimit = Math.min(current.length, state.remainingCharacters + 256, 8000);
-      const redacted = redactTextSecrets(current.slice(0, sourceLimit));
-      const retainedLength = Math.min(redacted.length, state.remainingCharacters, 2000);
-      state.remainingCharacters -= retainedLength;
-      const retained = redacted.slice(0, retainedLength);
-      return current.length > retainedLength ? `${retained}… ${reportTruncated}` : retained;
-    }
+    if (type === 'string') return redactTextSecrets(current);
     if (type === 'number') return Number.isFinite(current) ? current : String(current);
     if (type === 'boolean') return current;
     if (type === 'bigint') return `${current}n`;
@@ -278,89 +239,44 @@ function createBoundedSnapshot(value, maximumBytes, locale) {
         preview: reportText(locale, 'snapshot.omitted'),
       };
     }
-    if (state.seen.has(current)) return reportText(locale, 'snapshot.circular');
-    if (depth >= 8) return reportText(locale, 'snapshot.maxDepth');
-    if (state.nodes >= 400) return reportText(locale, 'snapshot.nodeLimit');
+    if (seen.has(current)) return reportText(locale, 'snapshot.circular');
+    if (depth >= MAX_SNAPSHOT_DEPTH) return reportText(locale, 'snapshot.maxDepth');
 
-    state.seen.add(current);
-    state.nodes += 1;
+    seen.add(current);
 
     if (Array.isArray(current)) {
-      const result = [];
-      const retainedItems = Math.min(current.length, 50);
-      for (let index = 0; index < retainedItems && state.remainingCharacters > 0; index += 1) {
-        result.push(visit(current[index], String(index), depth + 1));
-      }
-      if (current.length > result.length) {
-        result.push(reportText(locale, 'snapshot.moreItems', { count: current.length - result.length }));
-      }
-      return result;
+      return current.map((item, index) => visit(item, String(index), depth + 1));
     }
 
     const result = {};
-    let retainedKeys = 0;
-    let omittedKeys = false;
     try {
       for (const rawKey in current) {
         if (!Object.prototype.hasOwnProperty.call(current, rawKey)) continue;
-        if (retainedKeys >= 50 || state.remainingCharacters <= 0) {
-          omittedKeys = true;
-          break;
-        }
         const safeKey = clipText(rawKey, 200);
-        state.remainingCharacters -= Math.min(safeKey.length, state.remainingCharacters);
         try {
           result[safeKey] = visit(current[rawKey], rawKey, depth + 1);
         } catch (_) {
           result[safeKey] = reportText(locale, 'snapshot.propertyUnreadable');
         }
-        retainedKeys += 1;
       }
     } catch (_) {
       return reportText(locale, 'snapshot.objectUnreadable');
     }
-    if (omittedKeys) result.__auditReportNotice = reportText(locale, 'snapshot.additionalKeys');
     return result;
   };
 
   return visit(value, '', 0);
 }
 
-function fitJsonPreview(serialized, maximumBytes) {
-  let low = 0;
-  let high = serialized.length;
-  let best = JSON.stringify({ __auditReportTruncated: true }, null, 2);
-
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    const candidate = JSON.stringify({
-      __auditReportTruncated: true,
-      preview: serialized.slice(0, middle),
-    }, null, 2);
-    if (utf8ByteLength(candidate) <= maximumBytes) {
-      best = candidate;
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
-  }
-
-  return best;
-}
-
-export function formatBoundedJson(value, maximumBytes = MAX_AUDIT_PAYLOAD_BYTES, locale = 'en') {
-  let serialized;
+export function formatReportJson(value, locale = 'en') {
   try {
-    serialized = JSON.stringify(createBoundedSnapshot(value, maximumBytes, locale), null, 2);
+    const serialized = JSON.stringify(createReportSnapshot(value, locale), null, 2);
+    return typeof serialized === 'string' ? serialized : 'null';
   } catch (_) {
-    serialized = JSON.stringify({
+    return JSON.stringify({
       __auditReportError: reportText(locale, 'snapshot.serializationFailed'),
     }, null, 2);
   }
-  if (typeof serialized !== 'string') serialized = 'null';
-  return utf8ByteLength(serialized) <= maximumBytes
-    ? serialized
-    : fitJsonPreview(serialized, maximumBytes);
 }
 
 export function normalizeGrpcCode(value) {
@@ -593,9 +509,20 @@ function resolveSourceUrl(options, analyses) {
 }
 
 function normalizePageKey(location) {
-  return typeof location === 'string' && location ? location : '';
+  if (typeof location !== 'string' || !location) return '';
+  // Strip the fragment (and the `#` itself) so hash-only differences (e.g. client-side
+  // map/state encoded after `#`) don't make an otherwise identical page look distinct.
+  const hashIndex = location.indexOf('#');
+  return hashIndex === -1 ? location : location.slice(0, hashIndex);
 }
 
+// Grouping is by distinct URL identity, ranked by each URL's most recent timestamp —
+// NOT by contiguous time windows or navigation segments. If a page is revisited
+// (e.g. detail -> update -> detail), its "last seen" timestamp jumps to that revisit,
+// which pulls its *entire* history back into scope, including entries from a much
+// earlier, distinct visit before the interleaved page. Keeping only the most recent
+// occurrences of a revisited page (rather than its whole history) would need
+// segmenting by contiguous runs of the same URL, which this intentionally does not do.
 function computePageScope(entries, pageLookback) {
   const lastSeenByPage = new Map();
   entries.forEach(entry => {
@@ -798,7 +725,7 @@ function formatReviewedActivityWindow(model) {
   return `${start} → ${end} (${span})`;
 }
 
-function formatReportHeader(model, includedCount, omittedForBytes) {
+function formatReportHeader(model, includedCount) {
   const { locale } = model;
   const selection = model.filterActive
     ? reportText(locale, 'scope.selectionFiltered')
@@ -833,10 +760,7 @@ function formatReportHeader(model, includedCount, omittedForBytes) {
     `- ${reportText(locale, 'scope.limits', {
       requests: MAX_AUDIT_REQUESTS,
       timeline: MAX_AUDIT_TIMELINE_ENTRIES,
-      payload: formatBytes(MAX_AUDIT_PAYLOAD_BYTES, locale),
-      report: formatBytes(MAX_AUDIT_REPORT_BYTES, locale),
     })}`,
-    ...(omittedForBytes > 0 ? [`- ${reportText(locale, 'scope.omittedForBytes', { count: omittedForBytes })}`] : []),
     '',
   ].join('\n');
 }
@@ -964,13 +888,13 @@ function formatRequestSection(analysis, locale, matchedFilterKeys) {
   if (analysis.payloadWasEvicted && analysis.summary?.request === true) {
     lines.push(`_${reportText(locale, 'notice.requestEvicted')}_`);
   } else {
-    lines.push(codeFence(formatBoundedJson(debugReport.request, MAX_AUDIT_PAYLOAD_BYTES, locale)));
+    lines.push(codeFence(formatReportJson(debugReport.request, locale)));
   }
   lines.push('', `**${reportText(locale, 'section.outcome')}**`, '');
   if (analysis.payloadWasEvicted && (analysis.summary?.response || analysis.summary?.error || analysis.summary?.messages)) {
     lines.push(`_${reportText(locale, 'notice.outcomeEvicted')}_`);
   } else {
-    lines.push(codeFence(formatBoundedJson(debugReport.response, MAX_AUDIT_PAYLOAD_BYTES, locale)));
+    lines.push(codeFence(formatReportJson(debugReport.response, locale)));
   }
   lines.push('');
   return lines.join('\n');
@@ -980,30 +904,12 @@ function renderAuditReport(model) {
   const requestSections = model.selectedAnalyses.map(analysis => formatRequestSection(analysis, model.locale, model.matchedFilterKeys));
   const observations = formatObservations(model);
   const timeline = formatTimeline(model);
-  let retainedSections = requestSections.slice();
-  let omittedForBytes = 0;
-
-  while (true) {
-    const header = formatReportHeader(model, retainedSections.length, omittedForBytes);
-    const details = retainedSections.length
-      ? `## ${reportText(model.locale, 'section.detailedChronological')}\n\n${retainedSections.join('\n')}`
-      : `## ${reportText(model.locale, 'section.detailed')}\n\n_${reportText(model.locale, 'details.none')}_\n`;
-    const text = `${header}${observations}${timeline}${details}`;
-    if (utf8ByteLength(text) <= MAX_AUDIT_REPORT_BYTES) {
-      return { text, includedCount: retainedSections.length, omittedForBytes };
-    }
-    if (retainedSections.length === 0) {
-      const suffix = `\n\n> ${reportText(model.locale, 'notice.bodyTruncated')}\n`;
-      return {
-        text: fitUtf8Text(text, MAX_AUDIT_REPORT_BYTES, suffix),
-        includedCount: 0,
-        omittedForBytes,
-      };
-    }
-    // Preserve the newest evidence when the byte budget forces a choice.
-    retainedSections.shift();
-    omittedForBytes += 1;
-  }
+  const header = formatReportHeader(model, requestSections.length);
+  const details = requestSections.length
+    ? `## ${reportText(model.locale, 'section.detailedChronological')}\n\n${requestSections.join('\n')}`
+    : `## ${reportText(model.locale, 'section.detailed')}\n\n_${reportText(model.locale, 'details.none')}_\n`;
+  const text = `${header}${observations}${timeline}${details}`;
+  return { text, includedCount: requestSections.length };
 }
 
 function getFilenameSourceSlug(sourceUrl) {
@@ -1060,7 +966,6 @@ export function buildAuditReport(options = {}) {
       matched: model.capture.matching,
       included: rendered.includedCount,
       omitted: Math.max(0, model.capture.matching - rendered.includedCount),
-      omittedForBytes: rendered.omittedForBytes,
       pageLookback: model.pageLookback,
       pagesObserved: model.pagesObserved,
       pagesIncluded: model.pagesIncluded,
