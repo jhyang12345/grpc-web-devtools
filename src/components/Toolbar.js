@@ -5,7 +5,7 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { setPreserveLog, clearLogAndCache } from '../state/network';
-import { toggleFilter, setDefaultCollapsed, setConnectionStatus } from '../state/toolbar';
+import { toggleFilter, setDefaultCollapsed, setNewestFirst, setConnectionStatus } from '../state/toolbar';
 import { setStorageItem } from '../utils/localStorage';
 import { translate } from '../i18n';
 import { setLanguagePreferenceAndPersist } from '../state/localization';
@@ -69,6 +69,16 @@ export class Toolbar extends Component {
                 />
                 <label htmlFor="ui-checkbox-default-collapsed">{translate(locale, 'toolbar.collapsed')}</label>
               </span>
+              <ToolbarDivider />
+              <span className="toolbar-item checkbox" title={translate(locale, 'toolbar.newestFirstTitle')}>
+                <input
+                  type="checkbox"
+                  id="ui-checkbox-newest-first"
+                  checked={toolbar.newestFirst}
+                  onChange={this._onNewestFirstChanged}
+                />
+                <label htmlFor="ui-checkbox-newest-first">{translate(locale, 'toolbar.newestFirst')}</label>
+              </span>
               <div className="toolbar-connection">
                 <ToolbarDivider />
                 <span
@@ -128,6 +138,14 @@ export class Toolbar extends Component {
     setStorageItem('defaultCollapsed', newValue);
   }
 
+  _onNewestFirstChanged = e => {
+    const { setNewestFirst } = this.props;
+    const newValue = e.target.checked;
+
+    setNewestFirst(newValue);
+    setStorageItem('newestRequestsFirst', newValue);
+  }
+
   _onReconnect = () => {
     this.props.setConnectionStatus('pending');
 
@@ -174,6 +192,7 @@ const mapDispatchToProps = {
   clearLog: clearLogAndCache,
   toggleFilter,
   setDefaultCollapsed,
+  setNewestFirst,
   setConnectionStatus,
   setLanguagePreferenceAndPersist,
 };

@@ -181,6 +181,27 @@
   flex-shrink: 0;
 }
 
+.data-grid .data .data-row.is-new-request {
+  animation: new-request-drop-in 280ms ease-out;
+}
+
+@keyframes new-request-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .data-grid .data .data-row.is-new-request {
+    animation: none;
+  }
+}
+
 .data-grid .data-container {
   top: 0;
   bottom: 0;

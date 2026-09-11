@@ -68,6 +68,42 @@ test('shows a Network Error badge for network failures and a generic Error badge
   expect(findByClassName(healthyTree, 'data-row-error-badge')).toBeNull();
 });
 
+test('maps a reversed (newest-first) display index back to the canonical log index for selection and highlighting', () => {
+  const selectLogEntry = jest.fn();
+  // Newest-first display: index 0 is entryId 3, which is canonical index 2.
+  const displayEntries = [{ entryId: 3 }, { entryId: 2 }, { entryId: 1 }];
+  const tree = new NetworkListRow({
+    index: 0,
+    data: { entries: displayEntries, locale: 'en', newestFirst: true, totalCount: 3 },
+    style: {},
+    selectLogEntry,
+    selectedIdx: 2,
+  }).render();
+
+  expect(findByClassName(tree, 'data-row odd selected')).not.toBeNull();
+  tree.props.onClick();
+  expect(selectLogEntry).toHaveBeenCalledWith(2);
+});
+
+test('flags an entry present in recentlyAddedIds with the new-request highlight class, regardless of display order', () => {
+  const displayEntries = [{ entryId: 3 }, { entryId: 2 }];
+  const tree = new NetworkListRow({
+    index: 0,
+    data: {
+      entries: displayEntries,
+      locale: 'en',
+      newestFirst: true,
+      totalCount: 2,
+      recentlyAddedIds: new Set([3]),
+    },
+    style: {},
+    selectLogEntry: jest.fn(),
+    selectedIdx: null,
+  }).render();
+
+  expect(tree.props.className).toContain('is-new-request');
+});
+
 test('renders a visible Edited badge with replay provenance', () => {
   const replayedFrom = { transport: 'connect-web', requestId: 8 };
   const tree = new NetworkListRow({

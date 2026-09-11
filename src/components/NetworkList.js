@@ -11,6 +11,7 @@ import NetworkListRow from './NetworkListRow';
 import './NetworkList.css';
 
 const ROW_HEIGHT = 58;
+const NEW_ROW_HIGHLIGHT_MS = 400; // slightly longer than the CSS drop-in animation (280ms)
 
 export class NetworkList extends Component {
   constructor(props) {
@@ -18,25 +19,62 @@ export class NetworkList extends Component {
     this.listRef = createRef();
     this.state = {
       localFilterValue: props.filterValue || '',
+      recentlyAddedIds: new Set(),
     };
+    this._pendingTimeouts = [];
   }
 
   componentDidUpdate(prevProps) {
     const { network, filterValue } = this.props;
-    const prevLogLength = prevProps.network.log.length;
-    const currentLogLength = network.log.length;
+    const prevLog = prevProps.network.log;
+    const currentLog = network.log;
 
     if (prevProps.filterValue !== filterValue && filterValue !== this.state.localFilterValue) {
       this.setState({ localFilterValue: filterValue });
     }
 
+    if (prevLog !== currentLog) {
+      this._trackNewEntries(prevLog, currentLog);
+    }
+
     // New entries were added
-    if (currentLogLength > prevLogLength) {
+    if (currentLog.length > prevLog.length) {
       // Check if we should auto-scroll
       if (this.shouldAutoScroll()) {
-        this.scrollToBottom();
+        this.scrollToLiveEdge();
       }
     }
+  }
+
+  componentWillUnmount() {
+    this._pendingTimeouts.forEach(clearTimeout);
+  }
+
+  _trackNewEntries(prevLog, currentLog) {
+    const prevIds = new Set(prevLog.map(entry => entry.entryId));
+    const newlyAddedIds = currentLog
+      .map(entry => entry.entryId)
+      .filter(entryId => !prevIds.has(entryId));
+
+    if (newlyAddedIds.length === 0) return;
+
+    this.setState(prevState => {
+      const recentlyAddedIds = new Set(prevState.recentlyAddedIds);
+      newlyAddedIds.forEach(entryId => recentlyAddedIds.add(entryId));
+      return { recentlyAddedIds };
+    });
+
+    newlyAddedIds.forEach(entryId => {
+      const timeoutId = setTimeout(() => {
+        this.setState(prevState => {
+          if (!prevState.recentlyAddedIds.has(entryId)) return null;
+          const recentlyAddedIds = new Set(prevState.recentlyAddedIds);
+          recentlyAddedIds.delete(entryId);
+          return { recentlyAddedIds };
+        });
+      }, NEW_ROW_HIGHLIGHT_MS);
+      this._pendingTimeouts.push(timeoutId);
+    });
   }
 
   shouldAutoScroll() {
@@ -44,6 +82,12 @@ export class NetworkList extends Component {
 
     const list = this.listRef.current;
     const scrollOffset = list.state.scrollOffset;
+
+    if (this.props.newestFirst !== false) {
+      // The live edge is the top; auto-follow only if already near it.
+      return scrollOffset < 100;
+    }
+
     const scrollHeight = this.props.network.log.length * ROW_HEIGHT;
     const visibleHeight = list.props.height;
 
@@ -52,8 +96,13 @@ export class NetworkList extends Component {
     return distanceFromBottom < 100;
   }
 
-  scrollToBottom() {
+  scrollToLiveEdge() {
     if (!this.listRef.current) return;
+
+    if (this.props.newestFirst !== false) {
+      this.listRef.current.scrollToItem(0, 'start');
+      return;
+    }
 
     const { network } = this.props;
     const lastIndex = network.log.length - 1;
@@ -65,7 +114,9 @@ export class NetworkList extends Component {
 
   render() {
     const { network, filterIsOpen, locale = 'en' } = this.props;
-    const { localFilterValue } = this.state;
+    const { localFilterValue, recentlyAddedIds } = this.state;
+    const newestFirst = this.props.newestFirst !== false;
+    const displayEntries = newestFirst ? network.log.slice().reverse() : network.log;
     return (
       <div className="widget vbox network-list">
         {filterIsOpen && (
@@ -86,10 +137,17 @@ export class NetworkList extends Component {
                   <List
                     ref={this.listRef}
                     className="data"
-                    itemCount={network.log.length}
+                    itemCount={displayEntries.length}
                     height={height}
                     itemSize={ROW_HEIGHT}
-                    itemData={{ entries: network.log, locale }}
+                    itemKey={(index, data) => data.entries[index].entryId}
+                    itemData={{
+                      entries: displayEntries,
+                      locale,
+                      newestFirst,
+                      totalCount: network.log.length,
+                      recentlyAddedIds,
+                    }}
                     overscanCount={15}
                   >
                     {NetworkListRow}
@@ -116,6 +174,7 @@ const mapStateToProps = state => ({
   network: state.network,
   filterIsOpen: state.toolbar.filterIsOpen,
   filterValue: state.toolbar.filterValue,
+  newestFirst: state.toolbar.newestFirst,
 })
 const mapDispatchToProps = { setFilterValueDebounced };
 export default connect(mapStateToProps, mapDispatchToProps)(NetworkList)

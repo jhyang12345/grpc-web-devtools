@@ -11,6 +11,7 @@ const toolbarSlice = createSlice({
     filterValue: "",
     connectionStatus: 'pending', // 'connected' | 'disconnected' | 'pending'
     defaultCollapsed: getStorageItem('defaultCollapsed', false), // Default collapsed state for JSON details (persisted in localStorage)
+    newestFirst: getStorageItem('newestRequestsFirst', true), // Show newest requests at the top of the list (persisted in localStorage)
   },
   reducers: {
     toggleFilter(state) {
@@ -28,13 +29,16 @@ const toolbarSlice = createSlice({
     setDefaultCollapsed(state, action) {
       const { payload } = action;
       state.defaultCollapsed = payload;
+    },
+    setNewestFirst(state, action) {
+      state.newestFirst = action.payload;
     }
   },
 
 });
 
 const { actions, reducer } = toolbarSlice;
-export const { toggleFilter, setFilterValue, setConnectionStatus, setDefaultCollapsed } = actions;
+export const { toggleFilter, setFilterValue, setConnectionStatus, setDefaultCollapsed, setNewestFirst } = actions;
 
 // Debouncing for filter search
 let filterDebounceTimeout = null;

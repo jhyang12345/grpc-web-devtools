@@ -66,7 +66,12 @@ export class NetworkListRow extends PureComponent {
     const { index, data, style, selectLogEntry, selectedIdx } = this.props;
     const entries = Array.isArray(data) ? data : data.entries;
     const locale = Array.isArray(data) ? (this.props.locale || 'en') : (data.locale || 'en');
+    const newestFirst = !Array.isArray(data) && !!data.newestFirst;
+    const totalCount = Array.isArray(data) ? entries.length : (data.totalCount ?? entries.length);
+    const recentlyAddedIds = !Array.isArray(data) ? data.recentlyAddedIds : null;
     const log = entries[index];
+    const canonicalIndex = newestFirst ? totalCount - 1 - index : index;
+    const isNewlyAdded = !!recentlyAddedIds && recentlyAddedIds.has(log.entryId);
     const cachedTiming = getNetworkEntry(log.entryId)?.timing;
     const timing = cachedTiming || log.timing;
     const timestampLabel = formatListTimestamp(timing?.requestTimestamp);
@@ -78,9 +83,9 @@ export class NetworkListRow extends PureComponent {
 
     return (
       <div
-        className={getNetworkRowClassName(index, selectedIdx, log)}
+        className={`${getNetworkRowClassName(canonicalIndex, selectedIdx, log)}${isNewlyAdded ? ' is-new-request' : ''}`}
         style={style}
-        onClick={() => selectLogEntry(index)}
+        onClick={() => selectLogEntry(canonicalIndex)}
       >
         <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
         <div className="data-row-content">
