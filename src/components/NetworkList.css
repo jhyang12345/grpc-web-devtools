@@ -61,6 +61,10 @@
 
 .data-grid .data .data-row.error {
   color: var(--error-text-color);
+  /* box-shadow (unlike color/background-color) isn't touched by .selected or
+     .selected.error, so this accent survives selection and keeps an error
+     row recognizable even while it's highlighted. */
+  box-shadow: inset 3px 0 0 var(--error-text-color);
 }
 
 .data-grid .data-row {
@@ -137,7 +141,7 @@
   text-transform: uppercase;
 }
 
-.data-grid .data-row-network-error-badge {
+.data-grid .data-row-error-badge {
   flex: none;
   padding: 1px 4px;
   border: 1px solid var(--error-text-color);

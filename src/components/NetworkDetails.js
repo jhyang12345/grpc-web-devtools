@@ -119,6 +119,14 @@ function getRenderableEntry(entry) {
   };
 }
 
+// Mirrors the truthy-check NetworkListRow uses for its own row-level error
+// indicator, so the list and the details pane always agree on error-ness.
+export function getEntryStatusInfo(entry) {
+  const isNetworkError = !!(entry && (entry.isNetworkError || (entry.error && entry.error.isNetworkError)));
+  const isError = isNetworkError || !!(entry && entry.error);
+  return { isError, isNetworkError };
+}
+
 function stringifyJson(value) {
   if (value == null) {
     return "";
@@ -423,10 +431,18 @@ export class NetworkDetails extends Component {
     const responseSource = buildResponseSource(response, error, messages, status, responsePayloadMissing, locale);
     const hasResponsePayload = !responsePayloadMissing && (response != null || error != null || messages?.length || status != null);
     const responseText = stringifyJson(responseSource);
+    const { isError, isNetworkError } = getEntryStatusInfo(entryToRender);
 
     return (
       <>
-        <MethodHeader method={entryToRender?.method || entry.method}>
+        <MethodHeader
+          method={entryToRender?.method || entry.method}
+          statusBadge={isError && (
+            <span className="method-header-status-badge">
+              {translate(locale, isNetworkError ? "network.networkError" : "network.errorBadge")}
+            </span>
+          )}
+        >
           <DebugReportCopy
             locale={locale}
             onCopy={format => this._copyDebugReport(format, entryToRender, {

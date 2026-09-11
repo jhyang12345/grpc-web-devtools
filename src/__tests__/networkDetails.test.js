@@ -3,7 +3,7 @@ jest.mock('../replayBridge', () => ({
   sendReplayRequest: jest.fn(),
 }));
 
-import { buildResponseSource, formatDuration, formatTimestamp, formatEditedRequest, formatReplayProvenance, getBackendRequestUrl, getJsonViewerTheme, getReplayDisabledReason, getRequestEditorPaneSizes, NetworkDetails, parseEditedRequest } from '../components/NetworkDetails';
+import { buildResponseSource, formatDuration, formatTimestamp, formatEditedRequest, formatReplayProvenance, getBackendRequestUrl, getEntryStatusInfo, getJsonViewerTheme, getReplayDisabledReason, getRequestEditorPaneSizes, NetworkDetails, parseEditedRequest } from '../components/NetworkDetails';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { sendReplayRequest } from '../replayBridge';
 
@@ -46,6 +46,37 @@ test('formats wall-clock times and monotonic elapsed values for detail metadata'
   expect(formatTimestamp(new Date(2026, 0, 2, 3, 4, 5, 6).getTime())).toBe('2026-01-02 03:04:05.006');
   expect(formatDuration(7.6)).toBe('8 ms');
   expect(formatDuration(1500)).toBe('1.50 s');
+});
+
+test('classifies error status the same way for cached full entries and lightweight summaries', () => {
+  expect(getEntryStatusInfo(null)).toEqual({ isError: false, isNetworkError: false });
+  expect(getEntryStatusInfo({ method: '/demo/Healthy' })).toEqual({ isError: false, isNetworkError: false });
+  expect(getEntryStatusInfo({ error: true })).toEqual({ isError: true, isNetworkError: false });
+  expect(getEntryStatusInfo({ error: { message: 'boom' } })).toEqual({ isError: true, isNetworkError: false });
+  expect(getEntryStatusInfo({ error: { message: 'offline', isNetworkError: true } }))
+    .toEqual({ isError: true, isNetworkError: true });
+  expect(getEntryStatusInfo({ isNetworkError: true })).toEqual({ isError: true, isNetworkError: true });
+});
+
+test('shows an immediate error badge in the details header without needing to expand metadata or read the response', () => {
+  const healthy = new NetworkDetails({ locale: 'en' });
+  const healthyMarkup = renderToStaticMarkup(healthy._renderContent({
+    entryId: 1, method: 'demo.Service/GetThing', response: { ok: true },
+  }));
+  expect(healthyMarkup).not.toContain('method-header-status-badge');
+
+  const errored = new NetworkDetails({ locale: 'en' });
+  const erroredMarkup = renderToStaticMarkup(errored._renderContent({
+    entryId: 2, method: 'demo.Service/GetThing', error: { message: 'internal', code: 'INTERNAL' },
+  }));
+  expect(erroredMarkup).toContain('method-header-status-badge');
+  expect(erroredMarkup).toContain('>Error<');
+
+  const networkErrored = new NetworkDetails({ locale: 'en' });
+  const networkErroredMarkup = renderToStaticMarkup(networkErrored._renderContent({
+    entryId: 3, method: 'demo.Service/GetThing', error: { message: 'Failed to fetch', isNetworkError: true },
+  }));
+  expect(networkErroredMarkup).toContain('>Network Error<');
 });
 
 test('metadata exposes the backend URL and leaves an obvious control when collapsed', () => {

@@ -39,7 +39,7 @@ test('gives edited replay rows an explicit presentation class in every row state
     .toBe('data-row selected error edited-request');
 });
 
-test('renders a Network Error badge only when the entry has no gRPC status at all', () => {
+test('shows a Network Error badge for network failures and a generic Error badge for other RPC errors', () => {
   const blockedTree = new NetworkListRow({
     index: 0,
     data: [{ entryId: 9, method: 'Demo/Blocked', isNetworkError: true }],
@@ -47,7 +47,7 @@ test('renders a Network Error badge only when the entry has no gRPC status at al
     selectLogEntry: jest.fn(),
     selectedIdx: null,
   }).render();
-  expect(findByClassName(blockedTree, 'data-row-network-error-badge').props.children).toBe('Network Error');
+  expect(findByClassName(blockedTree, 'data-row-error-badge').props.children).toBe('Network Error');
 
   const serverErrorTree = new NetworkListRow({
     index: 0,
@@ -56,7 +56,16 @@ test('renders a Network Error badge only when the entry has no gRPC status at al
     selectLogEntry: jest.fn(),
     selectedIdx: null,
   }).render();
-  expect(findByClassName(serverErrorTree, 'data-row-network-error-badge')).toBeNull();
+  expect(findByClassName(serverErrorTree, 'data-row-error-badge').props.children).toBe('Error');
+
+  const healthyTree = new NetworkListRow({
+    index: 0,
+    data: [{ entryId: 11, method: 'Demo/Healthy' }],
+    style: {},
+    selectLogEntry: jest.fn(),
+    selectedIdx: null,
+  }).render();
+  expect(findByClassName(healthyTree, 'data-row-error-badge')).toBeNull();
 });
 
 test('renders a visible Edited badge with replay provenance', () => {

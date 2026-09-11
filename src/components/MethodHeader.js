@@ -30,14 +30,19 @@ function formatMethodLabel(method) {
   return `${serviceName}/${methodName}`;
 }
 
-const MethodHeader = ({ method, children }) => {
+const MethodHeader = ({ method, statusBadge, children }) => {
   if (!method && !children) {
     return null;
   }
 
   return (
     <div className="method-header">
-      {method && <span className="method-header-text">{formatMethodLabel(method)}</span>}
+      {method && (
+        <span className="method-header-title">
+          <span className="method-header-text">{formatMethodLabel(method)}</span>
+          {statusBadge}
+        </span>
+      )}
       {children && <div className="method-header-actions">{children}</div>}
     </div>
   );
