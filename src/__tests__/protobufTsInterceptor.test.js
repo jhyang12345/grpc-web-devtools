@@ -175,6 +175,54 @@ test("emits unary start before the backend and completes with timing and status"
   });
 });
 
+test("captures only the allowlisted app-version/service-name metadata, never authorization or anything else", () => {
+  const messages = capturePostedMessages();
+  const runtime = loadRuntime();
+  const method = makeMethod();
+  const unary = makeUnaryCall(method, { value: "original" });
+
+  runtime.interceptUnary({
+    baseUrl: "https://api.example.test",
+    next: jest.fn(() => unary.call),
+    method,
+    input: { value: "original" },
+    options: {
+      debug: true,
+      meta: {
+        authorization: "bearer super-secret-token",
+        "instance-id": "instance-42",
+        "App-Version": "qa-af32a43", // case should not matter
+        "Service-Type": "example-test16", // a different key entirely — must be ignored
+        "service-name": "example-service",
+      },
+    },
+  });
+
+  const startEvent = messages.find(message => message.phase === "start");
+  expect(startEvent.meta).toEqual({ "app-version": "qa-af32a43", "service-name": "example-service" });
+  expect(JSON.stringify(startEvent)).not.toContain("super-secret-token");
+  expect(JSON.stringify(startEvent)).not.toContain("instance-42");
+  expect(JSON.stringify(startEvent)).not.toContain("example-test16");
+});
+
+test("omits the meta field entirely from the start event when no allowlisted keys are present", () => {
+  const messages = capturePostedMessages();
+  const runtime = loadRuntime();
+  const method = makeMethod();
+  const unary = makeUnaryCall(method, { value: "original" });
+
+  runtime.interceptUnary({
+    baseUrl: "https://api.example.test",
+    next: jest.fn(() => unary.call),
+    method,
+    input: { value: "original" },
+    options: { debug: true, meta: { authorization: "bearer token" } },
+  });
+
+  const startEvent = messages.find(message => message.phase === "start");
+  expect(startEvent.meta).toBeUndefined();
+});
+
 test("captures protobuf-ts request defaults without changing response JSON options", async () => {
   const messages = capturePostedMessages();
   const runtime = loadRuntime();

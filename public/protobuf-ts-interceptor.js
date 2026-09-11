@@ -12,6 +12,11 @@
   const STATE_KEY = Symbol.for("grpc-web-inspector.protobuf-ts-replay-state");
   const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
   const MAX_REPLAY_HANDLES = 100;
+  // Explicit allowlist, not a redaction blocklist: options.meta also carries
+  // `authorization: bearer <token>` on every call, so only ever copy keys
+  // named here — never iterate/copy meta wholesale, no matter how tempting
+  // that looks later.
+  const CAPTURED_METADATA_KEYS = ["app-version", "service-name"];
 
   function getState() {
     if (!window[STATE_KEY]) {
@@ -180,6 +185,19 @@
         replayable: false,
       };
     }
+  }
+
+  function extractAllowlistedMetadata(meta) {
+    if (!meta || typeof meta !== "object") return undefined;
+    const result = {};
+    Object.keys(meta).forEach(key => {
+      const normalizedKey = key.toLowerCase();
+      if (!CAPTURED_METADATA_KEYS.includes(normalizedKey)) return;
+      const value = meta[key];
+      const normalizedValue = Array.isArray(value) ? value[0] : value;
+      if (typeof normalizedValue === "string" && normalizedValue) result[normalizedKey] = normalizedValue;
+    });
+    return Object.keys(result).length ? result : undefined;
   }
 
   function serializeError(error) {
@@ -408,6 +426,7 @@
       request: requestPayload.payload,
       replay,
       replayedFrom,
+      meta: extractAllowlistedMetadata(options.meta),
       timing: { requestTimestamp },
     });
 
@@ -531,6 +550,7 @@
       request: requestPayload.payload,
       replay,
       replayedFrom,
+      meta: extractAllowlistedMetadata(options.meta),
       timing: { requestTimestamp },
     });
 
