@@ -2,10 +2,18 @@
 
 import React, { Component } from 'react';
 import { translate } from '../i18n';
+import { getStorageItem, setStorageItem } from '../utils/localStorage';
 import './DebugReportCopy.css';
 
+const FORMAT_STORAGE_KEY = 'debugReportFormat';
+const FORMAT_LABELS = { markdown: 'Markdown', json: 'JSON' };
+
+function normalizeFormat(value) {
+  return value === 'json' ? 'json' : 'markdown';
+}
+
 export class DebugReportCopy extends Component {
-  state = { isOpen: false };
+  state = { isOpen: false, format: normalizeFormat(getStorageItem(FORMAT_STORAGE_KEY, 'markdown')) };
 
   rootRef = React.createRef();
 
@@ -26,6 +34,7 @@ export class DebugReportCopy extends Component {
   render() {
     const { locale = 'en' } = this.props;
     const { isOpen } = this.state;
+    const format = normalizeFormat(this.state.format);
     const warning = translate(locale, 'copy.reportSensitiveWarning');
 
     return (
@@ -35,9 +44,10 @@ export class DebugReportCopy extends Component {
             type="button"
             className="debug-report-main"
             title={warning}
-            onClick={() => this._copy('markdown')}
+            onClick={() => this._copy(format)}
           >
             {translate(locale, 'copy.report')}
+            <span className="debug-report-format-badge" aria-hidden="true">{FORMAT_LABELS[format]}</span>
           </button>
           <button
             ref={this.menuButtonRef}
@@ -57,20 +67,23 @@ export class DebugReportCopy extends Component {
             <button
               ref={this.itemRefs[0]}
               type="button"
-              role="menuitem"
+              role="menuitemradio"
+              aria-checked={format === 'markdown'}
               onClick={() => this._copy('markdown')}
             >
+              <span className="debug-report-menu-check" aria-hidden="true">{format === 'markdown' ? '✓' : ''}</span>
               {translate(locale, 'copy.asMarkdown')}
             </button>
             <button
               ref={this.itemRefs[1]}
               type="button"
-              role="menuitem"
+              role="menuitemradio"
+              aria-checked={format === 'json'}
               onClick={() => this._copy('json')}
             >
+              <span className="debug-report-menu-check" aria-hidden="true">{format === 'json' ? '✓' : ''}</span>
               {translate(locale, 'copy.asJson')}
             </button>
-            <div className="debug-report-warning" role="note">{warning}</div>
           </div>
         )}
       </div>
@@ -78,8 +91,10 @@ export class DebugReportCopy extends Component {
   }
 
   _copy = format => {
-    this.setState({ isOpen: false });
-    this.props.onCopy(format);
+    const normalized = normalizeFormat(format);
+    setStorageItem(FORMAT_STORAGE_KEY, normalized);
+    this.setState({ isOpen: false, format: normalized });
+    this.props.onCopy(normalized);
   };
 
   _toggleMenu = () => {

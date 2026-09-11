@@ -20,8 +20,21 @@
 }
 
 .debug-report-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 0 8px;
   border-radius: 4px 0 0 4px;
+}
+
+.debug-report-format-badge {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--button-hover-bg);
+  color: var(--text-secondary-color);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .debug-report-menu-button {
@@ -61,7 +74,8 @@
 }
 
 .debug-report-menu button {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   min-height: 27px;
   padding: 4px 7px;
@@ -75,15 +89,14 @@
   cursor: pointer;
 }
 
-.debug-report-menu button:hover {
-  background: var(--button-hover-bg);
+.debug-report-menu-check {
+  display: inline-block;
+  width: 14px;
+  flex: none;
+  color: var(--focus-outline-color);
+  font-weight: 700;
 }
 
-.debug-report-warning {
-  margin: 5px 2px 0;
-  padding: 6px;
-  border-top: 1px solid var(--divider-color);
-  color: var(--text-secondary-color);
-  font-size: 10px;
-  line-height: 1.35;
+.debug-report-menu button:hover {
+  background: var(--button-hover-bg);
 }
