@@ -450,6 +450,70 @@ test("truncates oversized requests before posting and disables replay", () => {
   expect(messages[0].request.preview).toHaveLength(2000);
 });
 
+test("keeps the rest of a response intact when it embeds an Any of a type missing from the app's registry", async () => {
+  const messages = capturePostedMessages();
+  const runtime = loadRuntime();
+  const method = makeMethod("ListDemands");
+  const unresolvedAny = {
+    typeUrl: "type.googleapis.com/commonv1.ErrorInfo",
+    value: new Uint8Array([1, 2, 3]),
+  };
+  const response = {
+    demands: [{
+      id: "d1",
+      unmatchedStatus: { code: 5, message: "no match", details: [unresolvedAny] },
+    }],
+  };
+
+  // A faithful stand-in for protobuf-ts's real toJson(): it throws unless every
+  // Any it encounters resolves against options.typeRegistry, exactly like the
+  // real runtime does.
+  method.O.toJson.mockImplementation((message, options) => {
+    const registry = (options && options.typeRegistry) || [];
+    const detail = message.demands[0].unmatchedStatus.details[0];
+    const typeName = detail.typeUrl.split("/").pop();
+    const type = registry.find(candidate => candidate.typeName === typeName);
+    if (!type) {
+      throw new Error(
+        `Unable to convert google.protobuf.Any with typeUrl '${detail.typeUrl}' to JSON. ` +
+        `The specified type ${typeName} is not available in the type registry.`
+      );
+    }
+    return {
+      demands: [{
+        id: message.demands[0].id,
+        unmatchedStatus: {
+          code: message.demands[0].unmatchedStatus.code,
+          message: message.demands[0].unmatchedStatus.message,
+          details: [type.internalJsonWrite(type.fromBinary(detail.value))],
+        },
+      }],
+    };
+  });
+  const unary = makeUnaryCall(method, { serviceType: "example-test" });
+
+  runtime.interceptUnary({
+    baseUrl: "https://api.example.test",
+    next: jest.fn(() => unary.call),
+    method,
+    input: { serviceType: "example-test" },
+    options: { debug: true },
+  });
+  unary.resolve(response);
+  await flushPromises();
+
+  const completeEvent = messages.find(message => message.phase === "complete");
+  expect(completeEvent.response.demands[0].id).toBe("d1");
+  expect(completeEvent.response.demands[0].unmatchedStatus.message).toBe("no match");
+  const detail = completeEvent.response.demands[0].unmatchedStatus.details[0];
+  expect(detail).toMatchObject({
+    __unresolvedAnyType: true,
+    "@type": "type.googleapis.com/commonv1.ErrorInfo",
+  });
+  expect(typeof detail.valueBase64).toBe("string");
+  expect(atob(detail.valueBase64)).toBe(String.fromCharCode(1, 2, 3));
+});
+
 test("evicts the oldest replay handle after the 100-handle bound", () => {
   const messages = capturePostedMessages();
   const runtime = loadRuntime();

@@ -93,11 +93,85 @@
     };
   }
 
+  function typeUrlToTypeName(typeUrl) {
+    const index = typeUrl.lastIndexOf("/");
+    return index === -1 ? typeUrl : typeUrl.slice(index + 1);
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = "";
+    const safeBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array();
+    for (let index = 0; index < safeBytes.length; index += 1) binary += String.fromCharCode(safeBytes[index]);
+    return typeof btoa === "function" ? btoa(binary) : "";
+  }
+
+  function isAnyShaped(value) {
+    return isJsonObject(value) && typeof value.typeUrl === "string" && value.value instanceof Uint8Array;
+  }
+
+  // toJson() throws the moment it hits a google.protobuf.Any whose packed type
+  // isn't in options.typeRegistry, discarding the ENTIRE message even though
+  // everything else in it serialized fine. We can't know the app's full type
+  // registry, so instead of losing the whole payload, walk the decoded message
+  // ourselves first, find any Any fields the registry can't resolve, and hand
+  // toJson() a patched registry with synthetic stand-in entries for exactly
+  // those types (their raw bytes are shown, base64-encoded, instead of the
+  // expanded fields).
+  function collectUnresolvableAnyTypeNames(value, registry, seen, found, depth) {
+    if (depth > 12 || !value || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+
+    if (isAnyShaped(value)) {
+      if (value.typeUrl === "") return;
+      const typeName = typeUrlToTypeName(value.typeUrl);
+      if (!registry.some(type => type.typeName === typeName)) found.set(typeName, value.typeUrl);
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(item => collectUnresolvableAnyTypeNames(item, registry, seen, found, depth + 1));
+      return;
+    }
+
+    for (const key in value) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        collectUnresolvableAnyTypeNames(value[key], registry, seen, found, depth + 1);
+      }
+    }
+  }
+
+  function createUnresolvedAnyStub(typeName, typeUrl) {
+    return {
+      typeName,
+      fromBinary: bytes => bytes,
+      internalJsonWrite: bytes => ({
+        __unresolvedAnyType: true,
+        "@type": typeUrl,
+        note: "Not in the app's protobuf-ts typeRegistry; showing raw bytes instead of expanded fields.",
+        valueBase64: bytesToBase64(bytes),
+      }),
+    };
+  }
+
+  function withResilientTypeRegistry(message, jsonOptions) {
+    const baseRegistry = jsonOptions && Array.isArray(jsonOptions.typeRegistry) ? jsonOptions.typeRegistry : [];
+    const found = new Map();
+    try {
+      collectUnresolvableAnyTypeNames(message, baseRegistry, new WeakSet(), found, 0);
+    } catch (_) {
+      return jsonOptions;
+    }
+    if (found.size === 0) return jsonOptions;
+    const stubs = Array.from(found, ([typeName, typeUrl]) => createUnresolvedAnyStub(typeName, typeUrl));
+    return { ...jsonOptions, typeRegistry: [...baseRegistry, ...stubs] };
+  }
+
   function serializeMessage(messageType, message, options, emitDefaultValues = false) {
     try {
-      const jsonOptions = emitDefaultValues
+      const baseJsonOptions = emitDefaultValues
         ? { ...(options && options.jsonOptions), emitDefaultValues: true }
         : options && options.jsonOptions;
+      const jsonOptions = withResilientTypeRegistry(message, baseJsonOptions);
       return limitPayload(messageType.toJson(message, jsonOptions));
     } catch (error) {
       return {
