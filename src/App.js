@@ -6,6 +6,7 @@ import MainLayout from './components/MainLayout';
 import Toolbar from './components/Toolbar';
 import ErrorBoundary from './components/ErrorBoundary';
 import Toast from './components/Toast';
+import BtsEasterEgg from './components/BtsEasterEgg';
 import { detectBrowserLocale, translate } from './i18n';
 import { selectLocale, setBrowserLocale } from './state/localization';
 
@@ -43,6 +44,7 @@ class App extends Component {
           </div>
         </div>
         <Toast />
+        <BtsEasterEgg />
       </ErrorBoundary>
     );
   }
