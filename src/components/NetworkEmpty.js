@@ -5,7 +5,7 @@ import { translate } from '../i18n';
 import './NetworkEmpty.css';
 
 export const CLIENT_INTEGRATION_GUIDE_URL =
-  'https://github.com/jhyang12345/grpc-web-devtools/blob/master/docs/client-integration.md';
+  'https://github.com/jhyang12345/grpc-web-inspector-guide/blob/main/SETUP.md';
 
 export function getEmptyStateContent(mode, filterValue, locale = 'en') {
   const modifier = navigator.platform.indexOf('Mac') === 0 ? 'Cmd' : 'Ctrl';
