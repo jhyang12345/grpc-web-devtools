@@ -630,14 +630,9 @@ export class NetworkDetails extends Component {
             <div className="details-pane-title">
               {isEditingRequest ? translate(locale, "details.editRequest") : translate(locale, "details.request")}
             </div>
-            <div
-              className="details-pane-subtitle"
-              title={isEditingRequest ? translate(locale, "details.reviewJson") : undefined}
-            >
-              {isEditingRequest
-                ? translate(locale, "details.reviewJson")
-                : translate(locale, "details.capturedRequest")}
-            </div>
+            {isEditingRequest && (
+              <div className="details-pane-subtitle">{translate(locale, "details.reviewJson")}</div>
+            )}
           </div>
           <div
             className={`details-pane-actions ${isEditingRequest ? "replay-editor-actions" : ""}`}
@@ -735,7 +730,6 @@ export class NetworkDetails extends Component {
         <div className="details-pane-header">
           <div className="details-pane-title-group">
             <div className="details-pane-title">{translate(locale, "details.response")}</div>
-            <div className="details-pane-subtitle">{translate(locale, "details.capturedResponse")}</div>
           </div>
           <div className="details-pane-actions">
             <button

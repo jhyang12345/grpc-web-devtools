@@ -357,6 +357,19 @@
   color: var(--accent-color);
 }
 
+.replay-edit-button {
+  border-color: var(--accent-color);
+  background: var(--accent-color);
+  color: #fff;
+  font-weight: 600;
+}
+
+.replay-edit-button:hover:not(:disabled) {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  filter: brightness(1.1);
+}
+
 .react-json-view {
   min-height: 100%;
 }
