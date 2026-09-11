@@ -43,6 +43,22 @@ function boundedTiming(value) {
   return timing;
 }
 
+// The interceptor already only ever sends an explicitly allowlisted subset of
+// request metadata (see CAPTURED_METADATA_KEYS in protobuf-ts-interceptor.js —
+// never authorization/instance-id/etc.); this just re-bounds string sizes,
+// consistent with every other field here being bounded regardless of source.
+function boundedMeta(value) {
+  if (!value || typeof value !== "object") return undefined;
+  const meta = {};
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    const boundedKey = boundedString(key, 128);
+    const boundedValue = boundedString(value[key], 512);
+    if (boundedKey && boundedValue !== undefined) meta[boundedKey] = boundedValue;
+  }
+  return Object.keys(meta).length ? meta : undefined;
+}
+
 function inspectPayload(value) {
   const state = { nodes: 0, characters: 0, seen: new WeakSet() };
   const visit = (current, depth) => {
@@ -143,6 +159,7 @@ function applyIndividualLimits(entry) {
     timing: boundedTiming(source.timing),
     replay: source.replay,
     replayedFrom: source.replayedFrom,
+    meta: boundedMeta(source.meta),
   };
   const payloadBytes = {};
   ["request", "response", "error", "status"].forEach(field => {
@@ -208,7 +225,7 @@ function evictIfNeeded() {
 
 function mergeEntry(existing, incoming, incomingPayloadBytes) {
   const accounting = payloadAccounting.get(existing);
-  ["method", "methodType", "transport", "captureId", "requestId", "location", "backendUrl", "replay", "replayedFrom"].forEach(field => {
+  ["method", "methodType", "transport", "captureId", "requestId", "location", "backendUrl", "replay", "replayedFrom", "meta"].forEach(field => {
     if (incoming[field] != null && (existing[field] == null || field !== "location")) existing[field] = incoming[field];
   });
   if (incoming.request != null) {
