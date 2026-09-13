@@ -43,6 +43,24 @@ const timerQueue = () => {
   };
 };
 
+test("manifest loads the isolated bridge before page hooks without public script resources", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../public/manifest.json"), "utf8"));
+  expect(manifest.minimum_chrome_version).toBe("111");
+  expect(manifest.web_accessible_resources).toBeUndefined();
+  expect(manifest.permissions).toEqual([]);
+  expect(manifest.content_scripts).toEqual([
+    {
+      matches: ["<all_urls>"], js: ["content-script.js"], world: "ISOLATED",
+      run_at: "document_start", all_frames: true,
+    },
+    {
+      matches: ["<all_urls>"],
+      js: ["protobuf-ts-interceptor.js", "grpc-web-interceptor.js", "connect-web-interceptor.js"],
+      world: "MAIN", run_at: "document_start", all_frames: true,
+    },
+  ]);
+});
+
 test("background keeps multiple frame ports and reports their health to the bound panel", () => {
   const onConnect = listenerList();
   const chrome = { runtime: { onConnect } };
@@ -142,11 +160,7 @@ test("content retries until acknowledged and recovers again after a later discon
     setTimeout: timers.setTimeout,
     clearTimeout: timers.clearTimeout,
   });
-  expect(document.head.appendChild.mock.calls.map(([script]) => script.src)).toEqual([
-    "protobuf-ts-interceptor.js",
-    "grpc-web-interceptor.js",
-    "connect-web-interceptor.js",
-  ]);
+  expect(document.head.appendChild).not.toHaveBeenCalled();
   while (ports.length < 8) expect(timers.runNext()).toBe(true);
   expect(ports).toHaveLength(8);
   ports.at(-1).onMessage.emit({ action: "init_ack" });

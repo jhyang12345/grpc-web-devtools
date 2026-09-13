@@ -22,10 +22,28 @@ import "./NetworkDetails.css";
 
 // Isolated so it never re-renders when parent search state changes.
 class ResponseJsonContent extends PureComponent {
+  state = { source: null, hasError: false };
+
+  static getDerivedStateFromProps({ responseSource }, state) {
+    if (responseSource !== state.source) {
+      return { source: responseSource, hasError: false };
+    }
+    return null;
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
   render() {
-    const { isRendering, responseSource, responseCollapsed, theme, locale = "en" } = this.props;
+    const { isRendering, responseSource, responseText, responseCollapsed, theme, locale = "en" } = this.props;
     if (!isRendering) {
       return <div className="payload-warning">{translate(locale, "details.loadingPayload")}</div>;
+    }
+    // Some valid JSON keys break the third-party tree renderer. Preserve the
+    // complete payload as React text without taking down the rest of the panel.
+    if (this.state.hasError) {
+      return <pre className="response-json-fallback">{responseText}</pre>;
     }
     return (
       <ReactJson
@@ -775,6 +793,7 @@ export class NetworkDetails extends Component {
           <ResponseJsonContent
             isRendering={isRendering}
             responseSource={responseSource}
+            responseText={responseText}
             responseCollapsed={responseCollapsed}
             theme={jsonViewerTheme}
             locale={locale}
