@@ -111,11 +111,12 @@ RPC errors are prioritized, and the report also flags slow or incomplete calls,
 partial stream failures, failed replays, dropped stream history, large payloads,
 and capture truncation.
 
-The filename carries safe source context without leaking URL paths or query
-values. For example,
-`grpc-web-audit-app-example-test-2026-08-26T09-14-32-184Z-<uuid>.md`
-identifies the inspected host, records UTC time to the millisecond, and includes
-a unique report ID so later downloads cannot overwrite an earlier report.
+The filename includes the inspected host, URL path and query parameter names,
+followed by UTC time and a sequence number. For example,
+`grpc-audit-app-example-test-orders-123-token-2026-08-26T09-14-32-184Z-1.md`.
+URL credentials, query values and fragments are omitted, but paths and parameter
+names can still contain sensitive information. Review the filename as well as
+the report before sharing it.
 
 Report prose follows the extension's selected language. Captured evidence such
 as URLs, RPC methods and codes, backend messages, JSON, and the filename stays
@@ -126,17 +127,17 @@ duplicated range.
 
 Each file contains a chronological activity timeline, detailed evidence for up
 to 25 requests, repeated-failure and shared-route observations, request timing,
-network-failure classification, gRPC status, bounded Request/Response snapshots,
+network-failure classification, gRPC status, retained Request/Response snapshots,
 and explicit markers when evidence was truncated or evicted. Suggested
 investigation areas are based on captured status codes and patterns; they are
 clues, not root-cause determinations. Correlate the timestamps and request IDs
 with backend and proxy logs. The browser capture does not include server logs,
 response headers, trailers, or stack traces.
 
-Audit exports are deliberately bounded: they scan at most 1,000 lightweight
-summaries, include a 50-request metadata timeline, retain at most 6 KiB from
-each exported payload, and never exceed 512 KiB. Exporting does not create a
-second history store. The inspector payload cache is capped at 500 entries and
+Audit exports scan at most 1,000 lightweight summaries and include a 50-request
+metadata timeline. They preserve the full redacted payloads retained for the
+selected requests; there is no additional per-payload or total report byte cap.
+Exporting does not create a second history store. The inspector payload cache is capped at 500 entries and
 32 MiB in aggregate, with a 5 MiB per-request limit and 100 retained stream
 messages. A disconnected frame's forwarding queue is capped at 100 events and
 8 MiB.
@@ -146,6 +147,17 @@ redaction for common credential fields, token-shaped text, URL credentials,
 query values, and fragments. The active Filter text and internal replay token
 are omitted. Structural redaction cannot identify every secret or personal data
 field, so review the downloaded file before sharing it outside your team.
+
+### Page trust and security
+
+The transport hooks run in the inspected page's JavaScript environment. Scripts
+in that page can observe or replace the hooks, forge captured diagnostics, and
+invoke page-visible replay handles. Replay tokens correlate retained requests;
+they do not authenticate the DevTools user to the page. Treat captured content
+as untrusted, and enable application instrumentation only in environments where
+you intend to expose request data and replay to page scripts. The extension's
+isolated bridge and service worker must continue to enforce message validation
+and routing to the originating tab and frame.
 
 ### Replay limits and request construction
 
