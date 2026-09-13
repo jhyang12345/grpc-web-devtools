@@ -10,8 +10,11 @@ import {
   getAuditReportFilename,
   getDiagnosticClue,
   normalizeGrpcCode,
+  redactReportUrl,
   utf8ByteLength,
 } from '../utils/auditReport';
+
+const vm = require('vm');
 
 const NOW = Date.parse('2026-08-25T14:30:00.000Z');
 
@@ -385,6 +388,78 @@ test('does not rewrite ordinary question-mark prose as a relative URL', () => {
   expect(formatted).toContain('question ? retry');
 });
 
+test.each([
+  ['absolute URL', 'a-'],
+  ['relative URL', '(/'],
+  ['JWT', 'eyJabcdefgh-'],
+])('preserves long failed %s candidates within a bounded formatting task', (_, repeated) => {
+  const source = { body: repeated.repeat(100000) };
+  const formatted = vm.runInNewContext('formatReportJson(source)', { formatReportJson, source }, { timeout: 1000 });
+
+  expect(JSON.parse(formatted)).toEqual(source);
+});
+
+test.each([
+  ['a-', 'https://example.test/rpc?tenant=URL_SECRET#FRAGMENT_SECRET', 'https://example.test/rpc?tenant=%5Bredacted%5D'],
+  ['(/', '/rpc?tenant=URL_SECRET#FRAGMENT_SECRET', '/rpc?tenant=%5Bredacted%5D'],
+  ['eyJabcdefgh-', 'eyJabcdefgh.ijklmnop.qrstuv', '[redacted JWT]'],
+])('redacts valid secrets after a long failed %s candidate', (repeated, tail, expectedTail) => {
+  const prefix = `${repeated.repeat(10000)} `;
+  const source = { body: `${prefix}${tail}` };
+  const formatted = vm.runInNewContext('formatReportJson(source)', { formatReportJson, source }, { timeout: 1000 });
+
+  expect(JSON.parse(formatted).body).toBe(`${prefix}${expectedTail}`);
+});
+
+test('preserves URL recognition boundaries and JWT token boundaries', () => {
+  const source = {
+    angleDelimited: '<api?token=literal> >api?token=literal<',
+    nestedRelative: 'see (/rpc?tenant=SECRET#FRAGMENT)',
+    schemeRelative: 'see //alice:password@example.test/rpc?tenant=SECRET#FRAGMENT',
+    customScheme: 'see git+ssh://alice:password@example.test/rpc?tenant=SECRET#FRAGMENT',
+    underscorePrefix: '_https://example.test/rpc?token=literal',
+    jwt: 'eyJabcdefgh.ijklmnop.qrstuv--',
+    incompleteJwt: 'eyJabcdefgh.ijklmnop.---',
+    nonBoundaryJwt: '_eyJabcdefgh.ijklmnop.qrstuv',
+    nestedJwt: 'eyJabcdefgh.eyJabcdefgh.ijklmnop.---',
+    authText: 'Bearer retained-secret Basic YWJj',
+  };
+  const parsed = JSON.parse(formatReportJson(source));
+
+  expect(parsed.angleDelimited).toBe(source.angleDelimited);
+  expect(parsed.nestedRelative).toBe('see (/rpc?tenant=%5Bredacted%5D');
+  expect(parsed.schemeRelative).toBe('see //example.test/rpc?tenant=%5Bredacted%5D');
+  expect(parsed.customScheme).toBe('see git+ssh://%5Bredacted%5D:%5Bredacted%5D@example.test/rpc?tenant=%5Bredacted%5D');
+  expect(parsed.underscorePrefix).toBe(source.underscorePrefix);
+  expect(parsed.jwt).toBe('[redacted JWT]--');
+  expect(parsed.incompleteJwt).toBe(source.incompleteJwt);
+  expect(parsed.nonBoundaryJwt).toBe(source.nonBoundaryJwt);
+  expect(parsed.nestedJwt).toBe('[redacted JWT].---');
+  expect(parsed.authText).toBe('Bearer [redacted] Basic [redacted]');
+});
+
+test('redacts all query values while preserving key order, duplicate collapse, and empty queries', () => {
+  expect(redactReportUrl('https://example.test/rpc?b=one&a=two&b=three&%61=four#fragment'))
+    .toBe('https://example.test/rpc?b=%5Bredacted%5D&a=%5Bredacted%5D');
+  expect(redactReportUrl('https://example.test/rpc?')).toBe('https://example.test/rpc?');
+  expect(redactReportUrl('https://example.test/rpc?&&')).toBe('https://example.test/rpc?&&');
+
+  const keys = Array.from({ length: 450 }, (_, index) => `k${index}`);
+  const url = `https://example.test/rpc?${keys.map(key => `${key}=v`).join('&')}`;
+  const parsed = new URL(redactReportUrl(url));
+  expect(Array.from(parsed.searchParams.keys())).toEqual(keys);
+  expect(Array.from(parsed.searchParams.values())).toEqual(keys.map(() => '[redacted]'));
+});
+
+test('retains malformed URL fallback semantics for query keys and fragments', () => {
+  expect(redactReportUrl('http://[invalid]/rpc?first?part=secret&empty=&bare#fragment'))
+    .toBe('http://[invalid]/rpc?first?part=[redacted]&empty=[redacted]&bare');
+  expect(redactReportUrl('http://[invalid]/rpc?=literal?next=secret#fragment'))
+    .toBe('http://[invalid]/rpc?=literal?next=[redacted]');
+  const malformed = `http://[invalid]/rpc${'?'.repeat(3000)}`;
+  expect(redactReportUrl(malformed)).toBe(malformed);
+});
+
 test('does not shrink or truncate the report even when multibyte metadata pushes it past the old byte budget', () => {
   const entries = Array.from({ length: 50 }, (_, index) => ({
     entryId: index + 1,
@@ -440,6 +515,31 @@ test('contains untrusted method and status text inside Markdown-safe inline code
   expect(report.text).not.toContain('\n# Fake status section');
   expect(report.text).toContain('`/demo.Service/Fail Fake diagnosis`');
   expect(report.text).toContain('`server detail # Fake status section`');
+});
+
+test.each([
+  ['`leading', '`` `leading ``'],
+  ['trailing`', '`` trailing` ``'],
+  ['`both`', '`` `both` ``'],
+  ['``asymmetric`', '``` ``asymmetric` ```'],
+  ['multiple ``` inside', '````multiple ``` inside````'],
+  ['```', '```` ``` ````'],
+  ['  ordinary  ', '`  ordinary  `'],
+  ['`<img src=x onerror=alert(1)>[attacker](https://evil.example/)', '`` `<img src=x onerror=alert(1)>[attacker](https://evil.example/) ``'],
+])('separates Markdown fences from boundary backticks in method and status text: %s', (payload, wrapped) => {
+  const report = build([{
+    entryId: 1,
+    requestId: 1,
+    method: payload,
+    transport: 'grpc-web',
+    error: { code: 13, message: 'failed' },
+    status: { code: 13, details: payload },
+    terminalPhase: 'error',
+    timing: { requestTimestamp: NOW - 2000, completionTimestamp: NOW - 1000, duration: 1000 },
+  }]);
+
+  expect(report.text).toContain(` · ${wrapped}\n`);
+  expect(report.text).toContain(`- Status: \`INTERNAL\` — ${wrapped}\n`);
 });
 
 test('selects the newest timeline entries by capture time rather than arrival order', () => {

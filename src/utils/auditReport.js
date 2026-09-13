@@ -162,7 +162,9 @@ function redactTokenSecrets(value) {
   return String(value ?? '')
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
     .replace(/\bBasic\s+[A-Za-z0-9+/=]+/gi, 'Basic [redacted]')
-    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[redacted JWT]');
+    // Consume a failed first segment once instead of retrying every embedded eyJ.
+    .replace(/\beyJ[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b)?/g,
+      candidate => candidate.includes('.') ? '[redacted JWT]' : candidate);
 }
 
 function isSensitiveKey(key) {
@@ -182,25 +184,66 @@ export function redactReportUrl(value) {
     const parsed = new URL(raw, 'https://audit.invalid');
     if (parsed.username) parsed.username = REPORT_REDACTED;
     if (parsed.password) parsed.password = REPORT_REDACTED;
-    Array.from(parsed.searchParams.keys()).forEach(key => parsed.searchParams.set(key, REPORT_REDACTED));
+    const redactedParams = new URLSearchParams();
+    const seenKeys = new Set();
+    for (const key of parsed.searchParams.keys()) {
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      redactedParams.append(key, REPORT_REDACTED);
+    }
+    // Assign once: mutating the live params repeatedly reserializes the whole URL.
+    if (seenKeys.size) parsed.search = redactedParams.toString();
     parsed.hash = '';
     if (isAbsolute) return parsed.toString();
     if (isSchemeRelative) return `//${parsed.host}${parsed.pathname}${parsed.search}`;
     return `${parsed.pathname}${parsed.search}`;
   } catch (_) {
-    return raw.replace(/([?&][^=&#]+)=([^&#]*)/g, `$1=${REPORT_REDACTED}`).replace(/#.*$/, '');
+    return raw.replace(/([?&][^=&#]+)(?:=([^&#]*))?/g,
+      (candidate, key, queryValue) => queryValue === undefined ? candidate : `${key}=${REPORT_REDACTED}`)
+      .replace(/#.*$/, '');
   }
+}
+
+function redactRelativeTextUrls(text) {
+  return text.replace(/[^\s<>"'`]+/g, (token, offset) => {
+    const lastMarker = Math.max(token.lastIndexOf('?'), token.lastIndexOf('#'));
+    if (lastMarker < 0) return token;
+    const lastEquals = token.lastIndexOf('=');
+
+    // Each token and path segment is scanned once, including failed candidates.
+    for (let start = 0; start <= lastMarker; start += 1) {
+      const previous = start ? token[start - 1] : text[offset - 1];
+      if ((offset + start !== 0) && !/[\s([{"'`]/.test(previous)) continue;
+
+      if (token[start] === '/' && start < lastMarker) {
+        return token.slice(0, start) + redactReportUrl(token.slice(start));
+      }
+      if (token[start] === '?' && start < lastEquals) {
+        return token.slice(0, start) + redactReportUrl(token.slice(start));
+      }
+
+      let end = start;
+      while (end < token.length && /[A-Za-z0-9._~-]/.test(token[end])) end += 1;
+      if (end > start && (
+        (token[end] === '/' && end < lastMarker)
+        || (token[end] === '?' && end < lastEquals)
+      )) {
+        return token.slice(0, start) + redactReportUrl(token.slice(start));
+      }
+      // A path segment cannot contain another eligible starting boundary.
+      if (end > start) start = end - 1;
+    }
+    return token;
+  });
 }
 
 function redactTextSecrets(value) {
   const withAbsoluteUrlsRedacted = redactTokenSecrets(value).replace(
-    /\b[a-z][a-z\d+.-]*:\/\/[^\s<>"'`]+/gi,
-    matchedUrl => redactReportUrl(matchedUrl),
+    // A missing :// consumes the scheme run, preventing overlapping retries.
+    /\b[a-z][a-z\d+.-]*(?::\/\/[^\s<>"'`]+)?/gi,
+    candidate => candidate.includes('://') ? redactReportUrl(candidate) : candidate,
   );
-  return withAbsoluteUrlsRedacted.replace(
-    /(^|[\s([{"'`])((?:\/\/|\/|\.\.?\/|[A-Za-z0-9._~-]+\/|[A-Za-z0-9._~-]+(?=\?[^\s<>"'`]*=)|(?=\?[^\s<>"'`]*=))[^\s<>"'`]*[?#][^\s<>"'`]*)/g,
-    (_, prefix, matchedUrl) => `${prefix}${redactReportUrl(matchedUrl)}`,
-  );
+  return redactRelativeTextUrls(withAbsoluteUrlsRedacted);
 }
 
 function redactMethod(value, maximum = 500, locale = 'en') {
@@ -647,7 +690,9 @@ function inlineCode(value) {
   const content = clipText(redactTextSecrets(value), 4000).replace(/[\r\n]+/g, ' ');
   const longestRun = (content.match(/`+/g) || []).reduce((longest, run) => Math.max(longest, run.length), 0);
   const fence = '`'.repeat(Math.max(1, longestRun + 1));
-  return `${fence}${content}${fence}`;
+  // Keep content backticks from joining the opening or closing delimiter run.
+  const padding = /^`|`$/.test(content) ? ' ' : '';
+  return `${fence}${padding}${content}${padding}${fence}`;
 }
 
 function codeFence(content, language = 'json') {
