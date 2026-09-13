@@ -10,6 +10,12 @@ Now supports dark mode.
 
 ### Chrome
 
+The source build requires Chrome 111 or newer for declarative `MAIN` content
+scripts. The browser loads the isolated bridge and then the page hooks at
+document start; interceptor files are not web-accessible resources. Application
+setup should check for an existing page API as well as listen for readiness,
+as shown below.
+
 Via
 the [Chrome Web Store](https://chrome.google.com/webstore/detail/grpc-web-developer-tools/kanmilmfkjnoladbbamlclhccicldjaj) (
 recommended)
