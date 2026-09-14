@@ -8,6 +8,10 @@
   const LISTENER_KEY = Symbol.for("grpc-web-inspector.connect-replay-listener");
   const MAX_REPLAY_HANDLES = 100;
   const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
+  // Explicit allowlist, not a redaction blocklist: req.header also carries the
+  // Authorization header on every call, so only ever copy keys named here —
+  // never iterate/copy headers wholesale, no matter how tempting that looks later.
+  const CAPTURED_METADATA_KEYS = ["app-version", "service-name"];
 
   function getState() {
     if (!window[STATE_KEY]) Object.defineProperty(window, STATE_KEY, { configurable: true, value: { registry: new Map() } });
@@ -63,6 +67,18 @@
       message: error && error.message ? String(error.message) : String(error || "Unknown RPC error"),
       ...(isNetworkError ? { isNetworkError: true } : {}),
     };
+  }
+
+  // req.header is a Web Headers instance (Connect-ES interceptor contract),
+  // not a plain object — .get() is already case-insensitive per that API.
+  function extractAllowlistedMetadata(header) {
+    if (!header || typeof header.get !== "function") return undefined;
+    const result = {};
+    CAPTURED_METADATA_KEYS.forEach(key => {
+      const value = header.get(key);
+      if (typeof value === "string" && value) result[key] = value;
+    });
+    return Object.keys(result).length ? result : undefined;
   }
 
   function post(payload) {
@@ -174,7 +190,7 @@
         return (async () => { for await (const _ of response.message) {} return response; })();
       });
     });
-    post({ phase: "start", method: req.method.name, methodType, requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), timing: { requestTimestamp } });
+    post({ phase: "start", method: req.method.name, methodType, requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), meta: extractAllowlistedMetadata(req.header), timing: { requestTimestamp } });
     try {
       const response = await next(req);
       if (response.stream) return { ...response, message: readStream(req, response.message, requestId, requestTimestamp, elapsedStart, replayedFromValue) };
