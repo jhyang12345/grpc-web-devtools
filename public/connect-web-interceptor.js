@@ -81,6 +81,19 @@
     return Object.keys(result).length ? result : undefined;
   }
 
+  // See public/request-metadata-snoop.js: a wire-level fallback for headers
+  // attached closer to the real network call than req.header reflects at the
+  // point we read it.
+  function takeSnoopedMeta(url) {
+    try {
+      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__ === "function"
+        ? window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__(url)
+        : undefined;
+    } catch (_) {
+      return undefined;
+    }
+  }
+
   function post(payload) {
     window.postMessage({ type: POST_TYPE, transport: TRANSPORT, ...payload }, "*");
   }
@@ -167,10 +180,10 @@
         yield message;
       }
       const completionTimestamp = Date.now();
-      post({ phase: "complete", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
+      post({ phase: "complete", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, meta: takeSnoopedMeta(req.url), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
     } catch (error) {
       const completionTimestamp = Date.now();
-      post({ phase: "error", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, error: serializeError(error), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
+      post({ phase: "error", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, error: serializeError(error), meta: takeSnoopedMeta(req.url), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
       throw error;
     }
   };
@@ -195,11 +208,11 @@
       const response = await next(req);
       if (response.stream) return { ...response, message: readStream(req, response.message, requestId, requestTimestamp, elapsedStart, replayedFromValue) };
       const completionTimestamp = Date.now();
-      post({ phase: "complete", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, response: serializeResponse(response.message), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 1 } });
+      post({ phase: "complete", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, response: serializeResponse(response.message), meta: takeSnoopedMeta(req.url), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 1 } });
       return response;
     } catch (error) {
       const completionTimestamp = Date.now();
-      post({ phase: "error", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, error: serializeError(error), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 0 } });
+      post({ phase: "error", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, error: serializeError(error), meta: takeSnoopedMeta(req.url), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 0 } });
       throw error;
     }
   }

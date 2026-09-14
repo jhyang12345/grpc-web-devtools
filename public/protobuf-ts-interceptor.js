@@ -200,6 +200,19 @@
     return Object.keys(result).length ? result : undefined;
   }
 
+  // See public/request-metadata-snoop.js: a wire-level fallback for headers
+  // attached closer to the real network call than options.meta reflects at
+  // the point we read it.
+  function takeSnoopedMeta(url) {
+    try {
+      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__ === "function"
+        ? window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__(url)
+        : undefined;
+    } catch (_) {
+      return undefined;
+    }
+  }
+
   function serializeError(error) {
     const hasCode = error && (typeof error.code === "string" || typeof error.code === "number");
     const details = {
@@ -463,6 +476,7 @@
           response: serializeMessage(method.O, finishedCall.response, options).payload,
           status: serializeStatus(finishedCall.status),
           replayedFrom,
+          meta: takeSnoopedMeta(methodName),
           timing: {
             requestTimestamp,
             completionTimestamp,
@@ -481,6 +495,7 @@
           requestId,
           error: serializeError(error),
           replayedFrom,
+          meta: takeSnoopedMeta(methodName),
           timing: {
             requestTimestamp,
             completionTimestamp,
@@ -538,6 +553,7 @@
       };
       if (phase === "complete") event.status = serializeStatus(value);
       else event.error = serializeError(value);
+      event.meta = takeSnoopedMeta(methodName);
       postEvent(event);
     };
 
