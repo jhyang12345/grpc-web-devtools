@@ -95,10 +95,10 @@
   // See public/request-metadata-snoop.js: a wire-level fallback for headers
   // attached closer to the real network call than metadata reflects at the
   // point we read it.
-  function takeSnoopedMeta(url) {
+  function takeSnoopedMeta() {
     try {
-      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__ === "function"
-        ? window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__(url)
+      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__ === "function"
+        ? window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__()
         : undefined;
     } catch (_) {
       return undefined;
@@ -229,12 +229,19 @@
     let completed = false;
     const backendUrl = backendUrlFromMethod(method);
     post({ phase: "start", method, methodType: "unary", requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), meta: extractAllowlistedMetadata(metadata), timing: { requestTimestamp } });
+    let wireMeta;
     return {
+      // First-writer-wins: a delegated unaryCall-calling-rpcCall chain may
+      // invoke this from both layers, but only whichever one actually
+      // triggered the real dispatch will have anything to report.
+      setWireMeta(value) {
+        if (value !== undefined) wireMeta = value;
+      },
       complete(error, response) {
         if (completed) return;
         completed = true;
         const completionTimestamp = Date.now();
-        const event = { phase: error ? "error" : "complete", method, methodType: "unary", requestId, replayedFrom: replayedFromValue, meta: takeSnoopedMeta(backendUrl), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: error ? 0 : 1 } };
+        const event = { phase: error ? "error" : "complete", method, methodType: "unary", requestId, replayedFrom: replayedFromValue, meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: error ? 0 : 1 } };
         if (error) event.error = serializeError(error);
         else event.response = serializeResponse(response);
         post(event);
@@ -262,11 +269,21 @@
         }), metadata);
       })();
       try {
-        return originalRpcCall.call(this, method, request, metadata, methodInfo, (error, response) => {
+        // Discard any stale, never-consumed value from an earlier call before
+        // dispatching this one, so this call can't inherit meta it didn't send.
+        takeSnoopedMeta();
+        const result = originalRpcCall.call(this, method, request, metadata, methodInfo, (error, response) => {
           capture.complete(error, response);
           if (typeof callback === "function") callback(error, response);
         });
+        // Read immediately, synchronously, with no await in between — see
+        // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
+        // Real XHR/fetch dispatch is always async, so this always runs before
+        // the callback above fires.
+        capture.setWireMeta(takeSnoopedMeta());
+        return result;
       } catch (error) {
+        capture.setWireMeta(takeSnoopedMeta());
         capture.complete(error);
         throw error;
       }
@@ -285,8 +302,14 @@
           return withReplay(target, { replayedFrom: replayedFrom(command, requestId) }, () => target.unaryCall.apply(target, replayArguments));
         }), metadata);
         this[ACTIVE_UNARY] = capture;
+        // Discard any stale, never-consumed value from an earlier call before
+        // dispatching this one, so this call can't inherit meta it didn't send.
+        takeSnoopedMeta();
         let result;
-        try { result = originalUnaryCall.apply(this, arguments); } catch (error) { capture.complete(error); throw error; } finally { delete this[ACTIVE_UNARY]; }
+        try { result = originalUnaryCall.apply(this, arguments); } catch (error) { capture.setWireMeta(takeSnoopedMeta()); capture.complete(error); throw error; } finally { delete this[ACTIVE_UNARY]; }
+        // Read immediately, synchronously, with no await in between — see
+        // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
+        capture.setWireMeta(takeSnoopedMeta());
         if (result && typeof result.then === "function") result.then(response => capture.complete(null, response), error => capture.complete(error));
         else capture.complete(null, result);
         return result;
@@ -310,17 +333,24 @@
       });
       const backendUrl = backendUrlFromMethod(method);
       post({ phase: "start", method, methodType: "server_streaming", requestId, request: requestPayload, replay, replayedFrom: context && context.replayedFrom, ...(backendUrl ? { backendUrl } : {}), meta: extractAllowlistedMetadata(metadata), timing: { requestTimestamp } });
+      let wireMeta;
       const finish = (phase, value) => {
         if (terminal) return;
         terminal = true;
         const completionTimestamp = Date.now();
-        const event = { phase, method, methodType: "server_streaming", requestId, replayedFrom: context && context.replayedFrom, meta: takeSnoopedMeta(backendUrl), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } };
+        const event = { phase, method, methodType: "server_streaming", requestId, replayedFrom: context && context.replayedFrom, meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } };
         if (phase === "error") event.error = serializeError(value);
         else event.status = value && { code: value.code, details: value.details };
         post(event);
       };
       try {
+        // Discard any stale, never-consumed value from an earlier call before
+        // dispatching this one, so this call can't inherit meta it didn't send.
+        takeSnoopedMeta();
         const stream = originalServerStreaming.call(this, method, request, metadata, methodInfo);
+        // Read immediately, synchronously, with no await in between — see
+        // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
+        wireMeta = takeSnoopedMeta();
         stream.on("data", response => {
           messageCount += 1;
           if (firstMessageAt == null) firstMessageAt = monotonicNow();

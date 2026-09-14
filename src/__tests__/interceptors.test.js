@@ -208,21 +208,25 @@ test("captures backend request URLs exposed by gRPC-Web and Connect-Web", async 
   ]);
 });
 
-test("gRPC-Web fills in app-version at the terminal event from the real wire request even when the RPC metadata argument didn't carry it", () => {
+test("gRPC-Web fills in app-version at the terminal event from the real wire request even when the RPC metadata argument didn't carry it", async () => {
   const events = capturedEvents();
   const backendUrl = "https://api.example.test/demo.Service/SnoopedMeta";
   const client = { client_: {
     // Simulates a transport whose own internal metadata-building happens
     // closer to the real dispatch than the `metadata` argument we're handed.
+    // The callback fires on a later microtask, exactly like real XHR/fetch —
+    // synchronous callbacks only happen in naive test doubles, never on the
+    // real wire, and our capture ordering depends on that.
     rpcCall: jest.fn((method, request, metadata, info, callback) => {
       window.fetch(backendUrl, { headers: { "app-version": "qa-af32a43" } });
-      callback(null, { toObject: () => ({ ok: true }) });
+      queueMicrotask(() => callback(null, { toObject: () => ({ ok: true }) }));
     }),
     serverStreaming: jest.fn(),
   } };
   loadInterceptor("grpc-web-interceptor.js");
   window.__GRPCWEB_DEVTOOLS__([client]);
   client.client_.rpcCall(backendUrl, { toObject: () => ({}) }, {}, {}, jest.fn());
+  await Promise.resolve();
 
   const start = events.find(event => event.phase === "start");
   const complete = events.find(event => event.phase === "complete");

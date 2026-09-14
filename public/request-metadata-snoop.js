@@ -8,10 +8,8 @@
   // interceptors — never widen this to capture headers wholesale (Authorization
   // rides alongside these on every real request).
   const CAPTURED_METADATA_KEYS = ["app-version", "service-name"];
-  const MAX_ENTRIES = 50;
-  const ENTRY_TTL_MS = 30000;
 
-  const state = { byUrl: new Map() };
+  const state = { lastMeta: undefined };
   Object.defineProperty(window, STATE_KEY, { configurable: true, value: state });
 
   // Every RPC library's own interceptor chain sits above the actual fetch/XHR
@@ -37,32 +35,32 @@
     return Object.keys(result).length ? result : undefined;
   }
 
-  function record(url, headersLike) {
-    if (typeof url !== "string" || !url) return;
+  function record(headersLike) {
     const meta = extractAllowlistedHeaders(headersLike);
-    if (!meta) return;
-    state.byUrl.set(url, { meta, recordedAt: Date.now() });
-    if (state.byUrl.size > MAX_ENTRIES) state.byUrl.delete(state.byUrl.keys().next().value);
+    if (meta) state.lastMeta = meta;
   }
 
-  // Single-use: consuming a lookup removes it, so a stale or misattributed
-  // entry can't silently linger and leak onto some unrelated later request to
-  // the same URL.
-  window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__ = url => {
-    const entry = state.byUrl.get(url);
-    if (!entry) return undefined;
-    state.byUrl.delete(url);
-    if (Date.now() - entry.recordedAt > ENTRY_TTL_MS) return undefined;
-    return entry.meta;
+  // Deliberately a single slot, not keyed by URL: a transport's own "method"
+  // string handed to our interceptors isn't guaranteed to match the final
+  // absolute URL actually dispatched (it may be a relative path, or built up
+  // internally by the client). Every interceptor instead reads this exactly
+  // once, synchronously, immediately after triggering the real transport call
+  // — with no `await`/microtask in between — so it always corresponds to
+  // exactly that call's own dispatch. JS's single-threaded execution model
+  // guarantees no other call's fetch/XHR can interleave inside that narrow
+  // synchronous window, so this is race-free even for overlapping requests.
+  window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__ = () => {
+    const value = state.lastMeta;
+    state.lastMeta = undefined;
+    return value;
   };
 
   const originalFetch = window.fetch;
   if (typeof originalFetch === "function") {
     window.fetch = function (input, init) {
       try {
-        const url = typeof input === "string" ? input : (input && input.url);
         const headers = (init && init.headers) || (input && typeof input === "object" ? input.headers : undefined);
-        record(url, headers);
+        record(headers);
       } catch (_) {
         // Observation must never affect the real request.
       }
@@ -72,15 +70,8 @@
 
   const XHRProto = window.XMLHttpRequest && window.XMLHttpRequest.prototype;
   if (XHRProto) {
-    const originalOpen = XHRProto.open;
     const originalSetRequestHeader = XHRProto.setRequestHeader;
     const originalSend = XHRProto.send;
-
-    XHRProto.open = function (method, url) {
-      this.__grpcWebDevtoolsUrl = url;
-      this.__grpcWebDevtoolsHeaders = undefined;
-      return originalOpen.apply(this, arguments);
-    };
 
     XHRProto.setRequestHeader = function (name, value) {
       this.__grpcWebDevtoolsHeaders = this.__grpcWebDevtoolsHeaders || {};
@@ -90,7 +81,7 @@
 
     XHRProto.send = function () {
       try {
-        record(this.__grpcWebDevtoolsUrl, this.__grpcWebDevtoolsHeaders);
+        record(this.__grpcWebDevtoolsHeaders);
       } catch (_) {
         // Observation must never affect the real request.
       }

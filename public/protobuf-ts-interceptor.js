@@ -203,10 +203,10 @@
   // See public/request-metadata-snoop.js: a wire-level fallback for headers
   // attached closer to the real network call than options.meta reflects at
   // the point we read it.
-  function takeSnoopedMeta(url) {
+  function takeSnoopedMeta() {
     try {
-      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__ === "function"
-        ? window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__(url)
+      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__ === "function"
+        ? window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__()
         : undefined;
     } catch (_) {
       return undefined;
@@ -444,9 +444,17 @@
     });
 
     let call;
+    let wireMeta;
     try {
+      // Discard any stale, never-consumed value from an earlier call before
+      // dispatching this one, so this call can't inherit meta it didn't send.
+      takeSnoopedMeta();
       call = next(method, input, options);
+      // Read immediately, synchronously, with no await in between — see
+      // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
+      wireMeta = takeSnoopedMeta();
     } catch (error) {
+      wireMeta = takeSnoopedMeta();
       const completionTimestamp = Date.now();
       postEvent({
         phase: "error",
@@ -455,6 +463,7 @@
         requestId,
         error: serializeError(error),
         replayedFrom,
+        meta: wireMeta,
         timing: {
           requestTimestamp,
           completionTimestamp,
@@ -476,7 +485,7 @@
           response: serializeMessage(method.O, finishedCall.response, options).payload,
           status: serializeStatus(finishedCall.status),
           replayedFrom,
-          meta: takeSnoopedMeta(methodName),
+          meta: wireMeta,
           timing: {
             requestTimestamp,
             completionTimestamp,
@@ -495,7 +504,7 @@
           requestId,
           error: serializeError(error),
           replayedFrom,
-          meta: takeSnoopedMeta(methodName),
+          meta: wireMeta,
           timing: {
             requestTimestamp,
             completionTimestamp,
@@ -553,7 +562,7 @@
       };
       if (phase === "complete") event.status = serializeStatus(value);
       else event.error = serializeError(value);
-      event.meta = takeSnoopedMeta(methodName);
+      event.meta = wireMeta;
       postEvent(event);
     };
 
@@ -571,9 +580,17 @@
     });
 
     let call;
+    let wireMeta;
     try {
+      // Discard any stale, never-consumed value from an earlier call before
+      // dispatching this one, so this call can't inherit meta it didn't send.
+      takeSnoopedMeta();
       call = next(method, input, options);
+      // Read immediately, synchronously, with no await in between — see
+      // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
+      wireMeta = takeSnoopedMeta();
     } catch (error) {
+      wireMeta = takeSnoopedMeta();
       finish("error", error);
       throw error;
     }
