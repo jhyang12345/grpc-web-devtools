@@ -84,10 +84,10 @@
   // See public/request-metadata-snoop.js: a wire-level fallback for headers
   // attached closer to the real network call than req.header reflects at the
   // point we read it.
-  function takeSnoopedMeta(url) {
+  function takeSnoopedMeta() {
     try {
-      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__ === "function"
-        ? window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__(url)
+      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__ === "function"
+        ? window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__()
         : undefined;
     } catch (_) {
       return undefined;
@@ -169,7 +169,7 @@
     return replayReq;
   }
 
-  const readStream = async function* (req, stream, requestId, requestTimestamp, elapsedStart, replayedFromValue) {
+  const readStream = async function* (req, stream, requestId, requestTimestamp, elapsedStart, replayedFromValue, wireMeta) {
     let messageCount = 0;
     let firstMessageAt;
     try {
@@ -180,10 +180,10 @@
         yield message;
       }
       const completionTimestamp = Date.now();
-      post({ phase: "complete", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, meta: takeSnoopedMeta(req.url), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
+      post({ phase: "complete", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
     } catch (error) {
       const completionTimestamp = Date.now();
-      post({ phase: "error", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, error: serializeError(error), meta: takeSnoopedMeta(req.url), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
+      post({ phase: "error", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, error: serializeError(error), meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
       throw error;
     }
   };
@@ -204,15 +204,22 @@
       });
     });
     post({ phase: "start", method: req.method.name, methodType, requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), meta: extractAllowlistedMetadata(req.header), timing: { requestTimestamp } });
+    // Discard any stale, never-consumed value from an earlier call before
+    // dispatching this one, so this call can't inherit meta it didn't send.
+    takeSnoopedMeta();
+    const responsePromise = next(req);
+    // Read immediately, synchronously, with no await in between — see
+    // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
+    const wireMeta = takeSnoopedMeta();
     try {
-      const response = await next(req);
-      if (response.stream) return { ...response, message: readStream(req, response.message, requestId, requestTimestamp, elapsedStart, replayedFromValue) };
+      const response = await responsePromise;
+      if (response.stream) return { ...response, message: readStream(req, response.message, requestId, requestTimestamp, elapsedStart, replayedFromValue, wireMeta) };
       const completionTimestamp = Date.now();
-      post({ phase: "complete", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, response: serializeResponse(response.message), meta: takeSnoopedMeta(req.url), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 1 } });
+      post({ phase: "complete", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, response: serializeResponse(response.message), meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 1 } });
       return response;
     } catch (error) {
       const completionTimestamp = Date.now();
-      post({ phase: "error", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, error: serializeError(error), meta: takeSnoopedMeta(req.url), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 0 } });
+      post({ phase: "error", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, error: serializeError(error), meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 0 } });
       throw error;
     }
   }
