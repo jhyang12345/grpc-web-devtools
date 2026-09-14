@@ -133,6 +133,10 @@ const SENSITIVE_KEYS = new Set([
 
 const REPORT_REDACTED = '[redacted]';
 
+// Korea Standard Time has no daylight-saving transitions, so a fixed +9h
+// offset is exact year-round — no need for the Intl timezone database.
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
 function normalizeReportLocale(locale) {
   return locale === 'ko' ? 'ko' : 'en';
 }
@@ -611,6 +615,7 @@ function buildReportModel(options) {
   return {
     locale,
     generatedAt: new Date(nowMs).toISOString(),
+    generatedAtMs: nowMs,
     version: clipText(options.version || packageInfo.version || 'unknown', 100),
     sourceUrl: resolveSourceUrl(options, analyses),
     filterValue,
@@ -657,10 +662,21 @@ function codeFence(content, language = 'json') {
   return `${fence}${language}\n${text}\n${fence}`;
 }
 
-function formatTimestamp(value, locale = 'en') {
+// English reports stay UTC (unchanged) so timestamps line up with backend and
+// proxy logs regardless of who generated the report. Korean reports use KST
+// instead — every timestamp carries an explicit offset (Z or +09:00), so a
+// report is self-describing even away from the header lines that name the zone.
+export function formatTimestamp(value, locale = 'en') {
   const number = asFiniteNumber(value);
   if (number == null) return reportText(locale, 'value.notCaptured');
-  try { return new Date(number).toISOString(); } catch (_) { return reportText(locale, 'value.invalidTimestamp'); }
+  try {
+    if (locale === 'ko') {
+      return new Date(number + KST_OFFSET_MS).toISOString().replace('Z', '+09:00');
+    }
+    return new Date(number).toISOString();
+  } catch (_) {
+    return reportText(locale, 'value.invalidTimestamp');
+  }
 }
 
 function formatDuration(value, locale = 'en') {
@@ -740,7 +756,7 @@ function formatReportHeader(model, includedCount) {
     '',
     `## ${reportText(locale, 'section.scope')}`,
     '',
-    `- ${reportText(locale, 'scope.generatedUtc')}: ${inlineCode(model.generatedAt)}`,
+    `- ${reportText(locale, 'scope.generatedUtc')}: ${inlineCode(formatTimestamp(model.generatedAtMs, locale))}`,
     `- ${reportText(locale, 'scope.extensionVersion')}: ${inlineCode(model.version)}`,
     `- ${reportText(locale, 'scope.sourcePage')}: ${model.sourceUrl ? inlineCode(redactReportUrl(model.sourceUrl)) : reportText(locale, 'value.notCaptured')}`,
     `- ${reportText(locale, 'scope.selection')}: ${selection}`,

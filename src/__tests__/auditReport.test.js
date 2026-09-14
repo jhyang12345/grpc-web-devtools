@@ -7,6 +7,7 @@ import {
   buildAuditReport,
   clampAuditPageLookback,
   formatReportJson,
+  formatTimestamp,
   getAuditReportFilename,
   getDiagnosticClue,
   normalizeGrpcCode,
@@ -550,6 +551,43 @@ test('uses a filesystem-safe, full source URL and a plain sequence number in the
   expect(filename).not.toContain('fragment');
 });
 
+test('formatTimestamp keeps English reports in UTC and switches Korean reports to KST with an explicit offset', () => {
+  expect(formatTimestamp(NOW)).toBe('2026-08-25T14:30:00.000Z');
+  expect(formatTimestamp(NOW, 'en')).toBe('2026-08-25T14:30:00.000Z');
+  expect(formatTimestamp(NOW, 'ko')).toBe('2026-08-25T23:30:00.000+09:00');
+  // Crosses midnight into the next day in KST (UTC+9).
+  expect(formatTimestamp(Date.parse('2026-08-25T20:00:00.000Z'), 'ko')).toBe('2026-08-26T05:00:00.000+09:00');
+  expect(formatTimestamp(null, 'ko')).toBe('캡처되지 않음');
+});
+
+test('labels the report generation time with the correct zone and converts it to KST for Korean reports', () => {
+  const enReport = build([]);
+  const koReport = build([], { locale: 'ko' });
+
+  expect(enReport.text).toContain('Generated (UTC): `2026-08-25T14:30:00.000Z`');
+  expect(koReport.text).toContain('생성 시각 (KST): `2026-08-25T23:30:00.000+09:00`');
+});
+
+test('renders detailed request and timeline timestamps in KST for Korean reports without changing the filename', () => {
+  const entry = {
+    entryId: 1, requestId: 1, method: '/demo.Service/Healthy', transport: 'connect-web',
+    request: { ok: true }, response: { ok: true }, terminalPhase: 'complete',
+    timing: { requestTimestamp: NOW - 2000, completionTimestamp: NOW - 1000, duration: 1000 },
+    location: 'https://app.example.test/page',
+  };
+  const enReport = build([entry]);
+  const koReport = build([entry], { locale: 'ko' });
+
+  expect(enReport.text).toContain('2026-08-25T14:29:58.000Z');
+  expect(enReport.text).not.toContain('+09:00');
+  expect(koReport.text).toContain('2026-08-25T23:29:58.000+09:00');
+  expect(koReport.text).not.toContain('T14:29:58.000Z');
+  // Filenames stay UTC-based and locale-independent regardless of report language.
+  expect(enReport.filename).toContain('2026-08-25T14-30-00-000Z');
+  expect(koReport.filename).toContain('2026-08-25T14-30-00-000Z');
+  expect(koReport.filename).not.toContain('+09-00');
+});
+
 test('renders generated report prose in the selected Korean extension language', () => {
   const entry = {
     entryId: 1,
@@ -573,7 +611,7 @@ test('renders generated report prose in the selected Korean extension language',
   expect(report.text).toContain('**조사할 신호와 영역**');
   expect(report.text).toContain('백엔드 상태');
   expect(report.text).toContain('Request Payload');
-  expect(report.text).toContain('검토한 활동 범위 (UTC): `2026-08-25T14:29:58.000Z` → `2026-08-25T14:29:59.000Z` (범위: 1.00초)');
+  expect(report.text).toContain('검토한 활동 범위 (KST): `2026-08-25T23:29:58.000+09:00` → `2026-08-25T23:29:59.000+09:00` (범위: 1.00초)');
   expect(report.text).not.toContain('## Scope');
   expect(report.text).not.toContain('## Observed clues');
   expect(getDiagnosticClue('UNAUTHENTICATED', '', 'ko')).toContain('인증 정보');
@@ -603,7 +641,7 @@ test('uses a single reviewed activity instant or one localized missing marker wh
   expect(singleReport.text).toContain('Reviewed activity window (UTC): `2026-08-25T14:30:00.000Z`');
   expect(singleReport.text).not.toContain('`2026-08-25T14:30:00.000Z` → `2026-08-25T14:30:00.000Z`');
   expect(minuteReport.text).toContain('(span: 1m 5.25s)');
-  expect(missingReport.text).toContain('검토한 활동 범위 (UTC): 캡처되지 않음');
+  expect(missingReport.text).toContain('검토한 활동 범위 (KST): 캡처되지 않음');
   expect(missingReport.text).not.toContain('캡처되지 않음 → 캡처되지 않음');
 });
 
