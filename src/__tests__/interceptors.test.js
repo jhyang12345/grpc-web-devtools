@@ -14,6 +14,15 @@ const capturedEvents = () => {
 
 afterEach(() => jest.restoreAllMocks());
 
+// The wire-level snoop patches window.fetch once, guarded by a Symbol.for(...)
+// key — installed once here (mirroring requestMetadataSnoop.test.js) so the
+// dedicated tests below can simulate a transport dispatching its real network
+// call with a header the RPC-level metadata argument never carried.
+beforeAll(() => {
+  window.fetch = jest.fn().mockResolvedValue({ ok: true });
+  loadInterceptor("request-metadata-snoop.js");
+});
+
 test.each([
   ["grpc-web-interceptor.js", "connect-web-interceptor.js"],
   ["connect-web-interceptor.js", "grpc-web-interceptor.js"],
@@ -197,6 +206,45 @@ test("captures backend request URLs exposed by gRPC-Web and Connect-Web", async 
     "https://api.example.test/demo.Service/GetThing",
     "https://connect.example.test/demo.Service/GetThing",
   ]);
+});
+
+test("gRPC-Web fills in app-version at the terminal event from the real wire request even when the RPC metadata argument didn't carry it", () => {
+  const events = capturedEvents();
+  const backendUrl = "https://api.example.test/demo.Service/SnoopedMeta";
+  const client = { client_: {
+    // Simulates a transport whose own internal metadata-building happens
+    // closer to the real dispatch than the `metadata` argument we're handed.
+    rpcCall: jest.fn((method, request, metadata, info, callback) => {
+      window.fetch(backendUrl, { headers: { "app-version": "qa-af32a43" } });
+      callback(null, { toObject: () => ({ ok: true }) });
+    }),
+    serverStreaming: jest.fn(),
+  } };
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  client.client_.rpcCall(backendUrl, { toObject: () => ({}) }, {}, {}, jest.fn());
+
+  const start = events.find(event => event.phase === "start");
+  const complete = events.find(event => event.phase === "complete");
+  expect(start.meta).toBeUndefined();
+  expect(complete.meta).toEqual({ "app-version": "qa-af32a43" });
+});
+
+test("Connect-Web fills in app-version at the terminal event from the real wire request even when req.header didn't carry it", async () => {
+  const events = capturedEvents();
+  const url = "https://connect.example.test/demo.Service/SnoopedMeta";
+  loadInterceptor("connect-web-interceptor.js");
+  const interceptor = window.__CONNECT_WEB_DEVTOOLS__(async () => {
+    await window.fetch(url, { headers: { "app-version": "qa-b91c2d0" } });
+    return { stream: false, message: { toJson: () => ({ ok: true }) } };
+  });
+
+  await interceptor({ stream: false, url, method: { name: "SnoopedMeta" }, message: { toJson: () => ({}) } });
+
+  const start = events.find(event => event.phase === "start");
+  const complete = events.find(event => event.phase === "complete");
+  expect(start.meta).toBeUndefined();
+  expect(complete.meta).toEqual({ "app-version": "qa-b91c2d0" });
 });
 
 test("gRPC-Web captures only the allowlisted app-version/service-name metadata, never authorization", () => {

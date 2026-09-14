@@ -17,6 +17,14 @@ const loadRuntime = () => {
   return window.__GRPCWEB_DEVTOOLS_PROTOBUF_TS__;
 };
 
+const loadSnoop = () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "../../public/request-metadata-snoop.js"),
+    "utf8"
+  );
+  window.eval(source);
+};
+
 const capturePostedMessages = () => {
   const messages = [];
   jest.spyOn(window, "postMessage").mockImplementation(message => messages.push(message));
@@ -221,6 +229,37 @@ test("omits the meta field entirely from the start event when no allowlisted key
 
   const startEvent = messages.find(message => message.phase === "start");
   expect(startEvent.meta).toBeUndefined();
+});
+
+test("fills in app-version at the terminal event from the real wire request even when options.meta didn't carry it", async () => {
+  window.fetch = jest.fn().mockResolvedValue({ ok: true });
+  loadSnoop();
+
+  const messages = capturePostedMessages();
+  const runtime = loadRuntime();
+  const method = makeMethod();
+  const unary = makeUnaryCall(method, { value: "original" });
+  const methodName = "https://api.example.test/demo.Service/GetThing";
+
+  runtime.interceptUnary({
+    baseUrl: "https://api.example.test",
+    // Simulates a transport whose own internal metadata-building happens
+    // closer to the real dispatch than options.meta reflects here.
+    next: jest.fn(() => {
+      window.fetch(methodName, { headers: { "app-version": "qa-af32a43" } });
+      return unary.call;
+    }),
+    method,
+    input: { value: "original" },
+    options: { debug: true },
+  });
+  unary.resolve({ result: "ok" });
+  await flushPromises();
+
+  const startEvent = messages.find(message => message.phase === "start");
+  const completeEvent = messages.find(message => message.phase === "complete");
+  expect(startEvent.meta).toBeUndefined();
+  expect(completeEvent.meta).toEqual({ "app-version": "qa-af32a43" });
 });
 
 test("captures protobuf-ts request defaults without changing response JSON options", async () => {

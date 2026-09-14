@@ -92,6 +92,19 @@
     return Object.keys(result).length ? result : undefined;
   }
 
+  // See public/request-metadata-snoop.js: a wire-level fallback for headers
+  // attached closer to the real network call than metadata reflects at the
+  // point we read it.
+  function takeSnoopedMeta(url) {
+    try {
+      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__ === "function"
+        ? window.__GRPCWEB_DEVTOOLS_TAKE_REQUEST_META__(url)
+        : undefined;
+    } catch (_) {
+      return undefined;
+    }
+  }
+
   function post(payload) {
     window.postMessage({ type: POST_TYPE, transport: TRANSPORT, ...payload }, "*");
   }
@@ -221,7 +234,7 @@
         if (completed) return;
         completed = true;
         const completionTimestamp = Date.now();
-        const event = { phase: error ? "error" : "complete", method, methodType: "unary", requestId, replayedFrom: replayedFromValue, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: error ? 0 : 1 } };
+        const event = { phase: error ? "error" : "complete", method, methodType: "unary", requestId, replayedFrom: replayedFromValue, meta: takeSnoopedMeta(backendUrl), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: error ? 0 : 1 } };
         if (error) event.error = serializeError(error);
         else event.response = serializeResponse(response);
         post(event);
@@ -301,7 +314,7 @@
         if (terminal) return;
         terminal = true;
         const completionTimestamp = Date.now();
-        const event = { phase, method, methodType: "server_streaming", requestId, replayedFrom: context && context.replayedFrom, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } };
+        const event = { phase, method, methodType: "server_streaming", requestId, replayedFrom: context && context.replayedFrom, meta: takeSnoopedMeta(backendUrl), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } };
         if (phase === "error") event.error = serializeError(value);
         else event.status = value && { code: value.code, details: value.details };
         post(event);
