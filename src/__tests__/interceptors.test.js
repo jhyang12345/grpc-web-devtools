@@ -14,15 +14,6 @@ const capturedEvents = () => {
 
 afterEach(() => jest.restoreAllMocks());
 
-// The wire-level snoop patches window.fetch once, guarded by a Symbol.for(...)
-// key — installed once here (mirroring requestMetadataSnoop.test.js) so the
-// dedicated tests below can simulate a transport dispatching its real network
-// call with a header the RPC-level metadata argument never carried.
-beforeAll(() => {
-  window.fetch = jest.fn().mockResolvedValue({ ok: true });
-  loadInterceptor("request-metadata-snoop.js");
-});
-
 test.each([
   ["grpc-web-interceptor.js", "connect-web-interceptor.js"],
   ["connect-web-interceptor.js", "grpc-web-interceptor.js"],
@@ -206,110 +197,6 @@ test("captures backend request URLs exposed by gRPC-Web and Connect-Web", async 
     "https://api.example.test/demo.Service/GetThing",
     "https://connect.example.test/demo.Service/GetThing",
   ]);
-});
-
-test("gRPC-Web fills in app-version at the terminal event from the real wire request even when the RPC metadata argument didn't carry it", async () => {
-  const events = capturedEvents();
-  const backendUrl = "https://api.example.test/demo.Service/SnoopedMeta";
-  const client = { client_: {
-    // Simulates a transport whose own internal metadata-building happens
-    // closer to the real dispatch than the `metadata` argument we're handed.
-    // The callback fires on a later microtask, exactly like real XHR/fetch —
-    // synchronous callbacks only happen in naive test doubles, never on the
-    // real wire, and our capture ordering depends on that.
-    rpcCall: jest.fn((method, request, metadata, info, callback) => {
-      window.fetch(backendUrl, { headers: { "app-version": "qa-af32a43" } });
-      queueMicrotask(() => callback(null, { toObject: () => ({ ok: true }) }));
-    }),
-    serverStreaming: jest.fn(),
-  } };
-  loadInterceptor("grpc-web-interceptor.js");
-  window.__GRPCWEB_DEVTOOLS__([client]);
-  client.client_.rpcCall(backendUrl, { toObject: () => ({}) }, {}, {}, jest.fn());
-  await Promise.resolve();
-
-  const start = events.find(event => event.phase === "start");
-  const complete = events.find(event => event.phase === "complete");
-  expect(start.meta).toBeUndefined();
-  expect(complete.meta).toEqual({ "app-version": "qa-af32a43" });
-});
-
-test("Connect-Web fills in app-version at the terminal event from the real wire request even when req.header didn't carry it", async () => {
-  const events = capturedEvents();
-  const url = "https://connect.example.test/demo.Service/SnoopedMeta";
-  loadInterceptor("connect-web-interceptor.js");
-  const interceptor = window.__CONNECT_WEB_DEVTOOLS__(async () => {
-    await window.fetch(url, { headers: { "app-version": "qa-b91c2d0" } });
-    return { stream: false, message: { toJson: () => ({ ok: true }) } };
-  });
-
-  await interceptor({ stream: false, url, method: { name: "SnoopedMeta" }, message: { toJson: () => ({}) } });
-
-  const start = events.find(event => event.phase === "start");
-  const complete = events.find(event => event.phase === "complete");
-  expect(start.meta).toBeUndefined();
-  expect(complete.meta).toEqual({ "app-version": "qa-b91c2d0" });
-});
-
-test("gRPC-Web captures only the allowlisted app-version/service-name metadata, never authorization", () => {
-  const events = capturedEvents();
-  const client = { client_: {
-    rpcCall: jest.fn((method, request, metadata, info, callback) => callback(null, { toObject: () => ({ ok: true }) })),
-    serverStreaming: jest.fn(() => ({ on: () => {} })),
-    unaryCall: jest.fn(() => Promise.resolve({ toObject: () => ({ ok: true }) })),
-  } };
-  loadInterceptor("grpc-web-interceptor.js");
-  window.__GRPCWEB_DEVTOOLS__([client]);
-  const metadata = {
-    authorization: "bearer super-secret-token",
-    "App-Version": "qa-af32a43",
-    "service-name": "example-service",
-    "instance-id": "instance-42",
-  };
-  client.client_.rpcCall("Demo/Unary", { toObject: () => ({}) }, metadata, {}, jest.fn());
-  client.client_.serverStreaming("Demo/Stream", { toObject: () => ({}) }, metadata, {});
-  client.client_.unaryCall("Demo/Promise", { toObject: () => ({}) }, metadata);
-
-  const starts = events.filter(event => event.phase === "start");
-  starts.forEach(start => expect(start.meta).toEqual({ "app-version": "qa-af32a43", "service-name": "example-service" }));
-  expect(JSON.stringify(starts)).not.toContain("super-secret-token");
-  expect(JSON.stringify(starts)).not.toContain("instance-42");
-});
-
-test("gRPC-Web omits meta entirely from the start event when no allowlisted keys are present", () => {
-  const events = capturedEvents();
-  const client = { client_: { rpcCall: jest.fn((method, request, metadata, info, callback) => callback(null, {})), serverStreaming: jest.fn() } };
-  loadInterceptor("grpc-web-interceptor.js");
-  window.__GRPCWEB_DEVTOOLS__([client]);
-  client.client_.rpcCall("Demo/Unary", { toObject: () => ({}) }, { authorization: "bearer token" }, {}, jest.fn());
-  expect(events.find(event => event.phase === "start").meta).toBeUndefined();
-});
-
-test("Connect-Web captures only the allowlisted app-version/service-name headers, never authorization", async () => {
-  const events = capturedEvents();
-  loadInterceptor("connect-web-interceptor.js");
-  const header = new Headers({
-    authorization: "bearer super-secret-token",
-    "app-version": "qa-af32a43",
-    "service-name": "example-service",
-    "instance-id": "instance-42",
-  });
-  const interceptor = window.__CONNECT_WEB_DEVTOOLS__(async () => ({ stream: false, message: { toJson: () => ({ ok: true }) } }));
-  await interceptor({ stream: false, method: { name: "Demo/Unary" }, message: { toJson: () => ({}) }, header });
-
-  const start = events.find(event => event.phase === "start");
-  expect(start.meta).toEqual({ "app-version": "qa-af32a43", "service-name": "example-service" });
-  expect(JSON.stringify(start)).not.toContain("super-secret-token");
-  expect(JSON.stringify(start)).not.toContain("instance-42");
-});
-
-test("Connect-Web omits meta entirely from the start event when no header is present", async () => {
-  const events = capturedEvents();
-  loadInterceptor("connect-web-interceptor.js");
-  const interceptor = window.__CONNECT_WEB_DEVTOOLS__(async () => ({ stream: false, message: { toJson: () => ({ ok: true }) } }));
-  await interceptor({ stream: false, method: { name: "Demo/Unary" }, message: { toJson: () => ({}) } });
-
-  expect(events.find(event => event.phase === "start").meta).toBeUndefined();
 });
 
 test("Connect request capture keeps default-valued scalar fields", async () => {

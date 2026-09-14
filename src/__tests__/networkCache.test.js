@@ -70,26 +70,6 @@ test('retains only clone-safe replay metadata with the bounded request entry', (
   expect(JSON.stringify(entry)).not.toContain('function');
 });
 
-test('persists the interceptor-allowlisted request meta (app-version/service-name) and bounds oversized values', () => {
-  const entry = addNetworkEntry({
-    captureId: 'frame', transport: 'protobuf-ts', requestId: 1, phase: 'start',
-    meta: { 'app-version': 'qa-af32a43', 'service-name': 'x'.repeat(1000) },
-  });
-
-  expect(entry.meta).toEqual({ 'app-version': 'qa-af32a43', 'service-name': 'x'.repeat(512) });
-});
-
-test('leaves meta undefined when the start event did not include any (no allowlisted keys present)', () => {
-  const entry = addNetworkEntry({ captureId: 'frame', transport: 'protobuf-ts', requestId: 1, phase: 'start' });
-  expect(entry.meta).toBeUndefined();
-});
-
-test('carries meta captured at start forward through later phases of the same request without needing to resend it', () => {
-  addNetworkEntry({ captureId: 'frame', transport: 'protobuf-ts', requestId: 1, phase: 'start', meta: { 'app-version': 'qa-af32a43' } });
-  const entry = addNetworkEntry({ captureId: 'frame', transport: 'protobuf-ts', requestId: 1, phase: 'complete', response: { ok: true } });
-  expect(entry.meta).toEqual({ 'app-version': 'qa-af32a43' });
-});
-
 test('allowlists and bounds metadata outside payload accounting', () => {
   const entry = addNetworkEntry({
     captureId: 'c'.repeat(1000),

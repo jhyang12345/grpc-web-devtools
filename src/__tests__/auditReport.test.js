@@ -235,25 +235,6 @@ test('includes request and response payloads for ordinary healthy traffic, not j
   expect(detailedRequests).not.toContain('No matching request details were selected');
 });
 
-test('never includes the interceptor-captured request meta (app-version/service-name) meant only for the hidden BTS shortcut', () => {
-  const entries = [
-    {
-      entryId: 1, requestId: 1, method: '/demo.Service/Healthy', methodType: 'unary', transport: 'protobuf-ts',
-      backendUrl: 'https://api.example.test', location: 'https://app.example.test/page',
-      request: { query: 'safe' }, response: { ok: true }, terminalPhase: 'complete',
-      timing: { requestTimestamp: NOW - 2000, completionTimestamp: NOW - 1000, duration: 200 },
-      payloadBytes: 40,
-      meta: { 'app-version': 'qa-af32a43', 'service-name': 'map-tool' },
-    },
-  ];
-  const report = build(entries);
-
-  expect(report.text).not.toContain('qa-af32a43');
-  expect(report.text).not.toContain('map-tool');
-  expect(report.text).not.toContain('app-version');
-  expect(report.text).not.toContain('service-name');
-});
-
 test('still prioritizes detected issues over healthy backfill when both compete for the request cap', () => {
   const healthyEntries = Array.from({ length: MAX_AUDIT_REQUESTS }, (_, index) => ({
     entryId: index + 1, requestId: index + 1, method: `/demo.Service/Healthy${index + 1}`, transport: 'connect-web',

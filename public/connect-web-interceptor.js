@@ -8,10 +8,6 @@
   const LISTENER_KEY = Symbol.for("grpc-web-inspector.connect-replay-listener");
   const MAX_REPLAY_HANDLES = 100;
   const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
-  // Explicit allowlist, not a redaction blocklist: req.header also carries the
-  // Authorization header on every call, so only ever copy keys named here —
-  // never iterate/copy headers wholesale, no matter how tempting that looks later.
-  const CAPTURED_METADATA_KEYS = ["app-version", "service-name"];
 
   function getState() {
     if (!window[STATE_KEY]) Object.defineProperty(window, STATE_KEY, { configurable: true, value: { registry: new Map() } });
@@ -67,31 +63,6 @@
       message: error && error.message ? String(error.message) : String(error || "Unknown RPC error"),
       ...(isNetworkError ? { isNetworkError: true } : {}),
     };
-  }
-
-  // req.header is a Web Headers instance (Connect-ES interceptor contract),
-  // not a plain object — .get() is already case-insensitive per that API.
-  function extractAllowlistedMetadata(header) {
-    if (!header || typeof header.get !== "function") return undefined;
-    const result = {};
-    CAPTURED_METADATA_KEYS.forEach(key => {
-      const value = header.get(key);
-      if (typeof value === "string" && value) result[key] = value;
-    });
-    return Object.keys(result).length ? result : undefined;
-  }
-
-  // See public/request-metadata-snoop.js: a wire-level fallback for headers
-  // attached closer to the real network call than req.header reflects at the
-  // point we read it.
-  function takeSnoopedMeta() {
-    try {
-      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__ === "function"
-        ? window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__()
-        : undefined;
-    } catch (_) {
-      return undefined;
-    }
   }
 
   function post(payload) {
@@ -169,7 +140,7 @@
     return replayReq;
   }
 
-  const readStream = async function* (req, stream, requestId, requestTimestamp, elapsedStart, replayedFromValue, wireMeta) {
+  const readStream = async function* (req, stream, requestId, requestTimestamp, elapsedStart, replayedFromValue) {
     let messageCount = 0;
     let firstMessageAt;
     try {
@@ -180,10 +151,10 @@
         yield message;
       }
       const completionTimestamp = Date.now();
-      post({ phase: "complete", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
+      post({ phase: "complete", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
     } catch (error) {
       const completionTimestamp = Date.now();
-      post({ phase: "error", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, error: serializeError(error), meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
+      post({ phase: "error", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, error: serializeError(error), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
       throw error;
     }
   };
@@ -203,23 +174,16 @@
         return (async () => { for await (const _ of response.message) {} return response; })();
       });
     });
-    post({ phase: "start", method: req.method.name, methodType, requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), meta: extractAllowlistedMetadata(req.header), timing: { requestTimestamp } });
-    // Discard any stale, never-consumed value from an earlier call before
-    // dispatching this one, so this call can't inherit meta it didn't send.
-    takeSnoopedMeta();
-    const responsePromise = next(req);
-    // Read immediately, synchronously, with no await in between — see
-    // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
-    const wireMeta = takeSnoopedMeta();
+    post({ phase: "start", method: req.method.name, methodType, requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), timing: { requestTimestamp } });
     try {
-      const response = await responsePromise;
-      if (response.stream) return { ...response, message: readStream(req, response.message, requestId, requestTimestamp, elapsedStart, replayedFromValue, wireMeta) };
+      const response = await next(req);
+      if (response.stream) return { ...response, message: readStream(req, response.message, requestId, requestTimestamp, elapsedStart, replayedFromValue) };
       const completionTimestamp = Date.now();
-      post({ phase: "complete", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, response: serializeResponse(response.message), meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 1 } });
+      post({ phase: "complete", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, response: serializeResponse(response.message), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 1 } });
       return response;
     } catch (error) {
       const completionTimestamp = Date.now();
-      post({ phase: "error", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, error: serializeError(error), meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 0 } });
+      post({ phase: "error", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, error: serializeError(error), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 0 } });
       throw error;
     }
   }
