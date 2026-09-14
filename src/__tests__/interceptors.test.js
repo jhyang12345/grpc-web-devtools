@@ -199,6 +199,67 @@ test("captures backend request URLs exposed by gRPC-Web and Connect-Web", async 
   ]);
 });
 
+test("gRPC-Web captures only the allowlisted app-version/service-name metadata, never authorization", () => {
+  const events = capturedEvents();
+  const client = { client_: {
+    rpcCall: jest.fn((method, request, metadata, info, callback) => callback(null, { toObject: () => ({ ok: true }) })),
+    serverStreaming: jest.fn(() => ({ on: () => {} })),
+    unaryCall: jest.fn(() => Promise.resolve({ toObject: () => ({ ok: true }) })),
+  } };
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  const metadata = {
+    authorization: "bearer super-secret-token",
+    "App-Version": "qa-af32a43",
+    "service-name": "example-service",
+    "instance-id": "instance-42",
+  };
+  client.client_.rpcCall("Demo/Unary", { toObject: () => ({}) }, metadata, {}, jest.fn());
+  client.client_.serverStreaming("Demo/Stream", { toObject: () => ({}) }, metadata, {});
+  client.client_.unaryCall("Demo/Promise", { toObject: () => ({}) }, metadata);
+
+  const starts = events.filter(event => event.phase === "start");
+  starts.forEach(start => expect(start.meta).toEqual({ "app-version": "qa-af32a43", "service-name": "example-service" }));
+  expect(JSON.stringify(starts)).not.toContain("super-secret-token");
+  expect(JSON.stringify(starts)).not.toContain("instance-42");
+});
+
+test("gRPC-Web omits meta entirely from the start event when no allowlisted keys are present", () => {
+  const events = capturedEvents();
+  const client = { client_: { rpcCall: jest.fn((method, request, metadata, info, callback) => callback(null, {})), serverStreaming: jest.fn() } };
+  loadInterceptor("grpc-web-interceptor.js");
+  window.__GRPCWEB_DEVTOOLS__([client]);
+  client.client_.rpcCall("Demo/Unary", { toObject: () => ({}) }, { authorization: "bearer token" }, {}, jest.fn());
+  expect(events.find(event => event.phase === "start").meta).toBeUndefined();
+});
+
+test("Connect-Web captures only the allowlisted app-version/service-name headers, never authorization", async () => {
+  const events = capturedEvents();
+  loadInterceptor("connect-web-interceptor.js");
+  const header = new Headers({
+    authorization: "bearer super-secret-token",
+    "app-version": "qa-af32a43",
+    "service-name": "example-service",
+    "instance-id": "instance-42",
+  });
+  const interceptor = window.__CONNECT_WEB_DEVTOOLS__(async () => ({ stream: false, message: { toJson: () => ({ ok: true }) } }));
+  await interceptor({ stream: false, method: { name: "Demo/Unary" }, message: { toJson: () => ({}) }, header });
+
+  const start = events.find(event => event.phase === "start");
+  expect(start.meta).toEqual({ "app-version": "qa-af32a43", "service-name": "example-service" });
+  expect(JSON.stringify(start)).not.toContain("super-secret-token");
+  expect(JSON.stringify(start)).not.toContain("instance-42");
+});
+
+test("Connect-Web omits meta entirely from the start event when no header is present", async () => {
+  const events = capturedEvents();
+  loadInterceptor("connect-web-interceptor.js");
+  const interceptor = window.__CONNECT_WEB_DEVTOOLS__(async () => ({ stream: false, message: { toJson: () => ({ ok: true }) } }));
+  await interceptor({ stream: false, method: { name: "Demo/Unary" }, message: { toJson: () => ({}) } });
+
+  expect(events.find(event => event.phase === "start").meta).toBeUndefined();
+});
+
 test("Connect request capture keeps default-valued scalar fields", async () => {
   const events = capturedEvents();
   loadInterceptor("connect-web-interceptor.js");

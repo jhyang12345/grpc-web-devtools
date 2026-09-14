@@ -12,6 +12,10 @@
   const LISTENER_KEY = Symbol.for("grpc-web-inspector.grpc-replay-listener");
   const MAX_REPLAY_HANDLES = 100;
   const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
+  // Explicit allowlist, not a redaction blocklist: metadata also carries the
+  // Authorization header on every call, so only ever copy keys named here —
+  // never iterate/copy metadata wholesale, no matter how tempting that looks later.
+  const CAPTURED_METADATA_KEYS = ["app-version", "service-name"];
 
   function getState() {
     if (!window[STATE_KEY]) {
@@ -73,6 +77,19 @@
   function backendUrlFromMethod(method) {
     const value = typeof method === "string" ? method.trim() : "";
     return /^(https?:\/\/|\/)/i.test(value) ? value : undefined;
+  }
+
+  function extractAllowlistedMetadata(metadata) {
+    if (!metadata || typeof metadata !== "object") return undefined;
+    const result = {};
+    Object.keys(metadata).forEach(key => {
+      const normalizedKey = key.toLowerCase();
+      if (!CAPTURED_METADATA_KEYS.includes(normalizedKey)) return;
+      const value = metadata[key];
+      const normalizedValue = Array.isArray(value) ? value[0] : value;
+      if (typeof normalizedValue === "string" && normalizedValue) result[normalizedKey] = normalizedValue;
+    });
+    return Object.keys(result).length ? result : undefined;
   }
 
   function post(payload) {
@@ -191,14 +208,14 @@
     try { return invoke(); } finally { delete target[ACTIVE_REPLAY]; }
   }
 
-  function createUnaryCapture(method, request, requestPayload, replayedFromValue, createHandle) {
+  function createUnaryCapture(method, request, requestPayload, replayedFromValue, createHandle, metadata) {
     const requestId = nextRequestId();
     const requestTimestamp = Date.now();
     const elapsedStart = monotonicNow();
     const replay = createHandle(requestId);
     let completed = false;
     const backendUrl = backendUrlFromMethod(method);
-    post({ phase: "start", method, methodType: "unary", requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), timing: { requestTimestamp } });
+    post({ phase: "start", method, methodType: "unary", requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), meta: extractAllowlistedMetadata(metadata), timing: { requestTimestamp } });
     return {
       complete(error, response) {
         if (completed) return;
@@ -229,7 +246,7 @@
         return createUnaryCapture(method, request, requestPayload, context && context.replayedFrom, requestId => registerReplay(requestPayload, (json, command) => {
           const replayRequest = reconstruct(method, request, json);
           return withReplay(target, { replayedFrom: replayedFrom(command, requestId) }, () => target.rpcCall(method, replayRequest, metadata, methodInfo, () => {}));
-        }));
+        }), metadata);
       })();
       try {
         return originalRpcCall.call(this, method, request, metadata, methodInfo, (error, response) => {
@@ -245,6 +262,7 @@
     if (typeof originalUnaryCall === "function") {
       target.unaryCall = function unaryCall(method, request) {
         const context = this[ACTIVE_REPLAY];
+        const metadata = arguments[2];
         const requestPayload = serializeRequest(request);
         const originalArguments = Array.from(arguments);
         const capture = createUnaryCapture(method, request, requestPayload, context && context.replayedFrom, requestId => registerReplay(requestPayload, (json, command) => {
@@ -252,7 +270,7 @@
           const replayArguments = originalArguments.slice();
           replayArguments[1] = replayRequest;
           return withReplay(target, { replayedFrom: replayedFrom(command, requestId) }, () => target.unaryCall.apply(target, replayArguments));
-        }));
+        }), metadata);
         this[ACTIVE_UNARY] = capture;
         let result;
         try { result = originalUnaryCall.apply(this, arguments); } catch (error) { capture.complete(error); throw error; } finally { delete this[ACTIVE_UNARY]; }
@@ -278,7 +296,7 @@
         return stream;
       });
       const backendUrl = backendUrlFromMethod(method);
-      post({ phase: "start", method, methodType: "server_streaming", requestId, request: requestPayload, replay, replayedFrom: context && context.replayedFrom, ...(backendUrl ? { backendUrl } : {}), timing: { requestTimestamp } });
+      post({ phase: "start", method, methodType: "server_streaming", requestId, request: requestPayload, replay, replayedFrom: context && context.replayedFrom, ...(backendUrl ? { backendUrl } : {}), meta: extractAllowlistedMetadata(metadata), timing: { requestTimestamp } });
       const finish = (phase, value) => {
         if (terminal) return;
         terminal = true;
