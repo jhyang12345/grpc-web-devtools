@@ -224,7 +224,8 @@ test("content forwards allowlisted request metadata to the panel", () => {
     type: "__GRPCWEB_DEVTOOLS__",
     requestId: 9,
     phase: "complete",
-    meta: { "app-version": "1.2.3", "service-name": "orders" },
+    meta: { "app-version": "1.2.3", "service-name": "orders", Authorization: "secret",
+      ...Object.fromEntries(Array.from({ length: 4000 }, (_, i) => [`extra-${i}`, 'x'.repeat(512)])) },
   } });
   const delivered = ports[0].posted.at(-1).data;
   expect(delivered.meta).toEqual({ "app-version": "1.2.3", "service-name": "orders" });

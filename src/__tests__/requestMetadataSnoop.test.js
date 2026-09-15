@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+global.TextEncoder = global.TextEncoder || require('util').TextEncoder;
 
 const loadSnoop = () => {
   const source = fs.readFileSync(path.join(__dirname, "../../public/request-metadata-snoop.js"), "utf8");
@@ -66,11 +67,30 @@ test("is single-use: consuming a lookup clears it so it can't leak onto a later 
   expect(takeLast()).toBeUndefined();
 });
 
-test("a request with no allowlisted headers does not clobber a still-unconsumed earlier capture", async () => {
+test("a request without metadata clears an unconsumed earlier capture", async () => {
   await window.fetch("https://api.example.test/demo.Service/First", { headers: { "app-version": "qa-first" } });
   await window.fetch("https://api.example.test/demo.Service/Second", { headers: { "x-other": "1" } });
 
-  expect(takeLast()).toEqual({ "app-version": "qa-first" });
+  expect(takeLast()).toBeUndefined();
+});
+
+test("never stores auth on XHR and resets only allowed metadata on reuse", () => {
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', 'https://api.example.test/rpc');
+  xhr.setRequestHeader('Authorization', 'secret');
+  expect(xhr.__grpcWebDevtoolsHeaders).toBeUndefined();
+  xhr.setRequestHeader('APP-VERSION', 'first');
+  xhr.setRequestHeader('app-version', 'second');
+  xhr.send();
+  expect(takeLast()).toEqual({ 'app-version': 'first, second' });
+  xhr.open('POST', 'https://api.example.test/next');
+  xhr.send();
+  expect(takeLast()).toBeUndefined();
+});
+
+test("rejects oversized metadata without truncating it", async () => {
+  await window.fetch('https://api.example.test/rpc', { headers: { 'app-version': 'x'.repeat(513), 'service-name': 'ok' } });
+  expect(takeLast()).toEqual({ 'service-name': 'ok' });
 });
 
 test("loading the script again after startup is a safe no-op and does not double-wrap fetch", async () => {

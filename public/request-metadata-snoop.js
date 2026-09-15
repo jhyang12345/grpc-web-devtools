@@ -30,14 +30,14 @@
     const result = {};
     CAPTURED_METADATA_KEYS.forEach(key => {
       const value = headers.get(key);
-      if (typeof value === "string" && value) result[key] = value;
+      if (typeof value === "string" && value && value.length <= 512) result[key] = value;
     });
-    return Object.keys(result).length ? result : undefined;
+    return Object.keys(result).length && new TextEncoder().encode(JSON.stringify(result)).length <= 2048 ? result : undefined;
   }
 
   function record(headersLike) {
     const meta = extractAllowlistedHeaders(headersLike);
-    if (meta) state.lastMeta = meta;
+    state.lastMeta = meta;
   }
 
   // Deliberately a single slot, not keyed by URL: a transport's own "method"
@@ -70,18 +70,42 @@
 
   const XHRProto = window.XMLHttpRequest && window.XMLHttpRequest.prototype;
   if (XHRProto) {
+    const metadataByXhr = new WeakMap();
+    const originalOpen = XHRProto.open;
     const originalSetRequestHeader = XHRProto.setRequestHeader;
     const originalSend = XHRProto.send;
 
+    XHRProto.open = function () {
+      const result = originalOpen.apply(this, arguments);
+      metadataByXhr.delete(this);
+      return result;
+    };
+
     XHRProto.setRequestHeader = function (name, value) {
-      this.__grpcWebDevtoolsHeaders = this.__grpcWebDevtoolsHeaders || {};
-      this.__grpcWebDevtoolsHeaders[name] = value;
-      return originalSetRequestHeader.apply(this, arguments);
+      // Preserve native validation/exceptions; never retain a rejected header.
+      const result = originalSetRequestHeader.apply(this, arguments);
+      if (typeof name !== "string" || typeof value !== "string") return result;
+      const key = name.toLowerCase();
+      if (!CAPTURED_METADATA_KEYS.includes(key)) return result;
+      const meta = metadataByXhr.get(this) || {};
+      // Native XHR appends repeated headers. An oversized field remains
+      // omitted until open() starts the next request, even after more appends.
+      if (meta[key] !== null) {
+        const next = meta[key] === undefined ? value.trim() : `${meta[key]}, ${value.trim()}`;
+        meta[key] = next.length <= 512 ? next : null;
+      }
+      metadataByXhr.set(this, meta);
+      return result;
     };
 
     XHRProto.send = function () {
       try {
-        record(this.__grpcWebDevtoolsHeaders);
+        const stored = metadataByXhr.get(this) || {};
+        const meta = {};
+        CAPTURED_METADATA_KEYS.forEach(key => {
+          if (typeof stored[key] === "string") meta[key] = stored[key];
+        });
+        record(meta);
       } catch (_) {
         // Observation must never affect the real request.
       }

@@ -76,9 +76,9 @@
     const result = {};
     CAPTURED_METADATA_KEYS.forEach(key => {
       const value = header.get(key);
-      if (typeof value === "string" && value) result[key] = value;
+      if (typeof value === "string" && value && value.length <= 512) result[key] = value;
     });
-    return Object.keys(result).length ? result : undefined;
+    return Object.keys(result).length && new TextEncoder().encode(JSON.stringify(result)).length <= 2048 ? result : undefined;
   }
 
   // See public/request-metadata-snoop.js: a wire-level fallback for headers

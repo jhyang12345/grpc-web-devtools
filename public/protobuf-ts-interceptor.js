@@ -195,9 +195,9 @@
       if (!CAPTURED_METADATA_KEYS.includes(normalizedKey)) return;
       const value = meta[key];
       const normalizedValue = Array.isArray(value) ? value[0] : value;
-      if (typeof normalizedValue === "string" && normalizedValue) result[normalizedKey] = normalizedValue;
+      if (typeof normalizedValue === "string" && normalizedValue && normalizedValue.length <= 512) result[normalizedKey] = normalizedValue;
     });
-    return Object.keys(result).length ? result : undefined;
+    return Object.keys(result).length && new TextEncoder().encode(JSON.stringify(result)).length <= 2048 ? result : undefined;
   }
 
   // See public/request-metadata-snoop.js: a wire-level fallback for headers

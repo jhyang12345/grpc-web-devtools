@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+global.TextEncoder = global.TextEncoder || require('util').TextEncoder;
 
 const loadInterceptor = name => {
   const source = fs.readFileSync(path.join(__dirname, "../../public", name), "utf8");

@@ -8,6 +8,29 @@ import {
 
 afterEach(() => clearNetworkCache());
 
+test('drops arbitrary, inherited and oversized metadata and accounts for replacements', () => {
+  const meta = Object.create({ 'service-name': 'inherited' });
+  for (let i = 0; i < 4000; i += 1) meta[`unknown-${i}`] = 'x'.repeat(512);
+  meta.authorization = 'do-not-store';
+  meta['app-version'] = 'v1';
+  const route = { captureId: 'frame', transport: 'grpc-web', requestId: 1 };
+  const entry = addNetworkEntry({ ...route, meta });
+  expect(entry.meta).toEqual({ 'app-version': 'v1' });
+  expect(entry.payloadBytes).toBe(JSON.stringify(entry.meta).length);
+  const replacement = addNetworkEntry({ ...route, meta: { 'service-name': 'updated' } });
+  expect(replacement.payloadBytes).toBe(JSON.stringify(replacement.meta).length);
+  expect(getCacheDebugState().payloadBytes).toBe(replacement.payloadBytes);
+  addNetworkEntry({ ...route, phase: 'complete' });
+  expect(getCacheDebugState().payloadBytes).toBe(replacement.payloadBytes);
+  expect(JSON.stringify(entry)).not.toContain('do-not-store');
+});
+
+test('rejects metadata exceeding the aggregate UTF-8 limit even when each field fits', () => {
+  const entry = addNetworkEntry({ meta: { 'app-version': '\u754c'.repeat(512), 'service-name': '\u754c'.repeat(512) } });
+  expect(entry.meta).toBeUndefined();
+  expect(entry.payloadBytes).toBe(0);
+});
+
 test('bounds each payload before cache storage', () => {
   const entry = addNetworkEntry({ captureId: 'frame', transport: 'grpc-web', requestId: 1, phase: 'start', request: { body: 'x'.repeat(5 * 1024 * 1024 + 1) } });
   expect(entry.request).toEqual(expect.objectContaining({ __truncated: true, __originalSizeBytes: expect.any(Number) }));
@@ -76,7 +99,7 @@ test('persists the interceptor-allowlisted request meta (app-version/service-nam
     meta: { 'app-version': 'qa-af32a43', 'service-name': 'x'.repeat(1000) },
   });
 
-  expect(entry.meta).toEqual({ 'app-version': 'qa-af32a43', 'service-name': 'x'.repeat(512) });
+  expect(entry.meta).toEqual({ 'app-version': 'qa-af32a43' });
 });
 
 test('leaves meta undefined when the start event did not include any (no allowlisted keys present)', () => {

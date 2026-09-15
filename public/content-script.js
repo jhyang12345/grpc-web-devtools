@@ -106,13 +106,15 @@
     requestId: Number.isFinite(value.requestId) ? value.requestId : undefined,
   } : undefined;
   const normalizeMeta = value => {
-    if (!value || typeof value !== "object") return undefined;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
     const meta = {};
-    Object.keys(value).forEach(key => {
-      const boundedValue = shortString(value[key], 512);
-      if (boundedValue) meta[shortString(key, 128)] = boundedValue;
+    // Do not enumerate attacker-supplied keys or copy credentials.
+    ["app-version", "service-name"].forEach(key => {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) return;
+      const item = value[key];
+      if (typeof item === "string" && item.length > 0 && item.length <= 512) meta[key] = item;
     });
-    return Object.keys(meta).length ? meta : undefined;
+    return Object.keys(meta).length && byteLength(JSON.stringify(meta)) <= 2048 ? meta : undefined;
   };
 
   const inject = name => {

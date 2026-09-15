@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+global.TextEncoder = global.TextEncoder || require('util').TextEncoder;
 
 const EVENT_TYPE = "__GRPCWEB_DEVTOOLS__";
 const REPLAY_REQUEST_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__";
