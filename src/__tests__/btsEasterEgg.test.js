@@ -4,10 +4,12 @@ jest.mock('../utils/clipboard', () => ({
 jest.mock('../state/networkCache', () => ({
   getNetworkEntry: jest.fn(),
 }));
+jest.mock('../utils/browserBoundAccount', () => ({ fetchBrowserBoundAccount: jest.fn() }));
 
 import { BtsEasterEgg } from '../components/BtsEasterEgg';
 import { writeTextToClipboard } from '../utils/clipboard';
 import { getNetworkEntry } from '../state/networkCache';
+import { fetchBrowserBoundAccount } from '../utils/browserBoundAccount';
 
 function stubbedComponent(props) {
   const component = new BtsEasterEgg(props);
@@ -32,6 +34,7 @@ function keyEvent(overrides) {
 beforeEach(() => {
   writeTextToClipboard.mockClear();
   getNetworkEntry.mockReset();
+  fetchBrowserBoundAccount.mockReset().mockResolvedValue(null);
   delete global.chrome;
   jest.useFakeTimers();
 });
@@ -123,18 +126,15 @@ test('includes the app-version header captured on the most recent request as the
 
 test('falls back to the raw gRPC-Web fetch when no GetOpUser call was captured locally', async () => {
   getNetworkEntry.mockReturnValue(undefined);
-  const evalMock = jest.fn((expression, callback) => {
-    callback({ email: 'fallback@example.test', operatorFullName: 'Example Corp', role: 'MEMBER' }, null);
-  });
-  global.chrome = { devtools: { inspectedWindow: { eval: evalMock } } };
+  fetchBrowserBoundAccount.mockResolvedValue({ email: 'fallback@example.test', operatorFullName: 'Example Corp', role: 'MEMBER' });
 
   const allEntries = [{ entryId: 1, backendUrl: 'https://api.dev2.example.test/opgwv1.OpGw/ListZones' }];
   const component = stubbedComponent({ allEntries });
 
   await component._trigger();
 
-  expect(evalMock).toHaveBeenCalledTimes(1);
-  expect(evalMock.mock.calls[0][0]).toContain('"https://api.dev2.example.test"');
+  expect(fetchBrowserBoundAccount).toHaveBeenCalledTimes(1);
+  expect(fetchBrowserBoundAccount).toHaveBeenCalledWith(); // Page entries cannot select a destination.
   const text = writeTextToClipboard.mock.calls[0][0];
   expect(text).toContain('- 테스트 계정 : fallback@example.test Example Corp (MEMBER)');
 });
@@ -151,6 +151,7 @@ test('silently no-ops outside a real chrome.devtools context, with no clipboard 
 
 test('treats a raw-fetch exception as a graceful miss and silently no-ops, same as never having the handle', async () => {
   getNetworkEntry.mockReturnValue(undefined);
+  fetchBrowserBoundAccount.mockRejectedValue(new Error('unavailable'));
   global.chrome = {
     devtools: {
       inspectedWindow: {

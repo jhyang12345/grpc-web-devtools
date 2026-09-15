@@ -1,7 +1,5 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
-/* global chrome */
-
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { writeTextToClipboard } from '../utils/clipboard';
@@ -9,14 +7,13 @@ import { getNetworkEntry } from '../state/networkCache';
 import {
   buildBtsInfoText,
   classifyEnvironment,
-  findLatestBackendOrigin,
   findLatestBuildVersion,
   findLatestOpUserInfo,
   findLatestPageUrl,
   formatLocalTimestamp,
   getChromeVersion,
 } from '../utils/btsInfo';
-import { buildOpUserEvalExpression } from '../utils/opUserRawFetch';
+import { fetchBrowserBoundAccount } from '../utils/browserBoundAccount';
 import catImage from '../assets/bts-easter-egg-cat.png';
 import './BtsEasterEgg.css';
 
@@ -48,7 +45,7 @@ export class BtsEasterEgg extends Component {
     const { allEntries } = this.props;
     let opUserInfo = findLatestOpUserInfo(allEntries, getNetworkEntry);
     if (!opUserInfo) {
-      opUserInfo = await this._fetchOpUserRawFallback(allEntries);
+      opUserInfo = await this._fetchOpUserRawFallback();
     }
     // Anyone outside the target user base won't have a captured or fetchable
     // GetOpUser handle. Bail out with zero observable effect (no clipboard
@@ -76,24 +73,11 @@ export class BtsEasterEgg extends Component {
     this._showCat();
   };
 
-  // Our extension only observes calls the inspected app's own gRPC client
-  // makes (see public/protobuf-ts-interceptor.js) — it has no client of its
-  // own. If GetOpUser wasn't captured this session, this bypasses that
-  // entirely via a minimal hand-rolled gRPC-Web request run inside the
-  // inspected page (so its cookies/session apply). Any failure at any layer
-  // must resolve to null so the caller falls back to a blank field.
-  _fetchOpUserRawFallback = async allEntries => {
+  // A browser-observed credential is bound to its API origin. Page capture
+  // entries never choose the target or supply credentials for this fallback.
+  _fetchOpUserRawFallback = async () => {
     try {
-      if (typeof chrome === 'undefined' || !chrome.devtools?.inspectedWindow?.eval) return null;
-      const backendOrigin = findLatestBackendOrigin(allEntries);
-      if (!backendOrigin) return null;
-
-      const expression = buildOpUserEvalExpression(backendOrigin);
-      const result = await new Promise(resolve => {
-        chrome.devtools.inspectedWindow.eval(expression, (value, exceptionInfo) => {
-          resolve(exceptionInfo ? null : value);
-        });
-      });
+      const result = await fetchBrowserBoundAccount();
       if (!result) return null;
 
       return { email: result.email, company: result.operatorFullName, role: result.role };

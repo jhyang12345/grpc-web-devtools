@@ -77,24 +77,6 @@ export function findLatestBuildVersion(allEntries, getEntry) {
   return null;
 }
 
-// Any captured entry's backend origin works as a best-effort target for the
-// raw-fetch fallback — these apps all talk to one API host per environment.
-export function findLatestBackendOrigin(allEntries) {
-  if (!Array.isArray(allEntries)) return null;
-
-  for (let index = allEntries.length - 1; index >= 0; index -= 1) {
-    const candidate = allEntries[index]?.backendUrl || allEntries[index]?.method;
-    if (typeof candidate !== 'string') continue;
-    try {
-      return new URL(candidate).origin;
-    } catch (_) {
-      continue;
-    }
-  }
-
-  return null;
-}
-
 // Any captured entry's page location works for the "이슈 발생 URL" line — not
 // redacted (unlike the Audit Report's URL handling), because this is a
 // frontend page URL whose hash/query often carries real reproduction state

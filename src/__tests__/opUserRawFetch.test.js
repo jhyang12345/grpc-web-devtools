@@ -9,7 +9,6 @@ import {
   buildOpUserEvalExpression,
   decodeGrpcWebFrames,
   decodeOpUserFields,
-  findAccessTokenCookie,
   readVarint,
 } from '../utils/opUserRawFetch';
 
@@ -91,19 +90,12 @@ test('decodeOpUserFields maps unknown role numbers to their raw string and missi
   expect(decodeOpUserFields(opUserBytes)).toEqual({ email: null, role: '7', operatorFullName: null });
 });
 
-test('findAccessTokenCookie matches any <cluster>[-privacy]-accessToken cookie name and decodes the value', () => {
-  expect(findAccessTokenCookie('foo=bar; app-qa2-accessToken=abc123; other=1')).toBe('abc123');
-  expect(findAccessTokenCookie('app-qa2-privacy-accessToken=abc%20def')).toBe('abc def');
-  expect(findAccessTokenCookie('unrelated=1')).toBeNull();
-  expect(findAccessTokenCookie('')).toBeNull();
-  expect(findAccessTokenCookie(undefined)).toBeNull();
-});
-
-test('buildOpUserEvalExpression embeds the backend origin and produces syntactically valid, self-contained code', () => {
-  const expression = buildOpUserEvalExpression('https://api.dev2.example.test');
+test('buildOpUserEvalExpression starts isolated work without reading cookies or returning a Promise', () => {
+  const expression = buildOpUserEvalExpression({ apiOrigin: 'https://api.dev2.example.test' }, 'attempt-1');
 
   expect(expression).toContain('"https://api.dev2.example.test"');
-  expect(expression).toContain('fetchOpUserRaw(');
+  expect(expression).toContain('__GRPCWEB_DEVTOOLS_BTS__?.start(');
+  expect(expression).not.toContain('document.cookie');
   // Compiling (not executing) proves the stringified helpers concatenate into
   // valid JS with no leftover references to this module's own scope.
   expect(() => new Function(expression)).not.toThrow();

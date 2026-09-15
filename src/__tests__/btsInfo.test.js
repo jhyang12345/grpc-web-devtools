@@ -1,7 +1,6 @@
 import {
   buildBtsInfoText,
   classifyEnvironment,
-  findLatestBackendOrigin,
   findLatestBuildVersion,
   findLatestOpUserInfo,
   findLatestPageUrl,
@@ -62,15 +61,6 @@ test('findLatestOpUserInfo returns null when GetOpUser was never captured or its
 
   const evicted = [opUserEntry(1, '/opgwv1.OpGw/GetOpUser', { __truncated: true })];
   expect(findLatestOpUserInfo(evicted, entryId => evicted.find(e => e.entryId === entryId))).toBeNull();
-});
-
-test('findLatestBackendOrigin derives the origin from any captured entry, not just GetOpUser', () => {
-  const allEntries = [
-    { entryId: 1, backendUrl: 'https://api.dev2.example.test/opgwv1.OpGw/ListZones' },
-    { entryId: 2, method: '/opgwv1.OpGw/ListDemands' },
-  ];
-  expect(findLatestBackendOrigin(allEntries)).toBe('https://api.dev2.example.test');
-  expect(findLatestBackendOrigin([])).toBeNull();
 });
 
 test('findLatestPageUrl reads the most recent entry location, unmodified (no redaction)', () => {
