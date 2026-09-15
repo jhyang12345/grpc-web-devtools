@@ -29,7 +29,7 @@ response limit. A bounded start/poll protocol handles asynchronous work because
 inspected-window evaluation does not await the expression's Promise. The fetch
 factory is self-contained after CRA/Babel compilation and production minification.
 
-Bindings expire five minutes after the observed request starts and are cleared
+Bindings expire ten minutes after the observed request starts and are cleared
 on navigation or panel shutdown, independently of Preserve Log. Document identity
 is rechecked before use; pagehide cancels work and BFCache restoration changes the
 identity. The authorization value is not placed in Redux, captured metadata,
@@ -73,6 +73,11 @@ and every browser check below passed on Chromium 147.0.7727.15. The original
 forged-destination input no longer initiates a credentialed fallback, and arbitrary
 metadata keys no longer survive bridge/cache validation. Legitimate captured-data
 and fallback-dependent shortcut behavior passed their controls.
+
+The subsequent ten-minute lease adjustment passed all **32 suites / 265 tests**
+and the CI-mode production build. Boundary tests cover successful use just before
+expiry and rejection at ten minutes, including attempted renewal by fallback traffic.
+The browser checks were not rerun for this duration-only adjustment.
 
 The security-fix workflow included an independent boundary investigation and one
 independent bypass/regression review. Its production-minification and undeclared

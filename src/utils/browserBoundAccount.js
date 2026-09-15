@@ -1,6 +1,6 @@
 import { buildOpUserEvalExpression } from './opUserRawFetch';
 
-const LEASE_MS = 5 * 60 * 1000;
+const LEASE_MS = 10 * 60 * 1000;
 const CONTEXT = 'globalThis.__GRPCWEB_DEVTOOLS_BTS__';
 
 // Only call with an entry delivered directly by Chrome's network API. Page

@@ -129,9 +129,16 @@ test('rechecks document identity even without a delivered DevTools navigation ev
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
-test('fallback traffic cannot renew the five-minute credential lease', async () => {
+test('credentials remain usable just before the ten-minute lease expires', async () => {
   await devtools.network.onRequestFinished.emit(record());
-  jest.advanceTimersByTime(299000);
+  jest.advanceTimersByTime(599000);
+  expect((await finishFetch()).email).toBe('tester@example.test');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test('fallback traffic cannot renew the ten-minute credential lease', async () => {
+  await devtools.network.onRequestFinished.emit(record());
+  jest.advanceTimersByTime(599000);
   await devtools.network.onRequestFinished.emit(record(`${API}/opgwv1.OpGw/GetOpUser`));
   jest.advanceTimersByTime(1000);
   expect(await client.fetch()).toBeNull();
