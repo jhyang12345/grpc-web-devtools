@@ -85,14 +85,20 @@ test('copies the assembled BTS block to the clipboard using locally captured Get
 });
 
 test('classifies the environment from the current page domain (dev/QA/Stage/Real)', async () => {
-  getNetworkEntry.mockReturnValue(undefined);
+  getNetworkEntry.mockReturnValue({
+    response: { email: 'tester@example.test', operatorInfo: { fullName: 'Example Corp' }, role: 'ADMIN' },
+  });
 
-  const component = stubbedComponent({ allEntries: [{ entryId: 1, location: 'https://app.example.test/zone/detail/419' }] });
+  const component = stubbedComponent({ allEntries: [
+    { entryId: 1, method: 'https://api.example.test/opgwv1.OpGw/GetOpUser', location: 'https://app.example.test/zone/detail/419' },
+  ] });
   await component._trigger();
   expect(writeTextToClipboard.mock.calls[0][0]).toContain('- 환경 : Real');
 
   writeTextToClipboard.mockClear();
-  const devComponent = stubbedComponent({ allEntries: [{ entryId: 2, location: 'https://app.dev2.example.test/zone/detail/419' }] });
+  const devComponent = stubbedComponent({ allEntries: [
+    { entryId: 2, method: 'https://api.dev2.example.test/opgwv1.OpGw/GetOpUser', location: 'https://app.dev2.example.test/zone/detail/419' },
+  ] });
   await devComponent._trigger();
   expect(writeTextToClipboard.mock.calls[0][0]).toContain('- 환경 : dev');
 });
@@ -133,18 +139,17 @@ test('falls back to the raw gRPC-Web fetch when no GetOpUser call was captured l
   expect(text).toContain('- 테스트 계정 : fallback@example.test Example Corp (MEMBER)');
 });
 
-test('skips the raw-fetch fallback outside a real chrome.devtools context and still copies a blank field', async () => {
+test('silently no-ops outside a real chrome.devtools context, with no clipboard write and no popup', async () => {
   getNetworkEntry.mockReturnValue(undefined);
   const component = stubbedComponent({ allEntries: [] });
 
   await component._trigger();
 
-  const text = writeTextToClipboard.mock.calls[0][0];
-  expect(text).toContain('- 테스트 계정 : ');
-  expect(component.state.visible).toBe(true);
+  expect(writeTextToClipboard).not.toHaveBeenCalled();
+  expect(component.state.visible).toBe(false);
 });
 
-test('treats a raw-fetch exception as a graceful miss rather than throwing', async () => {
+test('treats a raw-fetch exception as a graceful miss and silently no-ops, same as never having the handle', async () => {
   getNetworkEntry.mockReturnValue(undefined);
   global.chrome = {
     devtools: {
@@ -157,12 +162,18 @@ test('treats a raw-fetch exception as a graceful miss rather than throwing', asy
   const component = stubbedComponent({ allEntries });
 
   await expect(component._trigger()).resolves.toBeUndefined();
-  expect(writeTextToClipboard.mock.calls[0][0]).toContain('- 테스트 계정 : ');
+  expect(writeTextToClipboard).not.toHaveBeenCalled();
+  expect(component.state.visible).toBe(false);
 });
 
 test('shows the popup and auto-hides it after the delay, cleaning up its timer on unmount', async () => {
-  const component = stubbedComponent({ allEntries: [] });
-  getNetworkEntry.mockReturnValue(undefined);
+  const allEntries = [
+    { entryId: 1, method: 'https://api.dev2.example.test/opgwv1.OpGw/GetOpUser', location: 'https://app.qa2.example.test/zone/detail/419' },
+  ];
+  getNetworkEntry.mockReturnValue({
+    response: { email: 'tester@example.test', operatorInfo: { fullName: 'Example Corp' }, role: 'ADMIN' },
+  });
+  const component = stubbedComponent({ allEntries });
 
   await component._trigger();
   expect(component.state.visible).toBe(true);

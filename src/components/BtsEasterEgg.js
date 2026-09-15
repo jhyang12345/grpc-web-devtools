@@ -50,6 +50,12 @@ export class BtsEasterEgg extends Component {
     if (!opUserInfo) {
       opUserInfo = await this._fetchOpUserRawFallback(allEntries);
     }
+    // Anyone outside the target user base won't have a captured or fetchable
+    // GetOpUser handle. Bail out with zero observable effect (no clipboard
+    // write, no cat) rather than a blank/partial BTS block — the chord must
+    // look like it does nothing at all to anyone who isn't supposed to know
+    // it exists.
+    if (!opUserInfo) return;
 
     const pageUrl = findLatestPageUrl(allEntries);
     const text = buildBtsInfoText({
