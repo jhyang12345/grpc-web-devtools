@@ -105,6 +105,15 @@
     transport: shortString(value.transport),
     requestId: Number.isFinite(value.requestId) ? value.requestId : undefined,
   } : undefined;
+  const normalizeMeta = value => {
+    if (!value || typeof value !== "object") return undefined;
+    const meta = {};
+    Object.keys(value).forEach(key => {
+      const boundedValue = shortString(value[key], 512);
+      if (boundedValue) meta[shortString(key, 128)] = boundedValue;
+    });
+    return Object.keys(meta).length ? meta : undefined;
+  };
 
   const inject = name => {
     const script = document.createElement("script");
@@ -305,6 +314,7 @@
       timing: normalizeTiming(source.timing),
       replay: source.replay,
       replayedFrom: source.replayedFrom,
+      meta: source.meta,
       captureId,
       requestId: Number.isFinite(source.requestId) ? source.requestId : fallbackRequestId++,
       location: shortString(String(window.location.href), 4096),
@@ -314,6 +324,7 @@
     });
     if (event.replay != null) event.replay = normalizeReplay(event.replay);
     if (event.replayedFrom != null) event.replayedFrom = normalizeReplayedFrom(event.replayedFrom);
+    if (event.meta != null) event.meta = normalizeMeta(event.meta);
     sendPanelMessage("gRPCNetworkCall", event);
   }
 
