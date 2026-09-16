@@ -81,8 +81,22 @@ test('maps a reversed (newest-first) display index back to the canonical log ind
   }).render();
 
   expect(findByClassName(tree, 'data-row odd selected')).not.toBeNull();
-  tree.props.onClick();
+  tree.props.onMouseDown({ button: 0 });
   expect(selectLogEntry).toHaveBeenCalledWith(2);
+});
+
+test('ignores non-primary mouse buttons so right-click keeps the context menu instead of selecting', () => {
+  const selectLogEntry = jest.fn();
+  const tree = new NetworkListRow({
+    index: 0,
+    data: [{ entryId: 1 }],
+    style: {},
+    selectLogEntry,
+    selectedIdx: null,
+  }).render();
+
+  tree.props.onMouseDown({ button: 2 });
+  expect(selectLogEntry).not.toHaveBeenCalled();
 });
 
 test('flags an entry present in recentlyAddedIds with the new-request highlight class, regardless of display order', () => {

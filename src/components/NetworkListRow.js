@@ -85,7 +85,14 @@ export class NetworkListRow extends PureComponent {
       <div
         className={`${getNetworkRowClassName(canonicalIndex, selectedIdx, log)}${isNewlyAdded ? ' is-new-request' : ''}`}
         style={style}
-        onClick={() => selectLogEntry(canonicalIndex)}
+        // mousedown, not click: newest-first inserts constantly shift row
+        // positions (react-window moves the DOM node to its new offset), so
+        // a live stream can move the row between mousedown and mouseup and
+        // the click event never fires. Selecting on press is immune to that.
+        onMouseDown={(event) => {
+          if (event.button !== 0) return;
+          selectLogEntry(canonicalIndex);
+        }}
       >
         <MethodIcon methodType={log.methodType} isRequest={!!log.request} />
         <div className="data-row-content">
