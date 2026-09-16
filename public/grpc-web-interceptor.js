@@ -92,10 +92,10 @@
     return Object.keys(result).length && new TextEncoder().encode(JSON.stringify(result)).length <= 2048 ? result : undefined;
   }
 
-  // See public/request-metadata-snoop.js: a wire-level fallback for headers
+  // See public/request-metadata-observer.js: a wire-level fallback for headers
   // attached closer to the real network call than metadata reflects at the
   // point we read it.
-  function takeSnoopedMeta() {
+  function takeObservedMeta() {
     try {
       return typeof window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__ === "function"
         ? window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__()
@@ -271,19 +271,19 @@
       try {
         // Discard any stale, never-consumed value from an earlier call before
         // dispatching this one, so this call can't inherit meta it didn't send.
-        takeSnoopedMeta();
+        takeObservedMeta();
         const result = originalRpcCall.call(this, method, request, metadata, methodInfo, (error, response) => {
           capture.complete(error, response);
           if (typeof callback === "function") callback(error, response);
         });
         // Read immediately, synchronously, with no await in between — see
-        // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
+        // takeObservedMeta's caller contract in request-metadata-observer.js.
         // Real XHR/fetch dispatch is always async, so this always runs before
         // the callback above fires.
-        capture.setWireMeta(takeSnoopedMeta());
+        capture.setWireMeta(takeObservedMeta());
         return result;
       } catch (error) {
-        capture.setWireMeta(takeSnoopedMeta());
+        capture.setWireMeta(takeObservedMeta());
         capture.complete(error);
         throw error;
       }
@@ -304,12 +304,12 @@
         this[ACTIVE_UNARY] = capture;
         // Discard any stale, never-consumed value from an earlier call before
         // dispatching this one, so this call can't inherit meta it didn't send.
-        takeSnoopedMeta();
+        takeObservedMeta();
         let result;
-        try { result = originalUnaryCall.apply(this, arguments); } catch (error) { capture.setWireMeta(takeSnoopedMeta()); capture.complete(error); throw error; } finally { delete this[ACTIVE_UNARY]; }
+        try { result = originalUnaryCall.apply(this, arguments); } catch (error) { capture.setWireMeta(takeObservedMeta()); capture.complete(error); throw error; } finally { delete this[ACTIVE_UNARY]; }
         // Read immediately, synchronously, with no await in between — see
-        // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
-        capture.setWireMeta(takeSnoopedMeta());
+        // takeObservedMeta's caller contract in request-metadata-observer.js.
+        capture.setWireMeta(takeObservedMeta());
         if (result && typeof result.then === "function") result.then(response => capture.complete(null, response), error => capture.complete(error));
         else capture.complete(null, result);
         return result;
@@ -346,11 +346,11 @@
       try {
         // Discard any stale, never-consumed value from an earlier call before
         // dispatching this one, so this call can't inherit meta it didn't send.
-        takeSnoopedMeta();
+        takeObservedMeta();
         const stream = originalServerStreaming.call(this, method, request, metadata, methodInfo);
         // Read immediately, synchronously, with no await in between — see
-        // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
-        wireMeta = takeSnoopedMeta();
+        // takeObservedMeta's caller contract in request-metadata-observer.js.
+        wireMeta = takeObservedMeta();
         stream.on("data", response => {
           messageCount += 1;
           if (firstMessageAt == null) firstMessageAt = monotonicNow();

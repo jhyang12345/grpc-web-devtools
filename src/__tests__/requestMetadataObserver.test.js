@@ -2,20 +2,20 @@ const fs = require("fs");
 const path = require("path");
 global.TextEncoder = global.TextEncoder || require('util').TextEncoder;
 
-const loadSnoop = () => {
-  const source = fs.readFileSync(path.join(__dirname, "../../public/request-metadata-snoop.js"), "utf8");
+const loadObserver = () => {
+  const source = fs.readFileSync(path.join(__dirname, "../../public/request-metadata-observer.js"), "utf8");
   window.eval(source);
 };
 
 const takeLast = () => window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__();
 
-// The snoop patches window.fetch / XMLHttpRequest.prototype once, guarded by
+// The observer patches window.fetch / XMLHttpRequest.prototype once, guarded by
 // a Symbol.for(...) key (matching the other interceptors' idempotency
 // pattern) — so it's installed once here and every test below just exercises
 // the already-installed wrapper.
 beforeAll(() => {
   window.fetch = jest.fn().mockResolvedValue({ ok: true });
-  loadSnoop();
+  loadObserver();
 });
 
 test("captures only the allowlisted app-version/service-name headers from a fetch call, never authorization", async () => {
@@ -94,7 +94,7 @@ test("rejects oversized metadata without truncating it", async () => {
 });
 
 test("loading the script again after startup is a safe no-op and does not double-wrap fetch", async () => {
-  expect(() => loadSnoop()).not.toThrow();
+  expect(() => loadObserver()).not.toThrow();
 
   await window.fetch("https://api.example.test/demo.Service/DoubleLoad", { headers: { "app-version": "qa-once" } });
   expect(takeLast()).toEqual({ "app-version": "qa-once" });

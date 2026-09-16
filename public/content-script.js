@@ -123,7 +123,7 @@
     script.onload = () => script.remove();
     (document.head || document.documentElement).appendChild(script);
   };
-  inject("request-metadata-snoop.js");
+  inject("request-metadata-observer.js");
   inject("protobuf-ts-interceptor.js");
   inject("grpc-web-interceptor.js");
   inject("connect-web-interceptor.js");

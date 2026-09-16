@@ -58,10 +58,10 @@ The wire-metadata slot is cleared when the next request has no allowed metadata.
 - Fallback: `public/bts-context.js`, `public/manifest.json`,
   `src/utils/browserBoundAccount.js`, `src/utils/opUserRawFetch.js`,
   `src/utils/btsInfo.js`, `src/components/BtsEasterEgg.js`, `src/index.js`.
-- Metadata: `public/content-script.js`, `public/request-metadata-snoop.js`,
+- Metadata: `public/content-script.js`, `public/request-metadata-observer.js`,
   all three `public/*-interceptor.js` scripts, `src/state/networkCache.js`.
 - Regression coverage: `browserBoundAccount`, `opUserRawFetch`, `btsEasterEgg`,
-  `btsInfo`, `bridge`, `networkCache`, `requestMetadataSnoop`, `interceptors` and
+  `btsInfo`, `bridge`, `networkCache`, `requestMetadataObserver`, `interceptors` and
   `protobufTsInterceptor` tests under `src/__tests__`;
   `scripts/test-bts-browser.cjs` for real-browser/production-bundle verification.
 

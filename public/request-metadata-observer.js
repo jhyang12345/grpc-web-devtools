@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const STATE_KEY = Symbol.for("grpc-web-inspector.request-metadata-snoop");
+  const STATE_KEY = Symbol.for("grpc-web-inspector.request-metadata-observer");
   if (window[STATE_KEY]) return;
 
   // Same explicit allowlist as CAPTURED_METADATA_KEYS in the other three

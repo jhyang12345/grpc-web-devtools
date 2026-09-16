@@ -15,13 +15,13 @@ const capturedEvents = () => {
 
 afterEach(() => jest.restoreAllMocks());
 
-// The wire-level snoop patches window.fetch once, guarded by a Symbol.for(...)
-// key — installed once here (mirroring requestMetadataSnoop.test.js) so the
+// The wire-level observer patches window.fetch once, guarded by a Symbol.for(...)
+// key — installed once here (mirroring requestMetadataObserver.test.js) so the
 // dedicated tests below can simulate a transport dispatching its real network
 // call with a header the RPC-level metadata argument never carried.
 beforeAll(() => {
   window.fetch = jest.fn().mockResolvedValue({ ok: true });
-  loadInterceptor("request-metadata-snoop.js");
+  loadInterceptor("request-metadata-observer.js");
 });
 
 test.each([
@@ -211,7 +211,7 @@ test("captures backend request URLs exposed by gRPC-Web and Connect-Web", async 
 
 test("gRPC-Web fills in app-version at the terminal event from the real wire request even when the RPC metadata argument didn't carry it", async () => {
   const events = capturedEvents();
-  const backendUrl = "https://api.example.test/demo.Service/SnoopedMeta";
+  const backendUrl = "https://api.example.test/demo.Service/ObservedMeta";
   const client = { client_: {
     // Simulates a transport whose own internal metadata-building happens
     // closer to the real dispatch than the `metadata` argument we're handed.
@@ -237,14 +237,14 @@ test("gRPC-Web fills in app-version at the terminal event from the real wire req
 
 test("Connect-Web fills in app-version at the terminal event from the real wire request even when req.header didn't carry it", async () => {
   const events = capturedEvents();
-  const url = "https://connect.example.test/demo.Service/SnoopedMeta";
+  const url = "https://connect.example.test/demo.Service/ObservedMeta";
   loadInterceptor("connect-web-interceptor.js");
   const interceptor = window.__CONNECT_WEB_DEVTOOLS__(async () => {
     await window.fetch(url, { headers: { "app-version": "qa-b91c2d0" } });
     return { stream: false, message: { toJson: () => ({ ok: true }) } };
   });
 
-  await interceptor({ stream: false, url, method: { name: "SnoopedMeta" }, message: { toJson: () => ({}) } });
+  await interceptor({ stream: false, url, method: { name: "ObservedMeta" }, message: { toJson: () => ({}) } });
 
   const start = events.find(event => event.phase === "start");
   const complete = events.find(event => event.phase === "complete");

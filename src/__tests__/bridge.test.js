@@ -143,7 +143,7 @@ test("content retries until acknowledged and recovers again after a later discon
     clearTimeout: timers.clearTimeout,
   });
   expect(document.head.appendChild.mock.calls.map(([script]) => script.src)).toEqual([
-    "request-metadata-snoop.js",
+    "request-metadata-observer.js",
     "protobuf-ts-interceptor.js",
     "grpc-web-interceptor.js",
     "connect-web-interceptor.js",

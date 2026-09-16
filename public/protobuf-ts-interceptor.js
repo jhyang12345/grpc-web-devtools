@@ -200,10 +200,10 @@
     return Object.keys(result).length && new TextEncoder().encode(JSON.stringify(result)).length <= 2048 ? result : undefined;
   }
 
-  // See public/request-metadata-snoop.js: a wire-level fallback for headers
+  // See public/request-metadata-observer.js: a wire-level fallback for headers
   // attached closer to the real network call than options.meta reflects at
   // the point we read it.
-  function takeSnoopedMeta() {
+  function takeObservedMeta() {
     try {
       return typeof window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__ === "function"
         ? window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__()
@@ -448,13 +448,13 @@
     try {
       // Discard any stale, never-consumed value from an earlier call before
       // dispatching this one, so this call can't inherit meta it didn't send.
-      takeSnoopedMeta();
+      takeObservedMeta();
       call = next(method, input, options);
       // Read immediately, synchronously, with no await in between — see
-      // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
-      wireMeta = takeSnoopedMeta();
+      // takeObservedMeta's caller contract in request-metadata-observer.js.
+      wireMeta = takeObservedMeta();
     } catch (error) {
-      wireMeta = takeSnoopedMeta();
+      wireMeta = takeObservedMeta();
       const completionTimestamp = Date.now();
       postEvent({
         phase: "error",
@@ -584,13 +584,13 @@
     try {
       // Discard any stale, never-consumed value from an earlier call before
       // dispatching this one, so this call can't inherit meta it didn't send.
-      takeSnoopedMeta();
+      takeObservedMeta();
       call = next(method, input, options);
       // Read immediately, synchronously, with no await in between — see
-      // takeSnoopedMeta's caller contract in request-metadata-snoop.js.
-      wireMeta = takeSnoopedMeta();
+      // takeObservedMeta's caller contract in request-metadata-observer.js.
+      wireMeta = takeObservedMeta();
     } catch (error) {
-      wireMeta = takeSnoopedMeta();
+      wireMeta = takeObservedMeta();
       finish("error", error);
       throw error;
     }

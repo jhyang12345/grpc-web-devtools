@@ -18,9 +18,9 @@ const loadRuntime = () => {
   return window.__GRPCWEB_DEVTOOLS_PROTOBUF_TS__;
 };
 
-const loadSnoop = () => {
+const loadObserver = () => {
   const source = fs.readFileSync(
-    path.join(__dirname, "../../public/request-metadata-snoop.js"),
+    path.join(__dirname, "../../public/request-metadata-observer.js"),
     "utf8"
   );
   window.eval(source);
@@ -234,7 +234,7 @@ test("omits the meta field entirely from the start event when no allowlisted key
 
 test("fills in app-version at the terminal event from the real wire request even when options.meta didn't carry it", async () => {
   window.fetch = jest.fn().mockResolvedValue({ ok: true });
-  loadSnoop();
+  loadObserver();
 
   const messages = capturePostedMessages();
   const runtime = loadRuntime();
