@@ -1,45 +1,107 @@
 // Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
 
 import { createSlice } from "@reduxjs/toolkit";
-import Fuse from 'fuse.js';
 import { setFilterValue } from "./toolbar";
+import { addNetworkEntry, clearNetworkCache } from "./networkCache";
 
-var options = {
-  shouldSort: false,
-  threshold: 0.1,
-  distance: 10000,
-  keys: [
-    'method',
-  ]
-};
-var fuse = new Fuse([], options);
+const MAX_LOG_SIZE = 1000;
+
+function reconcileSelection(state) {
+  if (state.selectedEntry == null) return;
+  const updatedIdx = state.log.findIndex(entry => entry.entryId === state.selectedEntry.entryId);
+  if (updatedIdx >= 0) {
+    state.selectedIdx = updatedIdx;
+    state.selectedEntry = state.log[updatedIdx];
+  } else {
+    state.selectedIdx = null;
+    state.selectedEntry = null;
+  }
+}
+
+function buildEndpoint(method) {
+  if (!method) {
+    return "";
+  }
+
+  const parts = method.split("/");
+  return parts.pop() || parts.pop() || "";
+}
+
+function matchesFilter(entry, filterValue) {
+  if (!filterValue) {
+    return true;
+  }
+
+  const query = filterValue.trim().toLowerCase();
+  if (!query) {
+    return true;
+  }
+
+  return [entry.method, entry.endpoint, entry.methodType, entry.location, entry.backendUrl]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(query));
+}
+
+function applyFilter(entries, filterValue) {
+  if (!filterValue || !filterValue.trim()) {
+    return entries.slice();
+  }
+
+  return entries.filter((entry) => matchesFilter(entry, filterValue));
+}
 
 const networkSlice = createSlice({
-  name: 'network',
+  name: "network",
   initialState: {
     preserveLog: false,
     selectedIdx: null,
     selectedEntry: null,
-    log: [
-    ],
-    _filterValue: '',
-    _logBak: [],
+    log: [],
+    _filterValue: "",
+    _allLog: [],
   },
   reducers: {
+    networkLogBatch(state, action) {
+      const nextEntries = action.payload.map((payload) => ({
+        ...payload,
+        endpoint: buildEndpoint(payload.method),
+      }));
+
+      for (const entry of nextEntries) {
+        const existingIdx = state._allLog.findIndex(e => e.entryId === entry.entryId);
+        if (existingIdx >= 0) {
+          state._allLog[existingIdx] = entry;
+        } else {
+          state._allLog.push(entry);
+        }
+      }
+      while (state._allLog.length > MAX_LOG_SIZE) {
+        state._allLog.shift();
+      }
+
+      state.log = applyFilter(state._allLog, state._filterValue);
+
+      reconcileSelection(state);
+    },
     networkLog(state, action) {
-      const { log, _filterValue, _logBak } = state;
-      const { payload, } = action;
-      if (payload.method) {
-        const parts = payload.method.split('/')
-        payload.endpoint = parts.pop() || parts.pop();
-      }
-      if (_filterValue.length > 0) {
-        _logBak.push(payload);
-        fuse.setCollection(_logBak);
-        state.log = fuse.search(_filterValue);
+      const payload = {
+        ...action.payload,
+        endpoint: buildEndpoint(action.payload.method),
+      };
+
+      const existingIdx = state._allLog.findIndex(e => e.entryId === payload.entryId);
+      if (existingIdx >= 0) {
+        state._allLog[existingIdx] = payload;
       } else {
-        log.push(payload);
+        state._allLog.push(payload);
       }
+      while (state._allLog.length > MAX_LOG_SIZE) {
+        state._allLog.shift();
+      }
+
+      state.log = applyFilter(state._allLog, state._filterValue);
+
+      reconcileSelection(state);
     },
     selectLogEntry(state, action) {
       const { payload: idx } = action;
@@ -54,37 +116,163 @@ const networkSlice = createSlice({
       if (state.preserveLog && !force) {
         return;
       }
+
       state.selectedIdx = null;
       state.selectedEntry = null;
       state.log = [];
-      state._logBak = [];
+      state._allLog = [];
     },
     setPreserveLog(state, action) {
-      const { payload } = action;
-      state.preserveLog = payload;
+      state.preserveLog = action.payload;
     },
   },
   extraReducers: {
     [setFilterValue]: (state, action) => {
-
-      const { payload: filterValue = '' } = action;
+      const filterValue = action.payload || "";
       state._filterValue = filterValue;
-      if (filterValue.length === 0) {
-        state.log = state._logBak;
-        state._logBak = [];
-        return;
-      }
+      state.log = applyFilter(state._allLog, filterValue);
 
-      if (state._logBak.length === 0 && state.log.length !== 0) {
-        state._logBak = state.log;
+      if (state.selectedIdx != null) {
+        const selectedEntryId = state.selectedEntry?.entryId;
+        const nextSelectedIdx = selectedEntryId == null
+          ? null
+          : state.log.findIndex((entry) => entry.entryId === selectedEntryId);
+
+        if (nextSelectedIdx >= 0) {
+          state.selectedIdx = nextSelectedIdx;
+          state.selectedEntry = state.log[nextSelectedIdx];
+        } else {
+          state.selectedIdx = null;
+          state.selectedEntry = null;
+        }
       }
-      fuse.setCollection(state._logBak);
-      state.log = fuse.search(filterValue);
     },
   },
 });
 
 const { actions, reducer } = networkSlice;
-export const { networkLog, selectLogEntry, clearLog, setPreserveLog } = actions;
+export const { networkLog, networkLogBatch, selectLogEntry, clearLog, setPreserveLog } = actions;
 
-export default reducer
+function boundedSummaryString(value, maximum) {
+  return typeof value === "string" ? value.slice(0, maximum) : undefined;
+}
+
+function boundedSummaryId(value) {
+  if (Number.isFinite(value)) return value;
+  return boundedSummaryString(value, 128);
+}
+
+function buildSummaryTiming(value) {
+  if (!value || typeof value !== "object") return {};
+  const timing = {};
+  ["requestTimestamp", "completionTimestamp", "duration", "messageCount", "timeToFirstMessage"].forEach(field => {
+    if (Number.isFinite(value[field])) timing[field] = value[field];
+  });
+  return timing;
+}
+
+export function buildSummaryEntry(entry) {
+  const diagnosticCode = value => (
+    typeof value === "string" || typeof value === "number"
+      ? String(value).slice(0, 64)
+      : undefined
+  );
+  const payloadTruncated = [entry.request, entry.response, entry.error, entry.status, ...(entry.messages || [])]
+    .some(value => value && typeof value === "object" && value.__truncated === true);
+  return {
+    entryId: entry.entryId,
+    captureId: boundedSummaryString(entry.captureId, 256),
+    method: boundedSummaryString(entry.method, 2048),
+    methodType: boundedSummaryString(entry.methodType, 128),
+    transport: boundedSummaryString(entry.transport, 128),
+    timing: buildSummaryTiming(entry.timing),
+    location: boundedSummaryString(entry.location, 4096),
+    backendUrl: boundedSummaryString(entry.backendUrl, 4096),
+    request: !!entry.request,
+    response: !!entry.response || !!entry.messages?.length,
+    error: !!entry.error,
+    isNetworkError: !!entry.error?.isNetworkError,
+    status: !!entry.status,
+    messages: !!entry.messages?.length,
+    terminalPhase: boundedSummaryString(entry.terminalPhase, 32),
+    statusCode: diagnosticCode(entry.status?.code),
+    errorCode: diagnosticCode(entry.error?.code),
+    payloadBytes: Number.isFinite(entry.payloadBytes) ? entry.payloadBytes : undefined,
+    payloadTruncated,
+    messageCount: Number.isFinite(entry.messageCount) ? entry.messageCount : undefined,
+    droppedMessageCount: Number.isFinite(entry.droppedMessageCount) ? entry.droppedMessageCount : undefined,
+    requestId: boundedSummaryId(entry.requestId),
+    replay: entry.replay && typeof entry.replay === "object" ? {
+      available: entry.replay.available === true,
+      token: boundedSummaryString(entry.replay.token, 512),
+      reason: boundedSummaryString(entry.replay.reason, 512),
+    } : undefined,
+    replayedFrom: entry.replayedFrom && typeof entry.replayedFrom === "object" ? {
+      captureId: boundedSummaryString(entry.replayedFrom.captureId, 256),
+      transport: boundedSummaryString(entry.replayedFrom.transport, 128),
+      requestId: boundedSummaryId(entry.replayedFrom.requestId),
+    } : undefined,
+  };
+}
+
+let pendingBatch = [];
+let batchTimeout = null;
+const BATCH_DELAY_MS = 100;
+const BATCH_SIZE_LIMIT = 20;
+
+function flushBatch(dispatch) {
+  if (pendingBatch.length === 0) return;
+
+  const batch = pendingBatch;
+  pendingBatch = [];
+  batchTimeout = null;
+
+  dispatch(networkLogBatch(batch));
+}
+
+export const flushPendingNetworkLog = () => dispatch => {
+  if (batchTimeout) {
+    clearTimeout(batchTimeout);
+    batchTimeout = null;
+  }
+  flushBatch(dispatch);
+};
+
+export const logNetworkEntry = (data) => (dispatch) => {
+  const fullEntry = addNetworkEntry(data);
+  const summaryEntry = buildSummaryEntry(fullEntry);
+
+  pendingBatch.push(summaryEntry);
+
+  if (pendingBatch.length >= BATCH_SIZE_LIMIT) {
+    if (batchTimeout) {
+      clearTimeout(batchTimeout);
+    }
+    flushBatch(dispatch);
+    return;
+  }
+
+  if (!batchTimeout) {
+    batchTimeout = setTimeout(() => {
+      flushBatch(dispatch);
+    }, BATCH_DELAY_MS);
+  }
+};
+
+export const clearLogAndCache = (payload) => (dispatch, getState) => {
+  const { preserveLog } = getState().network;
+  const { force } = payload || {};
+  if (!preserveLog || force) {
+    // A real clear must invalidate scheduled batches, otherwise entries that
+    // were queued before the clear can reappear after it.
+    pendingBatch = [];
+    if (batchTimeout) {
+      clearTimeout(batchTimeout);
+      batchTimeout = null;
+    }
+    clearNetworkCache();
+  }
+  dispatch(clearLog(payload));
+};
+
+export default reducer;

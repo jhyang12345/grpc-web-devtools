@@ -1,0 +1,119 @@
+import {
+  addNetworkEntry,
+  clearNetworkCache,
+  getCacheDebugState,
+  getNetworkEntry,
+  MAX_CACHE_BYTES,
+} from '../state/networkCache';
+
+afterEach(() => clearNetworkCache());
+
+test('bounds each payload before cache storage', () => {
+  const entry = addNetworkEntry({ captureId: 'frame', transport: 'grpc-web', requestId: 1, phase: 'start', request: { body: 'x'.repeat(5 * 1024 * 1024 + 1) } });
+  expect(entry.request).toEqual(expect.objectContaining({ __truncated: true, __originalSizeBytes: expect.any(Number) }));
+  expect(entry.request.preview).toHaveLength(2000);
+});
+
+test('retains bounded ordered stream history and terminal error within aggregate budget', () => {
+  addNetworkEntry({ captureId: 'frame', transport: 'connect-web', requestId: 1, phase: 'start', request: { input: true } });
+  let entry;
+  for (let index = 1; index <= 110; index += 1) {
+    entry = addNetworkEntry({ captureId: 'frame', transport: 'connect-web', requestId: 1, phase: 'message', response: { index, body: 'x'.repeat(60000) }, timing: { messageCount: index } });
+  }
+  entry = addNetworkEntry({ captureId: 'frame', transport: 'connect-web', requestId: 1, phase: 'error', error: { message: 'after data' } });
+  expect(entry.messages.length).toBeGreaterThan(0);
+  expect(entry.messages.length).toBeLessThanOrEqual(100);
+  expect(entry.messages[0].index).toBeGreaterThan(1);
+  expect(entry.messageCount).toBe(110);
+  expect(entry.droppedMessageCount).toBeGreaterThan(0);
+  expect(entry.error).toEqual({ message: 'after data' });
+  expect(entry.payloadBytes).toBeLessThanOrEqual(5 * 1024 * 1024);
+});
+
+test('uses frame-aware cache identities and prunes mappings on eviction', () => {
+  addNetworkEntry({ captureId: 'frame-a', transport: 'grpc-web', requestId: 1, phase: 'start' });
+  addNetworkEntry({ captureId: 'frame-b', transport: 'grpc-web', requestId: 1, phase: 'start' });
+  expect(getCacheDebugState()).toEqual({ size: 2, mappings: 2, payloadBytes: 0 });
+  for (let index = 0; index < 500; index += 1) addNetworkEntry({ captureId: 'extra', transport: 'grpc-web', requestId: index + 2, phase: 'start' });
+  expect(getCacheDebugState()).toEqual({ size: 500, mappings: 500, payloadBytes: 0 });
+});
+
+test('evicts oldest payloads when the aggregate cache byte budget is reached', () => {
+  const payload = { body: 'x'.repeat(1024 * 1024) };
+  const entriesToExceedBudget = Math.ceil(MAX_CACHE_BYTES / payload.body.length) + 1;
+  let firstEntryId;
+
+  for (let index = 0; index < entriesToExceedBudget; index += 1) {
+    const entry = addNetworkEntry({
+      captureId: 'frame',
+      transport: 'grpc-web',
+      requestId: index + 1,
+      phase: 'start',
+      request: payload,
+    });
+    if (index === 0) firstEntryId = entry.entryId;
+  }
+
+  expect(getCacheDebugState().payloadBytes).toBeLessThanOrEqual(MAX_CACHE_BYTES);
+  expect(getNetworkEntry(firstEntryId)).toBeUndefined();
+});
+
+test('retains only clone-safe replay metadata with the bounded request entry', () => {
+  const replay = { available: true, token: 'opaque-token' };
+  const replayedFrom = { captureId: 'frame-a', transport: 'grpc-web', requestId: 4 };
+  const backendUrl = 'https://api.example.test/demo.Service/GetThing';
+  let entry = addNetworkEntry({ captureId: 'frame-b', transport: 'grpc-web', requestId: 5, phase: 'start', backendUrl, replay, replayedFrom });
+  entry = addNetworkEntry({ captureId: 'frame-b', transport: 'grpc-web', requestId: 5, phase: 'complete', response: { ok: true }, replayedFrom });
+  expect(entry.backendUrl).toBe(backendUrl);
+  expect(entry.replay).toEqual(replay);
+  expect(entry.replayedFrom).toEqual(replayedFrom);
+  expect(JSON.stringify(entry)).not.toContain('function');
+});
+
+test('allowlists and bounds metadata outside payload accounting', () => {
+  const entry = addNetworkEntry({
+    captureId: 'c'.repeat(1000),
+    transport: 't'.repeat(1000),
+    requestId: 1,
+    phase: 'start',
+    method: 'm'.repeat(10000),
+    location: 'l'.repeat(10000),
+    backendUrl: 'b'.repeat(10000),
+    timing: {
+      requestTimestamp: 1,
+      duration: 2,
+      padding: 'never-retain-this'.repeat(100000),
+    },
+    arbitraryMetadata: 'also-never-retain-this'.repeat(100000),
+  });
+
+  expect(entry.captureId).toHaveLength(256);
+  expect(entry.transport).toHaveLength(128);
+  expect(entry.method).toHaveLength(2048);
+  expect(entry.location).toHaveLength(4096);
+  expect(entry.backendUrl).toHaveLength(4096);
+  expect(entry.timing).toEqual({ requestTimestamp: 1, duration: 2 });
+  expect(entry).not.toHaveProperty('arbitraryMetadata');
+  expect(JSON.stringify(entry)).not.toContain('never-retain-this');
+});
+
+test('replaces cyclic, BigInt, and binary payload graphs with bounded descriptors', () => {
+  const cyclic = { body: 'x'.repeat(1024 * 1024) };
+  cyclic.self = cyclic;
+  const payloads = [cyclic, { amount: BigInt(10) }, { bytes: new ArrayBuffer(16 * 1024 * 1024) }];
+
+  const entries = payloads.map((request, index) => addNetworkEntry({
+    captureId: 'frame',
+    transport: 'grpc-web',
+    requestId: index + 1,
+    phase: 'start',
+    request,
+  }));
+
+  entries.forEach(entry => expect(entry.request).toEqual(expect.objectContaining({
+    __truncated: true,
+    __originalSizeBytes: null,
+    preview: expect.stringContaining('omitted'),
+  })));
+  expect(getCacheDebugState().payloadBytes).toBeLessThan(4096);
+});

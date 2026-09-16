@@ -3,13 +3,49 @@
   align-content: center;
   align-items: center;
   flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 24px;
   background-color: var(--network-bg);
 }
 
 .network-empty .content {
+  width: 100%;
+  max-width: 520px;
+  min-width: 0;
   text-align: center;
   font-size: 14px;
-  line-height: 28px;
+  line-height: 1.6;
   margin: auto;
   color: var(--network-color-text);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.network-empty-title {
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+.network-empty-detail {
+  margin-top: 6px;
+}
+
+.network-empty-help {
+  margin-top: 12px;
+}
+
+.network-empty-help a {
+  color: var(--accent-color);
+}
+
+.network-empty-help a:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+  .network-empty {
+    padding: 16px;
+  }
 }
