@@ -43,6 +43,22 @@ function boundedTiming(value) {
   return timing;
 }
 
+// The interceptor already only ever sends an explicitly allowlisted subset of
+// request metadata (see CAPTURED_METADATA_KEYS in protobuf-ts-interceptor.js —
+// never authorization/instance-id/etc.); this just re-bounds string sizes,
+// consistent with every other field here being bounded regardless of source.
+function boundedMeta(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const meta = {};
+  // Revalidate even when an event bypasses the content-script bridge.
+  ["app-version", "service-name"].forEach(key => {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) return;
+    const item = value[key];
+    if (typeof item === "string" && item.length > 0 && item.length <= 512) meta[key] = item;
+  });
+  return Object.keys(meta).length && byteLength(JSON.stringify(meta)) <= 2048 ? meta : undefined;
+}
+
 function inspectPayload(value) {
   const state = { nodes: 0, characters: 0, seen: new WeakSet() };
   const visit = (current, depth) => {
@@ -143,8 +159,10 @@ function applyIndividualLimits(entry) {
     timing: boundedTiming(source.timing),
     replay: source.replay,
     replayedFrom: source.replayedFrom,
+    meta: boundedMeta(source.meta),
   };
   const payloadBytes = {};
+  if (limited.meta) payloadBytes.meta = byteLength(JSON.stringify(limited.meta));
   ["request", "response", "error", "status"].forEach(field => {
     if (limited[field] == null) return;
     const result = limitPayloadWithBytes(limited[field]);
@@ -211,6 +229,7 @@ function mergeEntry(existing, incoming, incomingPayloadBytes) {
   ["method", "methodType", "transport", "captureId", "requestId", "location", "backendUrl", "replay", "replayedFrom"].forEach(field => {
     if (incoming[field] != null && (existing[field] == null || field !== "location")) existing[field] = incoming[field];
   });
+  if (incoming.meta != null) setPayloadField(existing, accounting, "meta", incoming.meta, incomingPayloadBytes.meta);
   if (incoming.request != null) {
     setPayloadField(existing, accounting, "request", incoming.request, incomingPayloadBytes.request);
   }
@@ -265,6 +284,7 @@ export function addNetworkEntry(entry) {
   };
   const accounting = {
     fieldBytes: {
+      meta: incomingPayloadBytes.meta || 0,
       request: incomingPayloadBytes.request || 0,
       response: limitedEntry.phase === "message" ? 0 : incomingPayloadBytes.response || 0,
       error: incomingPayloadBytes.error || 0,

@@ -105,6 +105,17 @@
     transport: shortString(value.transport),
     requestId: Number.isFinite(value.requestId) ? value.requestId : undefined,
   } : undefined;
+  const normalizeMeta = value => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    const meta = {};
+    // Do not enumerate attacker-supplied keys or copy credentials.
+    ["app-version", "service-name"].forEach(key => {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) return;
+      const item = value[key];
+      if (typeof item === "string" && item.length > 0 && item.length <= 512) meta[key] = item;
+    });
+    return Object.keys(meta).length && byteLength(JSON.stringify(meta)) <= 2048 ? meta : undefined;
+  };
 
   const inject = name => {
     const script = document.createElement("script");
@@ -112,6 +123,7 @@
     script.onload = () => script.remove();
     (document.head || document.documentElement).appendChild(script);
   };
+  inject("request-metadata-observer.js");
   inject("protobuf-ts-interceptor.js");
   inject("grpc-web-interceptor.js");
   inject("connect-web-interceptor.js");
@@ -304,6 +316,7 @@
       timing: normalizeTiming(source.timing),
       replay: source.replay,
       replayedFrom: source.replayedFrom,
+      meta: source.meta,
       captureId,
       requestId: Number.isFinite(source.requestId) ? source.requestId : fallbackRequestId++,
       location: shortString(String(window.location.href), 4096),
@@ -313,6 +326,7 @@
     });
     if (event.replay != null) event.replay = normalizeReplay(event.replay);
     if (event.replayedFrom != null) event.replayedFrom = normalizeReplayedFrom(event.replayedFrom);
+    if (event.meta != null) event.meta = normalizeMeta(event.meta);
     sendPanelMessage("gRPCNetworkCall", event);
   }
 

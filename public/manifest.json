@@ -3,6 +3,7 @@
   "version": "1.7.4",
   "default_locale": "en",
   "manifest_version": 3,
+  "minimum_chrome_version": "127",
   "description": "__MSG_extensionDescription__",
   "icons": {
     "16": "icon16.png",
@@ -18,14 +19,14 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["connect-web-interceptor.js", "grpc-web-interceptor.js", "protobuf-ts-interceptor.js"],
+      "resources": ["connect-web-interceptor.js", "grpc-web-interceptor.js", "protobuf-ts-interceptor.js", "request-metadata-observer.js"],
       "matches": ["<all_urls>"]
     }
   ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content-script.js"],
+      "js": ["bts-context.js", "content-script.js"],
       "run_at": "document_start",
       "all_frames": true
     }

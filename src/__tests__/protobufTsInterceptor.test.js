@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+global.TextEncoder = global.TextEncoder || require('util').TextEncoder;
 
 const EVENT_TYPE = "__GRPCWEB_DEVTOOLS__";
 const REPLAY_REQUEST_TYPE = "__GRPCWEB_DEVTOOLS_REPLAY_REQUEST__";
@@ -15,6 +16,14 @@ const loadRuntime = () => {
   );
   window.eval(source);
   return window.__GRPCWEB_DEVTOOLS_PROTOBUF_TS__;
+};
+
+const loadObserver = () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "../../public/request-metadata-observer.js"),
+    "utf8"
+  );
+  window.eval(source);
 };
 
 const capturePostedMessages = () => {
@@ -173,6 +182,85 @@ test("emits unary start before the backend and completes with timing and status"
       messageCount: 1,
     },
   });
+});
+
+test("captures only the allowlisted app-version/service-name metadata, never authorization or anything else", () => {
+  const messages = capturePostedMessages();
+  const runtime = loadRuntime();
+  const method = makeMethod();
+  const unary = makeUnaryCall(method, { value: "original" });
+
+  runtime.interceptUnary({
+    baseUrl: "https://api.example.test",
+    next: jest.fn(() => unary.call),
+    method,
+    input: { value: "original" },
+    options: {
+      debug: true,
+      meta: {
+        authorization: "bearer super-secret-token",
+        "instance-id": "instance-42",
+        "App-Version": "qa-af32a43", // case should not matter
+        "Service-Type": "example-test16", // a different key entirely — must be ignored
+        "service-name": "example-service",
+      },
+    },
+  });
+
+  const startEvent = messages.find(message => message.phase === "start");
+  expect(startEvent.meta).toEqual({ "app-version": "qa-af32a43", "service-name": "example-service" });
+  expect(JSON.stringify(startEvent)).not.toContain("super-secret-token");
+  expect(JSON.stringify(startEvent)).not.toContain("instance-42");
+  expect(JSON.stringify(startEvent)).not.toContain("example-test16");
+});
+
+test("omits the meta field entirely from the start event when no allowlisted keys are present", () => {
+  const messages = capturePostedMessages();
+  const runtime = loadRuntime();
+  const method = makeMethod();
+  const unary = makeUnaryCall(method, { value: "original" });
+
+  runtime.interceptUnary({
+    baseUrl: "https://api.example.test",
+    next: jest.fn(() => unary.call),
+    method,
+    input: { value: "original" },
+    options: { debug: true, meta: { authorization: "bearer token" } },
+  });
+
+  const startEvent = messages.find(message => message.phase === "start");
+  expect(startEvent.meta).toBeUndefined();
+});
+
+test("fills in app-version at the terminal event from the real wire request even when options.meta didn't carry it", async () => {
+  window.fetch = jest.fn().mockResolvedValue({ ok: true });
+  loadObserver();
+
+  const messages = capturePostedMessages();
+  const runtime = loadRuntime();
+  const method = makeMethod();
+  const unary = makeUnaryCall(method, { value: "original" });
+  const methodName = "https://api.example.test/demo.Service/GetThing";
+
+  runtime.interceptUnary({
+    baseUrl: "https://api.example.test",
+    // Simulates a transport whose own internal metadata-building happens
+    // closer to the real dispatch than options.meta reflects here.
+    next: jest.fn(() => {
+      window.fetch(methodName, { headers: { "app-version": "qa-af32a43" } });
+      return unary.call;
+    }),
+    method,
+    input: { value: "original" },
+    options: { debug: true },
+  });
+  unary.resolve({ result: "ok" });
+  await flushPromises();
+
+  const startEvent = messages.find(message => message.phase === "start");
+  const completeEvent = messages.find(message => message.phase === "complete");
+  expect(startEvent.meta).toBeUndefined();
+  expect(completeEvent.meta).toEqual({ "app-version": "qa-af32a43" });
 });
 
 test("captures protobuf-ts request defaults without changing response JSON options", async () => {

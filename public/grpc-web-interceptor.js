@@ -12,6 +12,10 @@
   const LISTENER_KEY = Symbol.for("grpc-web-inspector.grpc-replay-listener");
   const MAX_REPLAY_HANDLES = 100;
   const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
+  // Explicit allowlist, not a redaction blocklist: metadata also carries the
+  // Authorization header on every call, so only ever copy keys named here —
+  // never iterate/copy metadata wholesale, no matter how tempting that looks later.
+  const CAPTURED_METADATA_KEYS = ["app-version", "service-name"];
 
   function getState() {
     if (!window[STATE_KEY]) {
@@ -73,6 +77,32 @@
   function backendUrlFromMethod(method) {
     const value = typeof method === "string" ? method.trim() : "";
     return /^(https?:\/\/|\/)/i.test(value) ? value : undefined;
+  }
+
+  function extractAllowlistedMetadata(metadata) {
+    if (!metadata || typeof metadata !== "object") return undefined;
+    const result = {};
+    Object.keys(metadata).forEach(key => {
+      const normalizedKey = key.toLowerCase();
+      if (!CAPTURED_METADATA_KEYS.includes(normalizedKey)) return;
+      const value = metadata[key];
+      const normalizedValue = Array.isArray(value) ? value[0] : value;
+      if (typeof normalizedValue === "string" && normalizedValue && normalizedValue.length <= 512) result[normalizedKey] = normalizedValue;
+    });
+    return Object.keys(result).length && new TextEncoder().encode(JSON.stringify(result)).length <= 2048 ? result : undefined;
+  }
+
+  // See public/request-metadata-observer.js: a wire-level fallback for headers
+  // attached closer to the real network call than metadata reflects at the
+  // point we read it.
+  function takeObservedMeta() {
+    try {
+      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__ === "function"
+        ? window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__()
+        : undefined;
+    } catch (_) {
+      return undefined;
+    }
   }
 
   function post(payload) {
@@ -191,20 +221,27 @@
     try { return invoke(); } finally { delete target[ACTIVE_REPLAY]; }
   }
 
-  function createUnaryCapture(method, request, requestPayload, replayedFromValue, createHandle) {
+  function createUnaryCapture(method, request, requestPayload, replayedFromValue, createHandle, metadata) {
     const requestId = nextRequestId();
     const requestTimestamp = Date.now();
     const elapsedStart = monotonicNow();
     const replay = createHandle(requestId);
     let completed = false;
     const backendUrl = backendUrlFromMethod(method);
-    post({ phase: "start", method, methodType: "unary", requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), timing: { requestTimestamp } });
+    post({ phase: "start", method, methodType: "unary", requestId, request: requestPayload, replay, replayedFrom: replayedFromValue, ...(backendUrl ? { backendUrl } : {}), meta: extractAllowlistedMetadata(metadata), timing: { requestTimestamp } });
+    let wireMeta;
     return {
+      // First-writer-wins: a delegated unaryCall-calling-rpcCall chain may
+      // invoke this from both layers, but only whichever one actually
+      // triggered the real dispatch will have anything to report.
+      setWireMeta(value) {
+        if (value !== undefined) wireMeta = value;
+      },
       complete(error, response) {
         if (completed) return;
         completed = true;
         const completionTimestamp = Date.now();
-        const event = { phase: error ? "error" : "complete", method, methodType: "unary", requestId, replayedFrom: replayedFromValue, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: error ? 0 : 1 } };
+        const event = { phase: error ? "error" : "complete", method, methodType: "unary", requestId, replayedFrom: replayedFromValue, meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: error ? 0 : 1 } };
         if (error) event.error = serializeError(error);
         else event.response = serializeResponse(response);
         post(event);
@@ -229,14 +266,24 @@
         return createUnaryCapture(method, request, requestPayload, context && context.replayedFrom, requestId => registerReplay(requestPayload, (json, command) => {
           const replayRequest = reconstruct(method, request, json);
           return withReplay(target, { replayedFrom: replayedFrom(command, requestId) }, () => target.rpcCall(method, replayRequest, metadata, methodInfo, () => {}));
-        }));
+        }), metadata);
       })();
       try {
-        return originalRpcCall.call(this, method, request, metadata, methodInfo, (error, response) => {
+        // Discard any stale, never-consumed value from an earlier call before
+        // dispatching this one, so this call can't inherit meta it didn't send.
+        takeObservedMeta();
+        const result = originalRpcCall.call(this, method, request, metadata, methodInfo, (error, response) => {
           capture.complete(error, response);
           if (typeof callback === "function") callback(error, response);
         });
+        // Read immediately, synchronously, with no await in between — see
+        // takeObservedMeta's caller contract in request-metadata-observer.js.
+        // Real XHR/fetch dispatch is always async, so this always runs before
+        // the callback above fires.
+        capture.setWireMeta(takeObservedMeta());
+        return result;
       } catch (error) {
+        capture.setWireMeta(takeObservedMeta());
         capture.complete(error);
         throw error;
       }
@@ -245,6 +292,7 @@
     if (typeof originalUnaryCall === "function") {
       target.unaryCall = function unaryCall(method, request) {
         const context = this[ACTIVE_REPLAY];
+        const metadata = arguments[2];
         const requestPayload = serializeRequest(request);
         const originalArguments = Array.from(arguments);
         const capture = createUnaryCapture(method, request, requestPayload, context && context.replayedFrom, requestId => registerReplay(requestPayload, (json, command) => {
@@ -252,10 +300,16 @@
           const replayArguments = originalArguments.slice();
           replayArguments[1] = replayRequest;
           return withReplay(target, { replayedFrom: replayedFrom(command, requestId) }, () => target.unaryCall.apply(target, replayArguments));
-        }));
+        }), metadata);
         this[ACTIVE_UNARY] = capture;
+        // Discard any stale, never-consumed value from an earlier call before
+        // dispatching this one, so this call can't inherit meta it didn't send.
+        takeObservedMeta();
         let result;
-        try { result = originalUnaryCall.apply(this, arguments); } catch (error) { capture.complete(error); throw error; } finally { delete this[ACTIVE_UNARY]; }
+        try { result = originalUnaryCall.apply(this, arguments); } catch (error) { capture.setWireMeta(takeObservedMeta()); capture.complete(error); throw error; } finally { delete this[ACTIVE_UNARY]; }
+        // Read immediately, synchronously, with no await in between — see
+        // takeObservedMeta's caller contract in request-metadata-observer.js.
+        capture.setWireMeta(takeObservedMeta());
         if (result && typeof result.then === "function") result.then(response => capture.complete(null, response), error => capture.complete(error));
         else capture.complete(null, result);
         return result;
@@ -278,18 +332,25 @@
         return stream;
       });
       const backendUrl = backendUrlFromMethod(method);
-      post({ phase: "start", method, methodType: "server_streaming", requestId, request: requestPayload, replay, replayedFrom: context && context.replayedFrom, ...(backendUrl ? { backendUrl } : {}), timing: { requestTimestamp } });
+      post({ phase: "start", method, methodType: "server_streaming", requestId, request: requestPayload, replay, replayedFrom: context && context.replayedFrom, ...(backendUrl ? { backendUrl } : {}), meta: extractAllowlistedMetadata(metadata), timing: { requestTimestamp } });
+      let wireMeta;
       const finish = (phase, value) => {
         if (terminal) return;
         terminal = true;
         const completionTimestamp = Date.now();
-        const event = { phase, method, methodType: "server_streaming", requestId, replayedFrom: context && context.replayedFrom, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } };
+        const event = { phase, method, methodType: "server_streaming", requestId, replayedFrom: context && context.replayedFrom, meta: wireMeta, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } };
         if (phase === "error") event.error = serializeError(value);
         else event.status = value && { code: value.code, details: value.details };
         post(event);
       };
       try {
+        // Discard any stale, never-consumed value from an earlier call before
+        // dispatching this one, so this call can't inherit meta it didn't send.
+        takeObservedMeta();
         const stream = originalServerStreaming.call(this, method, request, metadata, methodInfo);
+        // Read immediately, synchronously, with no await in between — see
+        // takeObservedMeta's caller contract in request-metadata-observer.js.
+        wireMeta = takeObservedMeta();
         stream.on("data", response => {
           messageCount += 1;
           if (firstMessageAt == null) firstMessageAt = monotonicNow();

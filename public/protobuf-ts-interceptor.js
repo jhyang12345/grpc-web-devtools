@@ -12,6 +12,11 @@
   const STATE_KEY = Symbol.for("grpc-web-inspector.protobuf-ts-replay-state");
   const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
   const MAX_REPLAY_HANDLES = 100;
+  // Explicit allowlist, not a redaction blocklist: options.meta also carries
+  // `authorization: bearer <token>` on every call, so only ever copy keys
+  // named here — never iterate/copy meta wholesale, no matter how tempting
+  // that looks later.
+  const CAPTURED_METADATA_KEYS = ["app-version", "service-name"];
 
   function getState() {
     if (!window[STATE_KEY]) {
@@ -179,6 +184,32 @@
         byteSize: 0,
         replayable: false,
       };
+    }
+  }
+
+  function extractAllowlistedMetadata(meta) {
+    if (!meta || typeof meta !== "object") return undefined;
+    const result = {};
+    Object.keys(meta).forEach(key => {
+      const normalizedKey = key.toLowerCase();
+      if (!CAPTURED_METADATA_KEYS.includes(normalizedKey)) return;
+      const value = meta[key];
+      const normalizedValue = Array.isArray(value) ? value[0] : value;
+      if (typeof normalizedValue === "string" && normalizedValue && normalizedValue.length <= 512) result[normalizedKey] = normalizedValue;
+    });
+    return Object.keys(result).length && new TextEncoder().encode(JSON.stringify(result)).length <= 2048 ? result : undefined;
+  }
+
+  // See public/request-metadata-observer.js: a wire-level fallback for headers
+  // attached closer to the real network call than options.meta reflects at
+  // the point we read it.
+  function takeObservedMeta() {
+    try {
+      return typeof window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__ === "function"
+        ? window.__GRPCWEB_DEVTOOLS_TAKE_LAST_REQUEST_META__()
+        : undefined;
+    } catch (_) {
+      return undefined;
     }
   }
 
@@ -408,13 +439,22 @@
       request: requestPayload.payload,
       replay,
       replayedFrom,
+      meta: extractAllowlistedMetadata(options.meta),
       timing: { requestTimestamp },
     });
 
     let call;
+    let wireMeta;
     try {
+      // Discard any stale, never-consumed value from an earlier call before
+      // dispatching this one, so this call can't inherit meta it didn't send.
+      takeObservedMeta();
       call = next(method, input, options);
+      // Read immediately, synchronously, with no await in between — see
+      // takeObservedMeta's caller contract in request-metadata-observer.js.
+      wireMeta = takeObservedMeta();
     } catch (error) {
+      wireMeta = takeObservedMeta();
       const completionTimestamp = Date.now();
       postEvent({
         phase: "error",
@@ -423,6 +463,7 @@
         requestId,
         error: serializeError(error),
         replayedFrom,
+        meta: wireMeta,
         timing: {
           requestTimestamp,
           completionTimestamp,
@@ -444,6 +485,7 @@
           response: serializeMessage(method.O, finishedCall.response, options).payload,
           status: serializeStatus(finishedCall.status),
           replayedFrom,
+          meta: wireMeta,
           timing: {
             requestTimestamp,
             completionTimestamp,
@@ -462,6 +504,7 @@
           requestId,
           error: serializeError(error),
           replayedFrom,
+          meta: wireMeta,
           timing: {
             requestTimestamp,
             completionTimestamp,
@@ -519,6 +562,7 @@
       };
       if (phase === "complete") event.status = serializeStatus(value);
       else event.error = serializeError(value);
+      event.meta = wireMeta;
       postEvent(event);
     };
 
@@ -531,13 +575,22 @@
       request: requestPayload.payload,
       replay,
       replayedFrom,
+      meta: extractAllowlistedMetadata(options.meta),
       timing: { requestTimestamp },
     });
 
     let call;
+    let wireMeta;
     try {
+      // Discard any stale, never-consumed value from an earlier call before
+      // dispatching this one, so this call can't inherit meta it didn't send.
+      takeObservedMeta();
       call = next(method, input, options);
+      // Read immediately, synchronously, with no await in between — see
+      // takeObservedMeta's caller contract in request-metadata-observer.js.
+      wireMeta = takeObservedMeta();
     } catch (error) {
+      wireMeta = takeObservedMeta();
       finish("error", error);
       throw error;
     }

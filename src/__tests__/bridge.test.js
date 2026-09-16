@@ -143,6 +143,7 @@ test("content retries until acknowledged and recovers again after a later discon
     clearTimeout: timers.clearTimeout,
   });
   expect(document.head.appendChild.mock.calls.map(([script]) => script.src)).toEqual([
+    "request-metadata-observer.js",
     "protobuf-ts-interceptor.js",
     "grpc-web-interceptor.js",
     "connect-web-interceptor.js",
@@ -194,6 +195,40 @@ test("content truncates oversized payloads before the extension bridge", () => {
   expect(delivered).not.toHaveProperty("arbitraryMetadata");
   expect(delivered.request).toEqual(expect.objectContaining({ __truncated: true, __originalSizeBytes: expect.any(Number) }));
   expect(delivered.request.preview).toHaveLength(2000);
+});
+
+test("content forwards allowlisted request metadata to the panel", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../../public/content-script.js"), "utf8");
+  const timers = timerQueue();
+  const ports = [];
+  const eventListeners = {};
+  const chrome = {
+    runtime: {
+      getURL: name => name,
+      connect: () => { const port = makePort("content"); ports.push(port); return port; },
+      onMessage: listenerList(),
+    },
+  };
+  const window = {
+    location: { href: "https://example.test/frame" },
+    crypto: { getRandomValues: values => values.fill(1) },
+    addEventListener: (name, listener) => { eventListeners[name] = listener; },
+  };
+  const document = { createElement: () => ({ remove: jest.fn() }), head: { appendChild: jest.fn() } };
+  vm.runInNewContext(source, {
+    chrome, window, document, Uint32Array, TextEncoder, Date, Math, String, Number, Object,
+    setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+  });
+  ports[0].onMessage.emit({ action: "init_ack" });
+  eventListeners.message({ source: window, data: {
+    type: "__GRPCWEB_DEVTOOLS__",
+    requestId: 9,
+    phase: "complete",
+    meta: { "app-version": "1.2.3", "service-name": "orders", Authorization: "secret",
+      ...Object.fromEntries(Array.from({ length: 4000 }, (_, i) => [`extra-${i}`, 'x'.repeat(512)])) },
+  } });
+  const delivered = ports[0].posted.at(-1).data;
+  expect(delivered.meta).toEqual({ "app-version": "1.2.3", "service-name": "orders" });
 });
 
 test("content bounds the disconnected message queue by aggregate bytes", () => {

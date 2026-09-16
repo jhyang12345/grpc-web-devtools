@@ -14,6 +14,7 @@ import localizationReducer from './state/localization';
 import auditReportReducer from './state/auditReport';
 import { configureReplayBridge, disconnectReplayBridge, handleReplayBridgeMessage } from './replayBridge';
 import { createPanelConnection } from './panelConnection';
+import { startBrowserBoundAccount, stopBrowserBoundAccount } from './utils/browserBoundAccount';
 
 var panelConnection = null
 var currentInspectedUrl = ''
@@ -31,6 +32,7 @@ function refreshInspectedUrl() {
 }
 
 function _cleanupListeners() {
+  stopBrowserBoundAccount();
   if (panelConnection) panelConnection.stop();
   panelConnection = null;
   disconnectReplayBridge("Replay connection was closed.");
@@ -63,6 +65,7 @@ const store = configureStore({
 if (chrome) {
   try {
     const tabId = chrome.devtools.inspectedWindow.tabId;
+    startBrowserBoundAccount(chrome.devtools);
     panelConnection = createPanelConnection({
       tabId,
       connect: () => chrome.runtime.connect(null, { name: "panel" }),
