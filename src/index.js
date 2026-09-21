@@ -14,6 +14,7 @@ import localizationReducer from './state/localization';
 import auditReportReducer from './state/auditReport';
 import { configureReplayBridge, disconnectReplayBridge, handleReplayBridgeMessage } from './replayBridge';
 import { createPanelConnection } from './panelConnection';
+import { isHardReloadEntry } from './utils/hardReload';
 
 var panelConnection = null
 var currentInspectedUrl = ''
@@ -37,6 +38,7 @@ function _cleanupListeners() {
   try {
     if (chrome && chrome.devtools && chrome.devtools.network) {
       chrome.devtools.network.onNavigated.removeListener(_onNavigated);
+      chrome.devtools.network.onRequestFinished.removeListener(_onRequestFinished);
     }
   } catch (error) {
     // no-op: devtools panel may not exist
@@ -46,6 +48,18 @@ function _cleanupListeners() {
 function _onNavigated(url) {
   if (url) currentInspectedUrl = url;
   store.dispatch(clearLogAndCache());
+}
+
+function _onRequestFinished(request) {
+  try {
+    // A hard/force reload (Cmd/Ctrl+Shift+R) should clear the inspector even
+    // if "Preserve log" is on, since the user explicitly asked for a clean slate.
+    if (isHardReloadEntry(request)) {
+      store.dispatch(clearLogAndCache({ force: true }));
+    }
+  } catch (error) {
+    // no-op: malformed HAR entry
+  }
 }
 
 const store = configureStore({
@@ -77,6 +91,7 @@ if (chrome) {
 
     if (chrome.devtools && chrome.devtools.network) {
       chrome.devtools.network.onNavigated.addListener(_onNavigated);
+      chrome.devtools.network.onRequestFinished.addListener(_onRequestFinished);
     }
 
     refreshInspectedUrl();
