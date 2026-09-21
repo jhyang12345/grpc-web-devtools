@@ -124,7 +124,10 @@ export class Toolbar extends Component {
 
   _onPreserveLogChanged = e => {
     const { setPreserveLog } = this.props;
-    setPreserveLog(e.target.checked);
+    const newValue = e.target.checked;
+
+    setPreserveLog(newValue);
+    setStorageItem('preserveLog', newValue);
   }
 
   _onDefaultCollapsedChanged = e => {

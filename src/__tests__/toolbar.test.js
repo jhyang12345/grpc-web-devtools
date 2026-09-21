@@ -32,6 +32,23 @@ test.each(['pending', 'disconnected'])('toolbar offers manual reconnect while %s
   expect(buttons(tree).some(button => button.props.className === 'reconnect-button')).toBe(true);
 });
 
+test('toggling preserve log persists the choice so it survives devtools reopens', () => {
+  localStorage.clear();
+  const setPreserveLog = jest.fn();
+  const toolbar = new Toolbar({
+    toolbar: { connectionStatus: 'connected', filterIsEnabled: false, filterIsOpen: true, defaultCollapsed: false },
+    preserveLog: false,
+    clearLog: jest.fn(),
+    toggleFilter: jest.fn(),
+    setPreserveLog,
+    setDefaultCollapsed: jest.fn(),
+    setConnectionStatus: jest.fn(),
+  });
+  toolbar._onPreserveLogChanged({ target: { checked: true } });
+  expect(setPreserveLog).toHaveBeenCalledWith(true);
+  expect(JSON.parse(localStorage.getItem('grpc-devtools-preserveLog'))).toBe(true);
+});
+
 test('toolbar clear is forceful', () => {
   const clearLog = jest.fn();
   const toolbar = new Toolbar({

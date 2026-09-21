@@ -1,6 +1,15 @@
 import reducer, { buildSummaryEntry, clearLog, clearLogAndCache, networkLog, selectLogEntry, setPreserveLog, logNetworkEntry } from '../state/network';
 import { setFilterValue } from '../state/toolbar';
 
+test('preserve log defaults to whatever was last persisted, so the choice survives devtools reopens', () => {
+  localStorage.clear();
+  localStorage.setItem('grpc-devtools-preserveLog', JSON.stringify(true));
+  jest.resetModules();
+  const { default: freshReducer } = require('../state/network');
+  const state = freshReducer(undefined, { type: '@@INIT' });
+  expect(state.preserveLog).toBe(true);
+});
+
 test('manual clear ignores Preserve Log', () => {
   let state = reducer(undefined, setPreserveLog(true));
   state = reducer(state, networkLog({ entryId: 1, method: 'Demo/Call' }));

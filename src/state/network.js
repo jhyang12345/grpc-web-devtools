@@ -3,6 +3,9 @@
 import { createSlice } from "@reduxjs/toolkit";
 import { setFilterValue } from "./toolbar";
 import { addNetworkEntry, clearNetworkCache } from "./networkCache";
+import { getStorageItem } from "../utils/localStorage";
+
+const PRESERVE_LOG_STORAGE_KEY = "preserveLog";
 
 const MAX_LOG_SIZE = 1000;
 
@@ -53,7 +56,7 @@ function applyFilter(entries, filterValue) {
 const networkSlice = createSlice({
   name: "network",
   initialState: {
-    preserveLog: false,
+    preserveLog: getStorageItem(PRESERVE_LOG_STORAGE_KEY, false), // persisted so the choice survives devtools reopens
     selectedIdx: null,
     selectedEntry: null,
     log: [],
