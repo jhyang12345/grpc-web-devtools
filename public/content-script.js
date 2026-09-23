@@ -106,15 +106,8 @@
     requestId: Number.isFinite(value.requestId) ? value.requestId : undefined,
   } : undefined;
 
-  const inject = name => {
-    const script = document.createElement("script");
-    script.src = chrome.runtime.getURL(name);
-    script.onload = () => script.remove();
-    (document.head || document.documentElement).appendChild(script);
-  };
-  inject("protobuf-ts-interceptor.js");
-  inject("grpc-web-interceptor.js");
-  inject("connect-web-interceptor.js");
+  // The manifest loads page hooks in MAIN after this isolated bridge. Keep
+  // extension APIs and routing state here; page scripts can modify the hooks.
 
   function stopReconnectTimer() {
     if (reconnectTimer != null) clearTimeout(reconnectTimer);
