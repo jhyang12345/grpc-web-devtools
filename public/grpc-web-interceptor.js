@@ -362,12 +362,22 @@
         const completionTimestamp = Date.now();
         const event = { phase, method, methodType: "server_streaming", requestId, replayedFrom: context && context.replayedFrom, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } };
         if (phase === "error") event.error = serializeError(value);
-        else event.status = value && { code: value.code, details: value.details };
+        else if (phase === "complete") event.status = value && { code: value.code, details: value.details };
         post(event);
       };
       try {
         const stream = originalServerStreaming.call(this, method, request, metadata, methodInfo);
+        // cancel() aborts the request without emitting status, end or error, so
+        // it is the only point where an app-closed stream can be seen to end.
+        const originalCancel = stream.cancel;
+        if (typeof originalCancel === "function") {
+          stream.cancel = function cancel() {
+            finish("cancelled");
+            return originalCancel.apply(this, arguments);
+          };
+        }
         stream.on("data", response => {
+          if (terminal) return;
           messageCount += 1;
           if (firstMessageAt == null) firstMessageAt = monotonicNow();
           post({ phase: "message", method, methodType: "server_streaming", requestId, replayedFrom: context && context.replayedFrom, response: serializeResponse(response), timing: { requestTimestamp, messageCount, timeToFirstMessage: Math.max(0, firstMessageAt - elapsedStart) } });

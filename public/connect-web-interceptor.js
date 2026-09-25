@@ -471,24 +471,74 @@
     return replayReq;
   }
 
-  const readStream = async function* (req, stream, requestId, requestTimestamp, elapsedStart, replayedFromValue) {
+  // Connect-ES v1 and v2 both number DEADLINE_EXCEEDED 4. A call timeout aborts
+  // the call signal with it as the reason, and that is an error, not a cancel.
+  const DEADLINE_EXCEEDED = 4;
+
+  // How a stream whose call signal was aborted ended: the application
+  // cancelled it, unless the abort was Connect enforcing the call's deadline.
+  function abortedStreamOutcome(signal) {
+    const reason = signal.reason;
+    if (reason && reason.code === DEADLINE_EXCEEDED) return { phase: "error", fields: { error: serializeError(reason) } };
+    return { phase: "cancelled", fields: {} };
+  }
+
+  function readStream(req, stream, requestId, requestTimestamp, elapsedStart, replayedFromValue) {
     let messageCount = 0;
     let firstMessageAt;
-    try {
-      for await (const message of stream) {
-        messageCount += 1;
-        if (firstMessageAt == null) firstMessageAt = monotonicNow();
-        post({ phase: "message", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, response: serializeResponse(message, req.method.output), timing: { requestTimestamp, messageCount, timeToFirstMessage: Math.max(0, firstMessageAt - elapsedStart) } });
-        yield message;
+    let terminal = false;
+    let listening = false;
+    const signal = req.signal;
+    const finish = (phase, fields) => {
+      if (terminal) return;
+      terminal = true;
+      if (listening) {
+        listening = false;
+        try { signal.removeEventListener("abort", onAbort); } catch (_) {}
       }
       const completionTimestamp = Date.now();
-      post({ phase: "complete", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
-    } catch (error) {
-      const completionTimestamp = Date.now();
-      post({ phase: "error", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, error: serializeError(error), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
-      throw error;
+      post({ phase, method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, ...fields, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount, timeToFirstMessage: firstMessageAt == null ? null : Math.max(0, firstMessageAt - elapsedStart) } });
+    };
+    function onAbort() {
+      const outcome = abortedStreamOutcome(signal);
+      finish(outcome.phase, outcome.fields);
     }
-  };
+    // Watch the call signal eagerly: Connect hides return() from the
+    // application, and after an abort Connect-ES v2 never resumes this generator.
+    if (signal && signal.aborted) {
+      onAbort();
+    } else if (signal && typeof signal.addEventListener === "function") {
+      try {
+        signal.addEventListener("abort", onAbort);
+        listening = true;
+      } catch (_) {}
+    }
+    async function* read() {
+      try {
+        for await (const message of stream) {
+          // Still hand the application every message, but record none after the
+          // call ended (a message already buffered when it was aborted).
+          if (!terminal) {
+            messageCount += 1;
+            if (firstMessageAt == null) firstMessageAt = monotonicNow();
+            post({ phase: "message", method: req.method.name, methodType: "server_streaming", requestId, replayedFrom: replayedFromValue, response: serializeResponse(message, req.method.output), timing: { requestTimestamp, messageCount, timeToFirstMessage: Math.max(0, firstMessageAt - elapsedStart) } });
+          }
+          yield message;
+        }
+        finish("complete");
+      } catch (error) {
+        if (signal && signal.aborted) onAbort();
+        else finish("error", { error: serializeError(error) });
+        throw error;
+      } finally {
+        // Connect's own clients never call return() on this iterator. Another
+        // interceptor can, typically because it is failing the call, so this
+        // is not a cancellation, but it must not stay pending either.
+        finish("error", { error: { message: "The stream stopped being read before it ended; no final status was received." } });
+      }
+    }
+    return read();
+  }
 
   function isAsyncIterable(value) {
     return !!value && typeof value[Symbol.asyncIterator] === "function" && typeof value.toJson !== "function";
@@ -549,7 +599,11 @@
       return response;
     } catch (error) {
       const completionTimestamp = Date.now();
-      post({ phase: "error", method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, error: serializeError(error), timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 0 } });
+      // A stream the application cancelled before the response arrived.
+      const outcome = req.stream && req.signal && req.signal.aborted
+        ? abortedStreamOutcome(req.signal)
+        : { phase: "error", fields: { error: serializeError(error) } };
+      post({ phase: outcome.phase, method: req.method.name, methodType, requestId, replayedFrom: replayedFromValue, ...outcome.fields, timing: { requestTimestamp, completionTimestamp, duration: Math.max(0, monotonicNow() - elapsedStart), messageCount: 0 } });
       throw error;
     }
   }

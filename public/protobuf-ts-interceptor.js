@@ -527,8 +527,16 @@
         },
       };
       if (phase === "complete") event.status = serializeStatus(value);
-      else event.error = serializeError(value);
+      else if (phase === "error") event.error = serializeError(value);
       postEvent(event);
+    };
+    // The transport reports an aborted call as an RpcError (INTERNAL
+    // "AbortError: ..."), but the application cancelled it; no status was received.
+    // An AbortSignal.timeout() is a client-side deadline, which stays an error.
+    const fail = error => {
+      const abort = options && options.abort;
+      const cancelled = !!abort && abort.aborted && !(abort.reason && abort.reason.name === "TimeoutError");
+      finish(cancelled ? "cancelled" : "error", error);
     };
 
     postEvent({
@@ -570,9 +578,7 @@
         },
       });
     });
-    call.responses.onError(error => {
-      finish("error", error);
-    });
+    call.responses.onError(fail);
     call.responses.onComplete(() => {
       responsesComplete = true;
       if (resolvedStatus) finish("complete", resolvedStatus);
@@ -582,9 +588,7 @@
         resolvedStatus = status;
         if (responsesComplete) finish("complete", status);
       },
-      error => {
-        finish("error", error);
-      }
+      fail
     );
 
     return call;
