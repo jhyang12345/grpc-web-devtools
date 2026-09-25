@@ -675,3 +675,14 @@ test('falls back safely when source context is unavailable and gives same-millis
   expect(first).toMatch(/^grpc-audit-unknown-source-2026-08-25T14-30-00-000Z-\d+\.md$/);
   expect(second).not.toBe(first);
 });
+
+test('a stream the client cancelled is neither an error nor a stuck pending request', () => {
+  const entry = {
+    entryId: 3, method: '/demo.Service/Watch', methodType: 'server_streaming', terminalPhase: 'cancelled',
+    messages: [{ tick: 1 }], messageCount: 1, timing: { requestTimestamp: NOW - 60000 },
+  };
+  const cancelled = analyzeAuditEntry(summary(entry), { now: NOW, fullEntry: entry });
+  expect(cancelled.isError).toBe(false);
+  expect(cancelled.isPending).toBe(false);
+  expect(cancelled.signals.map(signal => signal.id)).not.toContain('pending');
+});

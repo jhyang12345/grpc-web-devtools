@@ -131,3 +131,15 @@ test('renders a visible Edited badge with replay provenance', () => {
   expect(badge.props.children).toBe('Edited');
   expect(badge.props.title).toBe('Retry of connect-web request 8');
 });
+
+test('shows a neutral Cancelled badge, not an error badge, for a stream the client cancelled', () => {
+  const tree = new NetworkListRow({
+    index: 0,
+    data: [{ entryId: 11, method: 'Demo/Watch', methodType: 'server_streaming', terminalPhase: 'cancelled', error: false, isNetworkError: false }],
+    style: {},
+    selectLogEntry: jest.fn(),
+    selectedIdx: null,
+  }).render();
+  expect(findByClassName(tree, 'data-row-cancelled-badge').props.children).toBe('Cancelled');
+  expect(findByClassName(tree, 'data-row-error-badge')).toBeNull();
+});

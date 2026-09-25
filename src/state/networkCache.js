@@ -189,6 +189,8 @@ function enforceAggregateLimit(entry, accounting) {
   entry.payloadBytes = accounting.totalBytes;
 }
 
+const TERMINAL_PHASES = ["complete", "error", "cancelled"];
+
 const cache = new Map();
 const order = [];
 const requestKeyToEntryId = new Map();
@@ -227,6 +229,9 @@ function mergeEntry(existing, incoming, incomingPayloadBytes) {
     existing.terminalPhase = "complete";
     if (incoming.response != null) setPayloadField(existing, accounting, "response", incoming.response, incomingPayloadBytes.response);
     if (incoming.status != null) setPayloadField(existing, accounting, "status", incoming.status, incomingPayloadBytes.status);
+  } else if (incoming.phase === "cancelled") {
+    // The client stopped the call; there is no response, status or error.
+    existing.terminalPhase = "cancelled";
   } else if (incoming.phase === "error") {
     existing.terminalPhase = "error";
     if (incoming.error != null) setPayloadField(existing, accounting, "error", incoming.error, incomingPayloadBytes.error);
@@ -260,7 +265,7 @@ export function addNetworkEntry(entry) {
     entryId: nextEntryId++,
     messages: limitedEntry.phase === "message" && limitedEntry.response != null ? [limitedEntry.response] : [],
     response: limitedEntry.phase === "message" ? undefined : limitedEntry.response,
-    terminalPhase: limitedEntry.phase === "complete" || limitedEntry.phase === "error" ? limitedEntry.phase : undefined,
+    terminalPhase: TERMINAL_PHASES.includes(limitedEntry.phase) ? limitedEntry.phase : undefined,
     timing: { requestTimestamp: Date.now(), ...limitedEntry.timing },
     messageCount: limitedEntry.timing && limitedEntry.timing.messageCount,
     droppedMessageCount: 0,

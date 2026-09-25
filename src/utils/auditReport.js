@@ -359,6 +359,7 @@ export function analyzeAuditEntry(summary = {}, options = {}) {
   const completionTimestamp = asFiniteNumber(entry?.timing?.completionTimestamp);
   const hasTerminalEvidence = terminalPhase === 'complete'
     || terminalPhase === 'error'
+    || terminalPhase === 'cancelled'
     || completionTimestamp != null
     || (fullEntry
       ? fullEntry.response !== undefined || fullEntry.error !== undefined || fullEntry.status !== undefined
@@ -819,6 +820,7 @@ function timelineState(analysis, locale) {
   if (analysis.isError) state = 'error';
   else if (analysis.isPending) state = 'pending';
   else if (analysis.signals.some(signal => signal.severity === 'warning')) state = 'flagged';
+  else if (analysis.entry?.terminalPhase === 'cancelled') state = 'cancelled';
   else if (analysis.entry?.terminalPhase === 'complete' || analysis.completionTimestamp != null) state = 'complete';
   return reportText(locale, `timeline.state.${state}`);
 }

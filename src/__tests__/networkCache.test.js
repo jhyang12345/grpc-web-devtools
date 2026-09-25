@@ -117,3 +117,14 @@ test('replaces cyclic, BigInt, and binary payload graphs with bounded descriptor
   })));
   expect(getCacheDebugState().payloadBytes).toBeLessThan(4096);
 });
+
+test('a cancelled phase ends a stream entry and keeps the messages received before it', () => {
+  const key = { captureId: 'frame', transport: 'connect-web', requestId: 77 };
+  addNetworkEntry({ ...key, phase: 'start', methodType: 'server_streaming', request: {} });
+  addNetworkEntry({ ...key, phase: 'message', response: { n: 1 }, timing: { messageCount: 1 } });
+  const entry = addNetworkEntry({ ...key, phase: 'cancelled', timing: { completionTimestamp: 5, duration: 3, messageCount: 1 } });
+  expect(entry.terminalPhase).toBe('cancelled');
+  expect(entry.messages).toEqual([{ n: 1 }]);
+  expect(entry.error).toBeUndefined();
+  expect(entry.timing.completionTimestamp).toBe(5);
+});

@@ -155,6 +155,19 @@
   text-transform: uppercase;
 }
 
+.data-grid .data-row-cancelled-badge {
+  flex: none;
+  padding: 1px 4px;
+  border: 1px solid var(--text-secondary-color);
+  border-radius: 3px;
+  color: var(--text-secondary-color);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .data-grid .data-row.selected .data-row-meta,
 .data-grid .data-row.selected .data-row-timing {
   color: rgba(255, 255, 255, 0.85);

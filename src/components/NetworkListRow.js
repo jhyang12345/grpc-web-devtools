@@ -103,6 +103,9 @@ export class NetworkListRow extends PureComponent {
                 {translate(locale, log.isNetworkError ? 'network.networkError' : 'network.errorBadge')}
               </span>
             )}
+            {!log.isNetworkError && !log.error && log.terminalPhase === 'cancelled' && (
+              <span className="data-row-cancelled-badge">{translate(locale, 'network.cancelled')}</span>
+            )}
             {replayProvenance && (
               <span className="data-row-edited-badge" title={replayProvenance}>{translate(locale, 'network.edited')}</span>
             )}

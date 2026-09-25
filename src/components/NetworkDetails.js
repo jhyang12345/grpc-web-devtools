@@ -437,9 +437,13 @@ export class NetworkDetails extends Component {
       <>
         <MethodHeader
           method={entryToRender?.method || entry.method}
-          statusBadge={isError && (
+          statusBadge={isError ? (
             <span className="method-header-status-badge">
               {translate(locale, isNetworkError ? "network.networkError" : "network.errorBadge")}
+            </span>
+          ) : (entryToRender?.terminalPhase || entry.terminalPhase) === "cancelled" && (
+            <span className="method-header-status-badge is-cancelled">
+              {translate(locale, "network.cancelled")}
             </span>
           )}
         >

@@ -44,6 +44,13 @@
   text-transform: uppercase;
 }
 
+.method-header-status-badge.is-cancelled {
+  padding: 1px 5px;
+  border: 1px solid var(--text-secondary-color);
+  background-color: transparent;
+  color: var(--text-secondary-color);
+}
+
 .method-header-actions {
   display: flex;
   flex: none;
