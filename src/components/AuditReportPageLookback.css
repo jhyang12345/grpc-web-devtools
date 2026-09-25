@@ -1,0 +1,41 @@
+.toolbar-item.audit-report-pages {
+  gap: 6px;
+  min-width: auto;
+  padding: 0 8px;
+  color: var(--toolbar-color);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  cursor: default;
+}
+
+.audit-report-pages-label {
+  white-space: nowrap;
+}
+
+.audit-report-pages-select {
+  height: 18px;
+  padding: 0 2px;
+  border: 1px solid var(--button-border);
+  border-radius: 3px;
+  background: var(--button-bg);
+  color: var(--button-text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.audit-report-pages-select:hover {
+  background: var(--button-hover-bg);
+}
+
+.audit-report-pages-select:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 1px;
+}
+
+@media (max-width: 700px) {
+  .audit-report-pages-label {
+    display: none;
+  }
+}

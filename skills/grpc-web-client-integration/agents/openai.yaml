@@ -1,0 +1,4 @@
+interface:
+  display_name: "gRPC-Web Client Integration"
+  short_description: "Safely audit or integrate web RPC clients"
+  default_prompt: "Use $grpc-web-client-integration to safely inspect this existing web client and make only the minimal authorized DevTools integration changes."

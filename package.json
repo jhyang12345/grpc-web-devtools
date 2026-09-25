@@ -1,12 +1,8 @@
 {
-  "name": "grpc-web-devtools",
-  "version": "0.1.0",
+  "name": "grpc-web-inspector",
+  "version": "1.7.5",
   "license": "MIT",
-  "author": "SafetyCulture",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/SafetyCulture/grpc-web-devtools"
-  },
+  "author": "Jaehyeong Yang",
   "dependencies": {
     "@reduxjs/toolkit": "^1.0.4",
     "fuse.js": "^6.4.6",
@@ -20,13 +16,26 @@
     "react-window": "^1.8.6"
   },
   "devDependencies": {
-    "@babel/helper-define-map": "^7.15.4"
+    "@babel/helper-define-map": "^7.15.4",
+    "@bufbuild/protobuf": "2.15.0",
+    "@connectrpc/connect": "2.2.0",
+    "@connectrpc/connect-web": "2.2.0",
+    "@protobuf-ts/grpcweb-transport": "2.11.1",
+    "@protobuf-ts/runtime": "2.11.1",
+    "@protobuf-ts/runtime-rpc": "2.11.1",
+    "cross-env": "^7.0.3",
+    "google-protobuf": "3.21.4",
+    "grpc-web": "1.5.0"
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "INLINE_RUNTIME_CHUNK=false react-scripts build",
+    "build": "cross-env INLINE_RUNTIME_CHUNK=false react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "pretest": "node e2e/ensure-connect-v1.js",
+    "test:e2e": "react-scripts test --watchAll=false src/__tests__/e2e",
+    "e2e:setup": "node e2e/ensure-connect-v1.js",
+    "e2e:generate": "cd e2e && npx -y @bufbuild/buf@1.47.2 generate"
   },
   "eslintConfig": {
     "extends": "react-app"
@@ -36,5 +45,11 @@
     "not dead",
     "not ie <= 11",
     "not op_mini all"
-  ]
+  ],
+  "jest": {
+    "moduleNameMapper": {
+      "^@bufbuild/protobuf/(codegenv1|codegenv2|reflect|wkt|wire|txtpb)$": "<rootDir>/node_modules/@bufbuild/protobuf/dist/commonjs/$1/index.js",
+      "^@connectrpc/connect/(protocol|protocol-connect|protocol-grpc|protocol-grpc-web)$": "<rootDir>/node_modules/@connectrpc/connect/dist/cjs/$1/index.js"
+    }
+  }
 }
