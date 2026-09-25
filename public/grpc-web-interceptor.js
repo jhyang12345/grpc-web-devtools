@@ -62,9 +62,15 @@
 
   function serializeError(error) {
     const hasCode = error && (typeof error.code === "string" || typeof error.code === "number");
-    const isNetworkError = !hasCode && error instanceof TypeError;
+    // grpc-web reports a request that never got an HTTP response (offline, DNS,
+    // CORS) as UNKNOWN with "http status code: 0" rather than a TypeError.
+    const noHttpResponse = hasCode && /http status code: 0\b/i.test(String(error && error.message || ""));
+    const isNetworkError = noHttpResponse || (!hasCode && error instanceof TypeError);
     return {
-      code: error && error.code,
+      // That UNKNOWN code is synthesized by the client, not a status from the
+      // server, so keep it aside instead of presenting it as the gRPC status.
+      code: noHttpResponse ? undefined : error && error.code,
+      ...(noHttpResponse ? { clientStatusCode: error.code } : {}),
       message: error && error.message ? String(error.message) : String(error || "Unknown RPC error"),
       ...(isNetworkError ? { isNetworkError: true } : {}),
     };

@@ -12,6 +12,7 @@
   const STATE_KEY = Symbol.for("grpc-web-inspector.protobuf-ts-replay-state");
   const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
   const MAX_REPLAY_HANDLES = 100;
+  const FETCH_FAILURE_MESSAGE = /^(TypeError: )?(Failed to fetch|NetworkError when attempting to fetch resource\.?|Load failed|fetch failed)$/i;
 
   function getState() {
     if (!window[STATE_KEY]) {
@@ -190,6 +191,14 @@
     };
     if (hasCode) details.code = error.code;
     if (!hasCode && error instanceof TypeError) details.isNetworkError = true;
+    // GrpcWebFetchTransport rethrows a rejected fetch() as RpcError INTERNAL that
+    // keeps only the browser's message ("Failed to fetch", "Load failed", ...).
+    if (hasCode && error.code === "INTERNAL" && FETCH_FAILURE_MESSAGE.test(details.message)) {
+      // INTERNAL is synthesized by the transport, not a status from the server.
+      details.isNetworkError = true;
+      details.clientStatusCode = details.code;
+      delete details.code;
+    }
     return limitPayload(details).payload;
   }
 
