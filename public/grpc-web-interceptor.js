@@ -138,10 +138,50 @@
     try { return name ? target[name]() : null; } catch (_) { return null; }
   }
 
+  function toObjectOrNull(message) {
+    try { return message && typeof message.toObject === "function" ? message.toObject() : null; } catch (_) { return null; }
+  }
+
+  function sameJson(left, right) {
+    return safeStringify(left) === safeStringify(right);
+  }
+
+  // Applies only the fields whose JSON differs from `baseline` (the toObject()
+  // view of `target` before editing). google-protobuf's toObject() reports every
+  // oneof member and unset fields as defaults, so blindly setting every key would
+  // let an untouched default oneof member clear the one that was actually set.
+  function applyJson(target, template, json, baseline) {
+    Object.keys(json).forEach(field => {
+      if (json[field] === undefined) return;
+      if (baseline && Object.prototype.hasOwnProperty.call(baseline, field) && sameJson(json[field], baseline[field])) return;
+      applyField(target, template, field, json[field]);
+    });
+    if (!baseline) return target;
+    Object.keys(baseline).forEach(field => {
+      if (baseline[field] === undefined || Object.prototype.hasOwnProperty.call(json, field)) return;
+      clearField(target, field);
+    });
+    return target;
+  }
+
   function cloneMessage(Constructor, json, template) {
     const result = new Constructor();
-    Object.keys(json).forEach(field => applyField(result, template, field, json[field]));
-    return result;
+    return applyJson(result, template, json, toObjectOrNull(result));
+  }
+
+  function clearField(target, field) {
+    const clearer = `clear${pascalCase(field)}`;
+    if (typeof target[clearer] === "function") return target[clearer]();
+    const map = mapGetter(target, field);
+    if (map) return map.clear();
+  }
+
+  function mapGetter(target, field) {
+    if (!field.endsWith("Map")) return null;
+    const getter = `get${pascalCase(field)}`;
+    if (typeof target[getter] !== "function") return null;
+    const map = target[getter]();
+    return map && typeof map.set === "function" && typeof map.clear === "function" ? map : null;
   }
 
   function applyField(target, template, field, value) {
@@ -152,10 +192,31 @@
       if (typeof target[setter] === "function") return target[setter](value);
       throw new Error(`Field "${field}" cannot be cleared.`);
     }
+    const map = mapGetter(target, field);
+    if (map) return applyMapField(map, mapGetter(template, field), field, value);
     if (Array.isArray(value)) return applyArrayField(target, template, field, value, setter, clearer);
     if (isPlainObject(value)) return applyObjectField(target, template, field, value, setter);
     if (typeof target[setter] !== "function") throw new Error(`Field "${field}" cannot be set.`);
     target[setter](value);
+  }
+
+  // google-protobuf exposes map<K, V> as `fooMap`: toObject() emits [[key, value]]
+  // pairs, and writes go through the live jspb.Map returned by getFooMap().
+  function applyMapField(map, templateMap, field, value) {
+    const entries = Array.isArray(value) ? value : isPlainObject(value) ? Object.entries(value) : null;
+    if (!entries || !entries.every(entry => Array.isArray(entry) && entry.length === 2)) {
+      throw new Error(`Map field "${field}" must be a list of [key, value] pairs.`);
+    }
+    let sample = null;
+    if (templateMap && typeof templateMap.forEach === "function") {
+      templateMap.forEach(item => { if (!sample && item && typeof item.toObject === "function") sample = item; });
+    }
+    map.clear();
+    entries.forEach(([key, item]) => {
+      if (!isPlainObject(item)) return map.set(key, item);
+      if (!sample) throw new Error(`Map field "${field}" requires an existing message value to infer its type.`);
+      map.set(key, cloneMessage(sample.constructor, item, sample));
+    });
   }
 
   function applyArrayField(target, template, field, value, setter, clearer) {
@@ -175,6 +236,12 @@
 
   function applyObjectField(target, template, field, value, setter) {
     if (typeof target[setter] !== "function") throw new Error(`Nested field "${field}" cannot be set.`);
+    const existing = getterValue(target, field);
+    if (existing && typeof existing.toObject === "function") {
+      // Edit the target's own (already cloned) sub-message in place.
+      target[setter](applyJson(existing, getterValue(template, field) || existing, value, toObjectOrNull(existing)));
+      return;
+    }
     const nested = getterValue(template, field);
     if (!nested || !nested.constructor) throw new Error(`Nested field "${field}" requires an existing value to infer its type.`);
     target[setter](cloneMessage(nested.constructor, value, nested));
@@ -185,6 +252,10 @@
     const adapter = state.adapters.get(method);
     if (adapter) return typeof adapter.fromJson === "function" ? adapter.fromJson(json, originalRequest) : adapter.createRequest(json, originalRequest);
     if (!originalRequest || typeof originalRequest.constructor !== "function") throw new Error("Unable to reconstruct the original gRPC-Web request type.");
+    if (typeof originalRequest.clone === "function") {
+      // Start from a deep copy of the captured request and apply only the edits.
+      return applyJson(originalRequest.clone(), originalRequest, json, toObjectOrNull(originalRequest));
+    }
     return cloneMessage(originalRequest.constructor, json, originalRequest);
   }
 
