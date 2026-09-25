@@ -560,3 +560,16 @@ test("replay token allocation does not overwrite colliding handles for either tr
   expect(connectStarts[0].replay.available).toBe(true);
   expect(connectStarts[1].replay).toEqual({ available: false, reason: "Unable to allocate a replay handle." });
 });
+
+test("Connect client-streaming input is passed through untouched and never offered for replay", async () => {
+  const events = capturedEvents();
+  let consumed = 0;
+  const input = (async function* () { consumed += 1; yield { value: 1 }; })();
+  const next = jest.fn(async req => ({ stream: false, message: { toJson: () => ({ ok: true }) }, seen: req.message }));
+  loadInterceptor("connect-web-interceptor.js");
+  const response = await window.__CONNECT_WEB_DEVTOOLS__(next)({ stream: true, method: { name: "Upload", kind: 2 }, message: input });
+  expect(response.seen).toBe(input);
+  expect(consumed).toBe(0);
+  const start = events.find(event => event.phase === "start");
+  expect(start.replay).toEqual(expect.objectContaining({ available: false }));
+});
