@@ -45,7 +45,9 @@
   const inspectPayload = value => {
     const state = { nodes: 0, characters: 0, seen: new WeakSet() };
     const visit = (current, depth) => {
-      if (current === null) return true;
+      // google-protobuf toObject() reports unset sub-messages and oneof members as
+      // undefined; JSON omits them, so they must not disqualify the whole payload.
+      if (current === null || current === undefined) return true;
       const type = typeof current;
       if (type === "string") {
         state.characters += current.length;
