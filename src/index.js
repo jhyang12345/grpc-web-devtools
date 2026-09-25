@@ -143,3 +143,5 @@ ReactDOM.render(
   document.getElementById('root')
 );
 
+// Exposed for the end-to-end suites, which boot this real panel entry point.
+export { store };

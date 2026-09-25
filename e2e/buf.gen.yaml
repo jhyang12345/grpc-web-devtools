@@ -1,0 +1,33 @@
+# Generates real client code for every client stack the inspector supports.
+# Run from the repository root with `npm run e2e:generate` (uses remote BSR plugins).
+version: v2
+clean: true
+plugins:
+  # generated grpc-web: google-protobuf messages + text-mode and binary-mode clients
+  - remote: buf.build/protocolbuffers/js:v3.21.4
+    out: gen/grpc-web-text
+    opt: [import_style=commonjs, binary]
+  - remote: buf.build/grpc/web:v1.5.0
+    out: gen/grpc-web-text
+    opt: [import_style=commonjs, mode=grpcwebtext]
+  - remote: buf.build/protocolbuffers/js:v3.21.4
+    out: gen/grpc-web-binary
+    opt: [import_style=commonjs, binary]
+  - remote: buf.build/grpc/web:v1.5.0
+    out: gen/grpc-web-binary
+    opt: [import_style=commonjs, mode=grpcweb]
+  # Connect-ES v2 / protobuf-es v2 (plain-object messages)
+  - remote: buf.build/bufbuild/es:v2.2.0
+    out: gen/es-v2
+    opt: [target=js]
+  # Connect-ES v1 / protobuf-es v1 (class messages with toJson/fromJson)
+  - remote: buf.build/bufbuild/es:v1.10.0
+    out: connect-v1/gen
+    opt: [target=js]
+  - remote: buf.build/connectrpc/es:v1.6.1
+    out: connect-v1/gen
+    opt: [target=js]
+  # protobuf-ts
+  - remote: buf.build/community/timostamm-protobuf-ts:v2.9.4
+    out: gen/protobuf-ts
+    opt: [output_javascript, long_type_string]
