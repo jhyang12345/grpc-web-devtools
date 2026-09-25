@@ -11,13 +11,16 @@ const { KitchenService } = require("./gen/kitchen_connect");
 const typeRegistry = createRegistry(Note);
 const settle = promise => promise.then(response => ({ response }), error => ({ error }));
 
-function connectV1Stack({ id, protocol, nextAuth }) {
+function connectV1Stack({ id, protocol, nextAuth, cancelAsyncIterable }) {
   let client;
   return {
     id,
     transport: "connect-web",
     requestShape: "canonical",
     supportsInterceptorChain: true,
+    // Connect's promise client hides return() from the app, so leaving the loop
+    // early does not cancel the call (the request stays open); only abort does.
+    cancelModes: ["abort"],
     install(baseUrl) {
       const devtools = next => request => {
         const hook = window.__CONNECT_WEB_DEVTOOLS__;
@@ -44,6 +47,9 @@ function connectV1Stack({ id, protocol, nextAuth }) {
       } catch (error) {
         return { messages, error };
       }
+    },
+    cancelStream(json, count, how) {
+      return cancelAsyncIterable(signal => client.stream(EchoRequest.fromJson(json, { typeRegistry }), { signal }), count, how);
     },
     responseText: response => response.serverNote,
   };

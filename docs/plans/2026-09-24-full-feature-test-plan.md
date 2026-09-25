@@ -111,6 +111,7 @@ instrumentation must never change what the app sees).
 | C9 | Server stream fails after 2 messages | 2× `message` then `error`; `messageCount: 2`; exactly one terminal event. |
 | C10 | Concurrent calls (unary ×3 + stream) | every `requestId` unique, events never cross-attributed, each call terminal exactly once. |
 | C11 | Instrumentation absent | with the page API not yet installed, the late-bound wrapper calls through and the app works (no capture, no throw). |
+| C12 | App cancels a 40-message stream after 2 messages, in each way that really cancels on the stack (grpc-web `stream.cancel()`; Connect and protobuf-ts: abort the call signal) | exactly one terminal `cancelled` event with timing and no `error`, nothing recorded after it, and the panel entry ends with `terminalPhase: "cancelled"` and no error. A second variant cancels 50 ms into a `slow-start` stream, before the server sends headers: still one `cancelled` event with `messageCount: 0`, and nothing recorded afterwards. |
 
 ### 3.3 Layer 1 — replay matrix (per stack)
 
@@ -197,10 +198,11 @@ Run with `make example-up` and the unpacked `build/` in Chrome and Firefox:
 | Suite | Tests | Result |
 | --- | --- | --- |
 | Existing unit suites (28) | 201 | pass (unchanged) |
-| Layer 1+2 stack matrix: 9 stacks × 16 scenarios (C1–C10, R1–R4, R6, P4) | 144 | pass |
+| Layer 1+2 stack matrix: 9 stacks × 16 scenarios (C1–C10, R1–R4, R6, P4), plus C12 per cancel path (2 variants × 9 stacks) | 162 | pass |
 | Layer 2 pipeline (`e2ePipeline.test.js`: P3–P7, B1, B2, C11, R5) | 11 + 1 skipped | pass; B3 skipped as a known issue (F7) |
 | Review follow-up unit test (client-streaming guard) | 1 | pass |
-| **Total** | **358** | **357 pass, 1 skipped, 0 fail** |
+| Cancelled-stream panel state (cache, row badge, audit) | 3 | pass |
+| **Total** | **379** | **378 pass, 1 skipped, 0 fail** |
 
 Section 4's hypotheses were all confirmed. The matrix found the following
 product bugs, which have been fixed. Each one has regression coverage in the
@@ -214,6 +216,7 @@ matrix.
 | F4 | Connect-ES v1 capture failed entirely (`__error`, replay unavailable) for any message containing `google.protobuf.Any`: `toJson()` needs the transport's type registry, and interceptors never see it. | Connect v1 | Retry with a fallback registry that shows (and replays) `Any` as raw base64 bytes. |
 | F5 | Connect-ES v2 (protobuf-es v2, the current major) was effectively unsupported. Its messages are plain objects with no `toJson`: 64-bit fields are `bigint`, which the bounds rejected, so payloads were dropped. Replay could not rebuild a typed message. | Connect v2 | Descriptor-driven canonical proto3 JSON writer/reader built from `req.method.input/output`, including protobuf-es v2's wrapper and `Struct` unboxing. |
 | F6 | Connect passes a server-streaming call's input to interceptors as an `AsyncIterable`, so every Connect stream request was captured as `{}` and replay sent a non-iterable. | Connect v1 + v2 streams | The single input message is read, captured, and passed on as an equivalent iterable; replay wraps it the same way. |
+| F9 | A stream the app cancelled never ended in the panel: it showed "Pending" forever and the audit report eventually flagged it as a stuck request. This is the normal end of a long-lived subscription, for example one closed on unmount. grpc-web `stream.cancel()` emits no `status`, `end` or `error`. Connect's promise client hides `return()` from the app, so after an abort the interceptor's generator is never resumed. protobuf-ts reported an abort as `INTERNAL "AbortError: ..."`, a server error that never happened. | grpc-web, Connect v1 + v2, protobuf-ts streams | New terminal phase `cancelled`: grpc-web wraps `cancel()`; Connect watches the call signal, including an abort before the response arrives (a `DEADLINE_EXCEEDED` abort stays an error); protobuf-ts checks the abort signal (an `AbortSignal.timeout()` stays an error). The panel shows a neutral "Cancelled" badge, and the audit report neither counts it as an error nor as pending. |
 
 Open items:
 
@@ -221,6 +224,7 @@ Open items:
 | --- | --- | --- |
 | F7 | After an MV3 service-worker restart, the content script and the panel reconnect independently. Events the content script flushes before the panel re-binds are dropped by the background (`connection.panel` is null). A 40-message stream lost its first 18 messages. | Known issue; test B3 is skipped. The fix needs a buffering policy (where, how long, how many bytes), which costs memory while DevTools is closed. |
 | F8 | protobuf-ts passes `grpc-message` to the app still percent-encoded (`scenario%20failure%205`). The inspector shows what the app sees. | Library behavior; documented in the C2 assertion. |
+| F10 | Leaving a `for await` loop early does not cancel a Connect (promise client) or protobuf-ts stream: the library keeps the HTTP request open. The entry stays open because the call really is still open. | Library behavior; C12 covers only the cancel paths each library honors. |
 | B4 | Multi-frame replay routing is not exercised end to end: two content scripts cannot share one jsdom window. | Covered by `bridge.test.js` unit tests. |
 
 Harness gaps that were fixed in the harness, not in the product: jsdom returns

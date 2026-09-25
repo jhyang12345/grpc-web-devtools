@@ -217,6 +217,53 @@ export function defineStackSuite(stackFactory) {
     });
   });
 
+  describe("contract: client cancellation", () => {
+    // Long-lived streams (subscriptions) usually end because the app closes
+    // them, e.g. on unmount. That must end the entry instead of leaving it
+    // pending forever, and must not be presented as a server error.
+    test.each(stackFactory().cancelModes)("C12 a stream the app stops with %s ends in one cancelled terminal event", async how => {
+      const { stack, ext } = ctx;
+      const mark = ext.pageEvents.length;
+      const outcome = await stack.cancelStream(requestJson({ count: 40 }), 2, how);
+      expect(outcome.messages.length).toBeGreaterThanOrEqual(2);
+      const start = await waitFor(() => ext.startsSince(mark).find(event => event.transport === stack.transport), { message: "start event" });
+      const terminal = await ext.waitForTerminal(start.requestId, stack.transport);
+      expect(terminal.phase).toBe("cancelled");
+      expect(terminal.error).toBeUndefined();
+      expect(terminal.timing.duration).toBeGreaterThanOrEqual(0);
+      // Nothing may be recorded for the call after it was cancelled.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const events = ext.eventsFor(start.requestId, stack.transport);
+      expect(events.filter(event => event.phase !== "start" && event.phase !== "message")).toEqual([terminal]);
+      expect(events.at(-1)).toBe(terminal);
+      const messageCount = events.filter(event => event.phase === "message").length;
+      expect(messageCount).toBeGreaterThanOrEqual(2);
+      expect(terminal.timing.messageCount).toBe(messageCount);
+
+      const { summary, full } = await ext.panelEntry(start.requestId, stack.transport);
+      expect(summary).toEqual(expect.objectContaining({ terminalPhase: "cancelled", error: false, isNetworkError: false, messageCount }));
+      expect(full.messages).toHaveLength(messageCount);
+      expect(full.timing.completionTimestamp).toEqual(expect.any(Number));
+    });
+
+    // A subscription server often sends nothing until its first event, so the
+    // app can cancel while the transport is still waiting for the response.
+    test.each(stackFactory().cancelModes.filter(how => how !== "break"))("C12 a stream the app stops with %s before any response is cancelled, not an error", async how => {
+      const { stack, ext } = ctx;
+      const mark = ext.pageEvents.length;
+      const outcome = await stack.cancelStream(requestJson({ scenario: "slow-start", count: 5 }), 0, how);
+      expect(outcome.messages).toHaveLength(0);
+      const start = await waitFor(() => ext.startsSince(mark).find(event => event.transport === stack.transport), { message: "start event" });
+      const terminal = await ext.waitForTerminal(start.requestId, stack.transport);
+      expect(terminal.phase).toBe("cancelled");
+      expect(terminal.error).toBeUndefined();
+      expect(terminal.timing.messageCount).toBe(0);
+      // Past the server's delay: nothing more may be recorded for the call.
+      await new Promise(resolve => setTimeout(resolve, 400));
+      expect(ext.eventsFor(start.requestId, stack.transport).map(event => event.phase)).toEqual(["start", "cancelled"]);
+    });
+  });
+
   describe("contract: concurrency", () => {
     test("C10 concurrent unary and streaming calls never cross-attribute events", async () => {
       const { stack, ext } = ctx;
@@ -234,7 +281,7 @@ export function defineStackSuite(stackFactory) {
       expect(new Set(starts.map(event => event.requestId)).size).toBe(4);
       for (const start of starts) {
         await ext.waitForTerminal(start.requestId, stack.transport);
-        const terminals = ext.eventsFor(start.requestId, stack.transport).filter(event => event.phase === "complete" || event.phase === "error");
+        const terminals = ext.eventsFor(start.requestId, stack.transport).filter(event => ["complete", "error", "cancelled"].includes(event.phase));
         expect(terminals).toHaveLength(1);
       }
       const byCount = count => starts.find(event => (event.request.count) === count);

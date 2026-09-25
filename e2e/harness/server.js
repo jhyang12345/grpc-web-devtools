@@ -96,6 +96,16 @@ function plan(methodName, request) {
   return { messages, status };
 }
 
+/**
+ * Scenario "slow-start": like a subscription server that sends nothing until its
+ * first event, delay the response headers. Resolves false if the client gave up.
+ */
+async function holdHeaders(req, request) {
+  if (request.scenario !== "slow-start") return true;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  return !req.socket.destroyed;
+}
+
 async function handleGrpcWeb(req, res, method, body, record) {
   const text = /grpc-web-text/.test(req.headers["content-type"]);
   const raw = text ? Buffer.from(body.toString("latin1"), "base64") : body;
@@ -114,6 +124,7 @@ async function handleGrpcWeb(req, res, method, body, record) {
     });
     return res.end();
   }
+  if (!(await holdHeaders(req, request))) return;
   res.writeHead(200, { ...corsHeaders(req), "content-type": contentType });
   const write = buffer => res.write(text ? buffer.toString("base64") : buffer);
   for (const message of outcome.messages) {
@@ -154,6 +165,7 @@ async function handleConnect(req, res, method, body, record) {
   record(request);
   const outcome = plan(req.methodName, request);
   if (outcome.destroy) return req.socket.destroy();
+  if (!(await holdHeaders(req, request))) return;
   res.writeHead(200, { ...corsHeaders(req), "content-type": json ? "application/connect+json" : "application/connect+proto" });
   for (const message of outcome.messages) {
     const encoded = json ? Buffer.from(JSON.stringify(toJson(method.output, message, JSON_OPTIONS))) : toBinary(method.output, message);

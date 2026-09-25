@@ -196,7 +196,7 @@ export function bootExtension({ tabId = 7 } = {}) {
     },
 
     async waitForTerminal(requestId, transport) {
-      return waitFor(() => harness.eventsFor(requestId, transport).find(event => event.phase === "complete" || event.phase === "error"), { message: `terminal event for request ${requestId}` });
+      return waitFor(() => harness.eventsFor(requestId, transport).find(event => ["complete", "error", "cancelled"].includes(event.phase)), { message: `terminal event for request ${requestId}` });
     },
 
     /** Resolves with the panel's summary and full cached entry for a page request id. */

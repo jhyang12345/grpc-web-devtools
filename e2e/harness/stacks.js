@@ -8,6 +8,12 @@
 //   install(baseUrl)       builds clients; must be called after bootExtension()
 //   unary(json)            -> { response } | { error }       (never rejects)
 //   stream(json)           -> { messages, error? }           (never rejects)
+//   cancelStream(json, n, how) -> { messages }   reads n messages, then the app
+//                          stops the stream the `how` way (n = 0: 50 ms after
+//                          starting, before any response); never rejects
+//   cancelModes            the `how` values that really cancel on this stack:
+//                          "cancel" (grpc-web stream.cancel()), "break" (leave the
+//                          for-await loop), "abort" (abort the call's signal)
 //   ping()                 -> { response } | { error }
 //   methodName(name)       expected captured `method` for an RPC name
 //   requestShape           "canonical" (proto3 JSON) or "jspb" (google-protobuf toObject)
@@ -17,6 +23,24 @@ import { NOTE_TYPE_URL, buildJspbRequest } from "./fixture";
 const SERVICE = "inspector.e2e.KitchenService";
 let authCounter = 0;
 const nextAuth = () => `token-${++authCounter}`;
+
+/** Reads `count` messages, then stops the stream the way an application would. */
+export async function cancelAsyncIterable(open, count, how) {
+  const controller = new AbortController();
+  const messages = [];
+  if (count === 0) setTimeout(() => controller.abort(), 50);
+  try {
+    for await (const message of open(controller.signal)) {
+      messages.push(message);
+      if (messages.length < count) continue;
+      if (how === "abort") controller.abort();
+      else break;
+    }
+  } catch (_) {
+    // An aborted signal surfaces to the application as a cancellation error.
+  }
+  return { messages };
+}
 
 const settle = promise => promise.then(response => ({ response }), error => ({ error }));
 
@@ -31,6 +55,7 @@ function grpcWebStack({ id, dir, promise }) {
     transport: "grpc-web",
     requestShape: "jspb",
     supportsInterceptorChain: false,
+    cancelModes: ["cancel"],
     pb,
     install(url) {
       baseUrl = url;
@@ -73,6 +98,26 @@ function grpcWebStack({ id, dir, promise }) {
         stream.on("end", () => setTimeout(() => finish({}), 0));
       });
     },
+    cancelStream(json, count) {
+      // grpc-web streams have no signal: ClientReadableStream.cancel() is the only way.
+      const stream = client.stream(buildJspbRequest(pb, json), { "x-e2e-auth": nextAuth() });
+      const messages = [];
+      return new Promise(resolve => {
+        if (count === 0) {
+          setTimeout(() => {
+            stream.cancel();
+            resolve({ messages });
+          }, 50);
+        }
+        stream.on("data", message => {
+          messages.push(message);
+          if (messages.length === count) {
+            stream.cancel();
+            resolve({ messages });
+          }
+        });
+      });
+    },
     responseText: response => response.getServerNote(),
   };
 }
@@ -91,6 +136,9 @@ function connectV2Stack({ id, protocol }) {
     transport: "connect-web",
     requestShape: "canonical",
     supportsInterceptorChain: true,
+    // Connect's promise client hides return() from the app, so leaving the loop
+    // early does not cancel the call (the request stays open); only abort does.
+    cancelModes: ["abort"],
     install(baseUrl) {
       const devtools = next => request => {
         const hook = window.__CONNECT_WEB_DEVTOOLS__;
@@ -122,6 +170,9 @@ function connectV2Stack({ id, protocol }) {
         return { messages, error };
       }
     },
+    cancelStream(json, count, how) {
+      return cancelAsyncIterable(signal => client.stream(fromJson(gen.EchoRequestSchema, json, { registry }), { signal }), count, how);
+    },
     responseText: response => response.serverNote,
     authHeaders,
   };
@@ -139,6 +190,8 @@ function protobufTsStack({ id }) {
     transport: "protobuf-ts",
     requestShape: "canonical",
     supportsInterceptorChain: true,
+    // Leaving the loop early does not cancel a protobuf-ts call; it keeps reading.
+    cancelModes: ["abort"],
     install(url) {
       baseUrl = url;
       const devtools = {
@@ -196,13 +249,16 @@ function protobufTsStack({ id }) {
         return { messages, error };
       }
     },
+    cancelStream(json, count, how) {
+      return cancelAsyncIterable(abort => client.stream(gen.EchoRequest.fromJson(json, { typeRegistry: [gen.Note] }), { abort }).responses, count, how);
+    },
     responseText: response => response.serverNote,
   };
 }
 
 export function connectV1Stack(options) {
   // Lives in the isolated e2e/connect-v1 package so it resolves protobuf-es v1.
-  return require("../connect-v1/stack").connectV1Stack({ ...options, nextAuth });
+  return require("../connect-v1/stack").connectV1Stack({ ...options, nextAuth, cancelAsyncIterable });
 }
 
 export const STACKS = {
