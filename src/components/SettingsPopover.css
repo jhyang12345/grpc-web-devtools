@@ -92,8 +92,33 @@
   margin: 0;
 }
 
+.settings-support-link {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  margin-top: 4px;
+  padding: 3px 7px;
+  border-top: 1px solid var(--divider-color);
+  border-radius: 0 0 3px 3px;
+  color: var(--text-secondary-color);
+  text-decoration: none;
+}
+
+.settings-support-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.settings-support-link:hover {
+  background: var(--button-hover-bg);
+  color: var(--text-color);
+}
+
 .settings-button:focus-visible,
 .settings-close:focus-visible,
+.settings-support-link:focus-visible,
 .settings-option input:focus-visible {
   outline: 2px solid var(--focus-outline-color);
   outline-offset: 1px;

@@ -6,6 +6,7 @@ import React, { Component } from 'react';
 import packageInfo from '../../package.json';
 import { translate } from '../i18n';
 import SettingsIcon from '../icons/Settings';
+import matchaFrappuccinoIcon from '../icons/matcha-frappuccino.png';
 import './SettingsPopover.css';
 
 const OPTIONS = [
@@ -15,6 +16,8 @@ const OPTIONS = [
 ];
 
 const packageVersion = packageInfo.version;
+
+export const SUPPORT_URL = 'https://buymeacoffee.com/jhyang12345';
 
 export function getExtensionVersion() {
   try {
@@ -91,6 +94,16 @@ export class SettingsPopover extends Component {
                 </label>
               ))}
             </div>
+            <a
+              className="settings-support-link"
+              href={SUPPORT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {/* 32px source drawn at 16px so it stays sharp on high-DPI screens. */}
+              <img className="settings-support-icon" src={matchaFrappuccinoIcon} alt="" width="16" height="16" />
+              <span>{translate(locale, 'settings.support')}</span>
+            </a>
           </div>
         )}
       </div>

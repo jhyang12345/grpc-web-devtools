@@ -27,3 +27,18 @@ test('settings popover reports language changes without rewriting values', () =>
   component._selectLanguage({ target: { value: 'ko' } });
   expect(onLanguageChange).toHaveBeenCalledWith('ko');
 });
+
+test('settings popover links to the Buy Me a Coffee page in a new tab with the matcha icon', () => {
+  const component = new SettingsPopover({ locale: 'en', onLanguageChange: jest.fn() });
+  component.state = { isOpen: true };
+  const markup = renderToStaticMarkup(component.render());
+  expect(markup).toContain('href="https://buymeacoffee.com/jhyang12345"');
+  expect(markup).toContain('target="_blank"');
+  expect(markup).toContain('rel="noopener noreferrer"');
+  expect(markup).toContain('Matcha Crème Frappuccino');
+  expect(markup).toContain('class="settings-support-icon"');
+
+  const korean = new SettingsPopover({ locale: 'ko', onLanguageChange: jest.fn() });
+  korean.state = { isOpen: true };
+  expect(renderToStaticMarkup(korean.render())).toContain('제주 말차 크림 프라푸치노');
+});
