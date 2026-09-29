@@ -1,0 +1,102 @@
+// Copyright (c) 2019 SafetyCulture Pty Ltd. All Rights Reserved.
+
+import React, { Component } from "react";
+import { translate } from "../i18n";
+import "./SearchBar.css";
+
+class SearchBar extends Component {
+  // Input value is managed internally so typing never triggers parent re-renders.
+  // The parent only re-renders when matchCount / currentIndex change (after debounce).
+  state = { value: "" };
+
+  inputRef = React.createRef();
+
+  componentDidMount() {
+    if (this.inputRef.current) {
+      this.inputRef.current.focus();
+      this.inputRef.current.select();
+    }
+  }
+
+  render() {
+    const locale = this.props.locale || "en";
+    const {
+      compact,
+      placeholder = translate(locale, "search.defaultPlaceholder"),
+      matchCount,
+      currentIndex,
+      onChange,
+      onNext,
+      onPrev,
+      onClose,
+    } = this.props;
+
+    const { value } = this.state;
+    const classes = `search-bar ${compact ? "search-bar-compact" : ""}`.trim();
+
+    return (
+      <div className={classes}>
+        <input
+          ref={this.inputRef}
+          type="text"
+          className="search-input"
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => {
+            const next = event.target.value;
+            this.setState({ value: next });
+            onChange(next);
+          }}
+          onKeyDown={this._handleKeyDown}
+        />
+        <span className="search-matches">
+          {matchCount > 0 ? `${currentIndex + 1}/${matchCount}` : "0"}
+        </span>
+        <button
+          className="search-btn"
+          onClick={onPrev}
+          disabled={matchCount === 0}
+          title={translate(locale, "search.previousTitle")}
+        >
+          {translate(locale, "search.previous")}
+        </button>
+        <button
+          className="search-btn"
+          onClick={onNext}
+          disabled={matchCount === 0}
+          title={translate(locale, "search.nextTitle")}
+        >
+          {translate(locale, "search.next")}
+        </button>
+        <button
+          className="search-btn"
+          onClick={onClose}
+          title={translate(locale, "search.closeTitle")}
+        >
+          {translate(locale, "search.close")}
+        </button>
+      </div>
+    );
+  }
+
+  _handleKeyDown = (event) => {
+    const { onNext, onPrev, onClose } = this.props;
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        onPrev();
+      } else {
+        onNext();
+      }
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+    }
+  };
+}
+
+export default SearchBar;

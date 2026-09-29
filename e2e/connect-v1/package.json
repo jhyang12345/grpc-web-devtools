@@ -1,0 +1,10 @@
+{
+  "name": "grpc-web-inspector-e2e-connect-v1",
+  "private": true,
+  "description": "Isolated Connect-ES v1 + protobuf-es v1 runtime for real-library interceptor tests. Kept separate because it peer-conflicts with the protobuf-es v2 stack at the repository root.",
+  "devDependencies": {
+    "@bufbuild/protobuf": "1.10.1",
+    "@connectrpc/connect": "1.7.0",
+    "@connectrpc/connect-web": "1.7.0"
+  }
+}

@@ -6,17 +6,20 @@ import { ExampleServiceClient, ExampleServicePromiseClient } from './example_grp
 import { ExampleOneRequest, StreamRequest } from './example_pb';
 
 const __DEV__ = true;
-const enableDevTools = window.__GRPCWEB_DEVTOOLS__ || (() => { });
 
 const body = document.getElementsByTagName('body')
 const client = new ExampleServicePromiseClient('http://0.0.0.0:18080');
 const client2 = new ExampleServiceClient('http://0.0.0.0:18080');
+const grpcWebClients = [client, client2];
+
+function installGrpcWebDevTools() {
+  const devtools = window.__GRPCWEB_DEVTOOLS__;
+  if (typeof devtools === 'function') devtools(grpcWebClients);
+}
 
 if (__DEV__) {
-  enableDevTools([
-    client,
-    client2,
-  ])
+  installGrpcWebDevTools();
+  window.addEventListener('grpc-web-dev-tools-ready', installGrpcWebDevTools);
 }
 
 function exampleOne() {

@@ -19,3 +19,18 @@ How to get your contributions merged smoothly and quickly.
 * Keep your PR up to date with upstream/master (if there are merge conflicts, we can't really merge your change).
 
 * Exceptions to the rules can be made if there's a compelling reason for doing so.
+
+## Running the tests
+
+* `npm test` runs every suite: the fast unit suites plus the real-library
+  end-to-end matrix. It first installs the isolated Connect-ES v1 runtime in
+  `e2e/connect-v1` if needed.
+* `npm run test:e2e` runs only the end-to-end matrix. It drives real generated
+  grpc-web (text and binary, callback and promise clients), Connect-ES v1 and v2
+  (gRPC-Web and Connect protocols), and protobuf-ts clients against an in-process
+  server. The traffic flows through the real content script, background worker
+  and React panel.
+* `npm run e2e:generate` regenerates the fixture client code from
+  `e2e/proto/kitchen.proto` with `buf` (remote BSR plugins).
+
+See `docs/plans/2026-09-24-full-feature-test-plan.md` for the coverage matrix.
