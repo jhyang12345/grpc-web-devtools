@@ -35,7 +35,7 @@ test('settings popover links to the Buy Me a Coffee page in a new tab with the m
   expect(markup).toContain('href="https://buymeacoffee.com/jhyang12345"');
   expect(markup).toContain('target="_blank"');
   expect(markup).toContain('rel="noopener noreferrer"');
-  expect(markup).toContain('Buy me a matcha frappuccino');
+  expect(markup).toContain('Buy me a Matcha Frappuccino');
   expect(markup).toContain('class="settings-support-icon"');
 
   const korean = new SettingsPopover({ locale: 'ko', onLanguageChange: jest.fn() });

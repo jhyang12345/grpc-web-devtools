@@ -44,7 +44,7 @@ export const MESSAGES = {
     'settings.english': 'English',
     'settings.korean': '한국어',
     'settings.close': 'Close settings',
-    'settings.support': 'Buy me a matcha frappuccino',
+    'settings.support': 'Buy me a Matcha Frappuccino',
 
     'audit.download': 'Audit report',
     'audit.downloadTitle': 'Download recent issues and current Filter matches as a Markdown Audit Report',
