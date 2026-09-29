@@ -111,6 +111,13 @@
   height: 16px;
 }
 
+.settings-support-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .settings-support-link:hover {
   background: var(--button-hover-bg);
   color: var(--text-color);

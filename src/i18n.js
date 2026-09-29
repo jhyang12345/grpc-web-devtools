@@ -44,7 +44,7 @@ export const MESSAGES = {
     'settings.english': 'English',
     'settings.korean': '한국어',
     'settings.close': 'Close settings',
-    'settings.support': 'Matcha Crème Frappuccino',
+    'settings.support': 'Buy me a matcha frappuccino',
 
     'audit.download': 'Audit report',
     'audit.downloadTitle': 'Download recent issues and current Filter matches as a Markdown Audit Report',
@@ -309,7 +309,7 @@ export const MESSAGES = {
     'settings.english': 'English',
     'settings.korean': '한국어',
     'settings.close': '설정 닫기',
-    'settings.support': '제주 말차 크림 프라푸치노',
+    'settings.support': '말차 프라푸치노 사주기',
 
     'audit.download': 'Audit Report',
     'audit.downloadTitle': '최근 문제와 현재 Filter 일치 Request를 Markdown Audit Report로 다운로드합니다',

@@ -35,10 +35,10 @@ test('settings popover links to the Buy Me a Coffee page in a new tab with the m
   expect(markup).toContain('href="https://buymeacoffee.com/jhyang12345"');
   expect(markup).toContain('target="_blank"');
   expect(markup).toContain('rel="noopener noreferrer"');
-  expect(markup).toContain('Matcha Crème Frappuccino');
+  expect(markup).toContain('Buy me a matcha frappuccino');
   expect(markup).toContain('class="settings-support-icon"');
 
   const korean = new SettingsPopover({ locale: 'ko', onLanguageChange: jest.fn() });
   korean.state = { isOpen: true };
-  expect(renderToStaticMarkup(korean.render())).toContain('제주 말차 크림 프라푸치노');
+  expect(renderToStaticMarkup(korean.render())).toContain('말차 프라푸치노 사주기');
 });

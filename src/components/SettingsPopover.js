@@ -99,10 +99,11 @@ export class SettingsPopover extends Component {
               href={SUPPORT_URL}
               target="_blank"
               rel="noopener noreferrer"
+              title={translate(locale, 'settings.support')}
             >
               {/* 32px source drawn at 16px so it stays sharp on high-DPI screens. */}
               <img className="settings-support-icon" src={matchaFrappuccinoIcon} alt="" width="16" height="16" />
-              <span>{translate(locale, 'settings.support')}</span>
+              <span className="settings-support-label">{translate(locale, 'settings.support')}</span>
             </a>
           </div>
         )}
