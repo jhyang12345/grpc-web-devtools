@@ -33,9 +33,14 @@ first RPC you want to capture.
 | Connect-ES (`@connectrpc/connect-web`) | Add a transport interceptor | Unary and server streaming | Yes |
 | protobuf-ts (`@protobuf-ts/grpcweb-transport`) | Add an `RpcInterceptor` | Unary and server streaming | Yes |
 
-The integration is safe to leave in a production bundle. When the extension is
-not installed, the optional page APIs are absent and the wrappers call the
-normal transport directly.
+When the optional page APIs are absent, the wrappers call the normal transport
+directly. Their names are public: another script in the page can define or
+replace them even when the extension is not installed. Enabling instrumentation
+exposes captured request data and retained replay handles to that page's scripts.
+Gate setup behind your application's development/debug configuration when these
+capabilities should not be exposed in production. Optional chaining checks API
+presence; it does not authenticate an extension or protect against untrusted
+scripts sharing the page.
 
 ## Optional TypeScript declarations
 
